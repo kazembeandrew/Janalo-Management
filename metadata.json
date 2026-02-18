@@ -1,0 +1,8 @@
+{
+  "name": "Janalo Management",
+  "description": "A comprehensive microfinance loan management system featuring role-based access, loan portfolio tracking, flat/reducing balance interest calculations, and financial reporting dashboards.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
