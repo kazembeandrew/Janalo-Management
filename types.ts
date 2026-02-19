@@ -45,6 +45,8 @@ export interface Loan {
   // Supabase join field
   borrowers?: {
     full_name: string;
+    address?: string;
+    phone?: string;
   };
   users?: {
     email: string;

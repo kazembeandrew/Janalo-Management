@@ -12,7 +12,15 @@ export const Borrowers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newBorrower, setNewBorrower] = useState({
+  const [editingBorrower, setEditingBorrower] = useState<Borrower | null>(null);
+  
+  // Reassignment State
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [reassignBorrower, setReassignBorrower] = useState<Borrower | null>(null);
+  const [selectedOfficer, setSelectedOfficer] = useState('');
+  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
+
+  const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
     address: '',
@@ -24,11 +32,20 @@ export const Borrowers: React.FC = () => {
   const [totalCount, setTotalCount] = useState(0);
 
   const canCreate = profile?.role === 'admin' || profile?.role === 'loan_officer';
+  const isExec = profile?.role === 'admin' || profile?.role === 'ceo';
 
   useEffect(() => {
     fetchBorrowers();
+    if (isExec) {
+        fetchOfficers();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, page, searchTerm]); // Re-fetch on search or page change
+
+  const fetchOfficers = async () => {
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
+      setOfficers(data || []);
+  };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearchTerm(e.target.value);
@@ -70,25 +87,83 @@ export const Borrowers: React.FC = () => {
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleReassign = async () => {
+      if (!reassignBorrower || !selectedOfficer) return;
+      
+      try {
+          const { error } = await supabase
+            .from('borrowers')
+            .update({ created_by: selectedOfficer })
+            .eq('id', reassignBorrower.id);
+          
+          if (error) throw error;
+          
+          alert(`Client successfully reassigned.`);
+          setShowReassignModal(false);
+          setReassignBorrower(null);
+          setSelectedOfficer('');
+          fetchBorrowers();
+      } catch (error) {
+          console.error(error);
+          alert('Failed to reassign client.');
+      }
+  };
+
+  const openCreateModal = () => {
+    setEditingBorrower(null);
+    setFormData({ full_name: '', phone: '', address: '', employment: '' });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (borrower: Borrower) => {
+    setEditingBorrower(borrower);
+    setFormData({
+      full_name: borrower.full_name,
+      phone: borrower.phone,
+      address: borrower.address,
+      employment: borrower.employment
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
 
     try {
-      const { error } = await supabase.from('borrowers').insert([
-        {
-          ...newBorrower,
-          created_by: profile.id
-        }
-      ]);
+      if (editingBorrower) {
+        // Update existing
+        const { error } = await supabase
+          .from('borrowers')
+          .update({
+            full_name: formData.full_name,
+            phone: formData.phone,
+            address: formData.address,
+            employment: formData.employment
+          })
+          .eq('id', editingBorrower.id);
 
-      if (error) throw error;
+        if (error) throw error;
+      } else {
+        // Create new
+        const { error } = await supabase.from('borrowers').insert([
+          {
+            ...formData,
+            created_by: profile.id
+          }
+        ]);
+
+        if (error) throw error;
+      }
+
       setIsModalOpen(false);
-      setNewBorrower({ full_name: '', phone: '', address: '', employment: '' });
-      setPage(1); // Go to first page to see new entry
+      setFormData({ full_name: '', phone: '', address: '', employment: '' });
+      setEditingBorrower(null);
+      if (!editingBorrower) setPage(1); // Go to first page on create
       fetchBorrowers();
     } catch (error) {
-      alert('Error creating borrower');
+      console.error('Error saving borrower:', error);
+      alert('Error saving borrower');
     }
   };
 
@@ -109,7 +184,7 @@ export const Borrowers: React.FC = () => {
         </div>
         {canCreate && (
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openCreateModal}
             className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             <Plus className="h-4 w-4 mr-2" />
@@ -147,7 +222,7 @@ export const Borrowers: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {borrowers.map((borrower) => (
-                <div key={borrower.id} className="bg-white overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                <div key={borrower.id} className="bg-white overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-shadow relative group">
                 <div className="p-5">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-medium text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
@@ -170,8 +245,26 @@ export const Borrowers: React.FC = () => {
                     </div>
                     </div>
                 </div>
-                <div className="bg-gray-50 px-5 py-3 border-t border-gray-100">
+                <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex justify-between items-center">
                     <span className="text-xs text-gray-400">ID: {borrower.id.slice(0, 8)}</span>
+                    <div className="flex space-x-3">
+                        {isExec && (
+                            <button 
+                                onClick={() => { setReassignBorrower(borrower); setShowReassignModal(true); }}
+                                className="text-indigo-600 hover:text-indigo-900 text-xs font-medium"
+                            >
+                                Reassign
+                            </button>
+                        )}
+                        {canCreate && (
+                        <button 
+                            onClick={() => openEditModal(borrower)}
+                            className="text-indigo-600 hover:text-indigo-900 text-xs font-medium"
+                        >
+                            Edit
+                        </button>
+                        )}
+                    </div>
                 </div>
                 </div>
             ))}
@@ -235,7 +328,53 @@ export const Borrowers: React.FC = () => {
         </div>
       )}
 
-      {/* Create Modal */}
+      {/* Reassign Modal */}
+      {showReassignModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowReassignModal(false)}></div>
+                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                    <div className="p-6">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Reassign Client</h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                            Select a new loan officer to manage <strong>{reassignBorrower?.full_name}</strong>.
+                        </p>
+                        
+                        <select
+                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            value={selectedOfficer}
+                            onChange={(e) => setSelectedOfficer(e.target.value)}
+                        >
+                            <option value="">-- Select Officer --</option>
+                            {officers.map(o => (
+                                <option key={o.id} value={o.id}>{o.full_name}</option>
+                            ))}
+                        </select>
+
+                        <div className="flex justify-end space-x-3 mt-6">
+                            <button
+                                type="button"
+                                onClick={() => setShowReassignModal(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReassign}
+                                disabled={!selectedOfficer}
+                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                Confirm Reassignment
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -244,9 +383,11 @@ export const Borrowers: React.FC = () => {
             </div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
-              <form onSubmit={handleCreate}>
+              <form onSubmit={handleSubmit}>
                 <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Register New Borrower</h3>
+                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                    {editingBorrower ? 'Edit Borrower' : 'Register New Borrower'}
+                  </h3>
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Full Name</label>
@@ -254,8 +395,8 @@ export const Borrowers: React.FC = () => {
                         required
                         type="text"
                         className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={newBorrower.full_name}
-                        onChange={(e) => setNewBorrower({ ...newBorrower, full_name: e.target.value })}
+                        value={formData.full_name}
+                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
                       />
                     </div>
                     <div>
@@ -264,8 +405,8 @@ export const Borrowers: React.FC = () => {
                         required
                         type="text"
                         className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={newBorrower.phone}
-                        onChange={(e) => setNewBorrower({ ...newBorrower, phone: e.target.value })}
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       />
                     </div>
                     <div>
@@ -274,8 +415,8 @@ export const Borrowers: React.FC = () => {
                         required
                         type="text"
                         className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={newBorrower.address}
-                        onChange={(e) => setNewBorrower({ ...newBorrower, address: e.target.value })}
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                       />
                     </div>
                     <div>
@@ -284,8 +425,8 @@ export const Borrowers: React.FC = () => {
                         required
                         type="text"
                         className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={newBorrower.employment}
-                        onChange={(e) => setNewBorrower({ ...newBorrower, employment: e.target.value })}
+                        value={formData.employment}
+                        onChange={(e) => setFormData({ ...formData, employment: e.target.value })}
                       />
                     </div>
                   </div>
@@ -295,7 +436,7 @@ export const Borrowers: React.FC = () => {
                     type="submit"
                     className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-900 text-base font-medium text-white hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
                   >
-                    Save Client
+                    {editingBorrower ? 'Update Client' : 'Save Client'}
                   </button>
                   <button
                     type="button"

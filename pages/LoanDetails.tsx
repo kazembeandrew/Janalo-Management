@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '../types';
 import { formatCurrency, calculateLoanDetails } from '../utils/finance';
+import Markdown from 'react-markdown';
+import { analyzeFinancialData, assessLoanRisk } from '../services/aiService';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
     FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles
@@ -58,10 +60,48 @@ export const LoanDetails: React.FC = () => {
   const [visitLocation, setVisitLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locating, setLocating] = useState(false);
 
+  // Officer List for Reassignment
+  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [selectedOfficer, setSelectedOfficer] = useState('');
+
   useEffect(() => {
     fetchData();
+    if (profile?.role === 'admin' || profile?.role === 'ceo') {
+        fetchOfficers();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const fetchOfficers = async () => {
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
+      setOfficers(data || []);
+  };
+
+  const handleReassign = async () => {
+      if (!loan || !selectedOfficer) return;
+      setProcessingAction(true);
+      try {
+          const { error } = await supabase
+            .from('loans')
+            .update({ officer_id: selectedOfficer })
+            .eq('id', loan.id);
+          
+          if (error) throw error;
+          
+          const newOfficerName = officers.find(o => o.id === selectedOfficer)?.full_name || 'New Officer';
+          await addNote(`Loan reassigned to ${newOfficerName} by ${profile?.full_name}.`, true);
+          
+          alert(`Loan successfully reassigned to ${newOfficerName}.`);
+          setShowReassignModal(false);
+          fetchData();
+      } catch (error) {
+          console.error(error);
+          alert('Failed to reassign loan.');
+      } finally {
+          setProcessingAction(false);
+      }
+  };
 
   // Calculate Amortization Schedule
   const amortizationSchedule = useMemo(() => {
@@ -82,7 +122,7 @@ export const LoanDetails: React.FC = () => {
         .from('loans')
         .select(`
             *, 
-            borrowers(*),
+            borrowers(full_name, address, phone),
             users!officer_id (email, full_name)
         `)
         .eq('id', id)
@@ -197,23 +237,50 @@ export const LoanDetails: React.FC = () => {
       );
   };
 
-  // Helper to send Email Notification via Edge Function
+  // --- AI ANALYSIS ---
+  const handleAnalyzeLoan = async () => {
+    setShowAIModal(true);
+    if (aiAnalysis) return; // Use cached analysis if available
+    setAnalyzing(true);
+    
+    try {
+        const insights = await analyzeFinancialData({
+            loan,
+            repayments: repayments.slice(0, 10),
+            notes: notes.filter(n => !n.is_system).slice(0, 5),
+            visitations: visitations.slice(0, 3)
+        });
+        
+        setAiAnalysis(insights.join('\n\n'));
+
+    } catch (e: any) {
+        console.error("AI Error:", e);
+        setAiAnalysis(`Failed to generate analysis. Error: ${e.message || 'Unknown error'}`);
+    } finally {
+        setAnalyzing(false);
+    }
+  };
+
+  // Helper to send Email Notification via Express API
   const sendNotificationEmail = async (subject: string, htmlContent: string) => {
     if (!loan?.users?.email) {
         console.warn("No officer email found, skipping notification.");
         return;
     }
     
-    // Don't wait for email to finish, just trigger it
-    supabase.functions.invoke('send-email-notification', {
-        body: {
-            to: loan.users.email,
-            subject: subject,
-            html: htmlContent
-        }
-    }).then(({ error }) => {
-        if (error) console.error("Email sending failed:", error);
-    });
+    try {
+        await fetch('/api/admin/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: loan.users.email,
+                subject: subject,
+                html: htmlContent
+            })
+        });
+    } catch (e) {
+        console.warn("Email dispatch error:", e);
+    }
   };
 
   // Helper to send DM
@@ -243,14 +310,12 @@ export const LoanDetails: React.FC = () => {
 
           // 2. Create if not exists
           if (!conversationId) {
-              const { data: newConvo, error: createError } = await supabase.from('conversations').insert({}).select().single();
+              const { data: newConvoId, error: createError } = await supabase.rpc('create_new_conversation', {
+                  recipient_id: recipientId
+              });
+              
               if (createError) throw createError;
-              conversationId = newConvo.id;
-
-              await supabase.from('conversation_participants').insert([
-                  { conversation_id: conversationId, user_id: profile.id },
-                  { conversation_id: conversationId, user_id: recipientId }
-              ]);
+              conversationId = newConvoId;
           }
 
           // 3. Send Message
@@ -263,74 +328,6 @@ export const LoanDetails: React.FC = () => {
       } catch (error) {
           console.error("Failed to send direct message", error);
       }
-  };
-
-  // --- AI ANALYSIS ---
-  const handleAnalyzeLoan = async () => {
-    setShowAIModal(true);
-    if (aiAnalysis) return; // Use cached analysis if available
-    setAnalyzing(true);
-    
-    try {
-        // Construct Context for the AI
-        const paymentHistory = repayments.slice(0, 10).map(r => 
-            `${new Date(r.payment_date).toLocaleDateString()}: Paid ${formatCurrency(r.amount_paid)} (Principal: ${formatCurrency(r.principal_paid)}, Interest: ${formatCurrency(r.interest_paid)}, Late Fees: ${formatCurrency(r.penalty_paid)})`
-        ).join('\n');
-        
-        const recentNotes = notes.filter(n => !n.is_system).slice(0, 5).map(n => 
-            `${new Date(n.created_at).toLocaleDateString()} (${n.users?.full_name}): ${n.content}`
-        ).join('\n');
-
-        const visitationLogs = visitations.slice(0, 3).map(v => 
-            `${new Date(v.visit_date).toLocaleDateString()}: ${v.notes}`
-        ).join('\n');
-
-        const prompt = `
-            You are a microfinance credit risk expert. Analyze this loan and provide a concise risk assessment.
-            
-            **Loan Profile:**
-            - Borrower: ${loan?.borrowers?.full_name}
-            - Principal: ${formatCurrency(loan?.principal_amount || 0)}
-            - Current Status: ${loan?.status}
-            - Outstanding Balance: ${formatCurrency((loan?.principal_outstanding||0) + (loan?.interest_outstanding||0) + (loan?.penalty_outstanding||0))}
-            - Term: ${loan?.term_months} months
-            - Interest Type: ${loan?.interest_type}
-            
-            **Repayment History (Last 10 payments):**
-            ${paymentHistory || "No repayments recorded."}
-            
-            **Field Visitations:**
-            ${visitationLogs || "No field visits recorded."}
-            
-            **Officer Notes:**
-            ${recentNotes || "No manual notes."}
-            
-            **Your Task:**
-            1. Determine the **Risk Level** (Low, Medium, High).
-            2. Identify **Key Observations** (e.g., consistent payments, late fees, missing visits).
-            3. Provide **3 Actionable Recommendations** for the loan officer.
-            
-            Format your response in clean Markdown.
-        `;
-
-        const { data, error } = await supabase.functions.invoke('google-ai-proxy', {
-            body: {
-                model: 'gemini-3-flash-preview',
-                contents: [{ parts: [{ text: prompt }] }]
-            }
-        });
-
-        if (error) throw error;
-        
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Unable to generate analysis at this time.";
-        setAiAnalysis(text);
-
-    } catch (e: any) {
-        console.error("AI Error:", e);
-        setAiAnalysis(`Failed to generate analysis. Error: ${e.message || 'Unknown error'}`);
-    } finally {
-        setAnalyzing(false);
-    }
   };
 
   const handleApproveLoan = async () => {
@@ -350,6 +347,9 @@ export const LoanDetails: React.FC = () => {
         
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
+
+        // UI Notification
+        alert(`Success: Loan for ${loan.borrowers?.full_name} has been APPROVED.`);
 
         // Email Notification
         const emailBody = `
@@ -396,6 +396,9 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
 
+        // UI Notification
+        alert(`Loan for ${loan.borrowers?.full_name} has been REJECTED.`);
+
         const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
             <p>The loan application for <strong>${loan.borrowers?.full_name}</strong> has been <strong>REJECTED</strong>.</p>
@@ -436,6 +439,9 @@ export const LoanDetails: React.FC = () => {
             
           if (error) throw error;
           await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
+
+          // UI Notification
+          alert(`Success: Application returned for REASSESSMENT.`);
 
           const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
@@ -724,6 +730,15 @@ export const LoanDetails: React.FC = () => {
             )}
             
             {/* CEO Reassess Button */}
+            {isExecutive && (
+                <button 
+                    onClick={() => setShowReassignModal(true)}
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center mr-4 border border-gray-300"
+                >
+                    <User className="h-4 w-4 mr-1" /> Reassign
+                </button>
+            )}
+
             {isRejected && profile?.role === 'ceo' && (
                 <button 
                     onClick={() => openDecisionModal('reassess')}
@@ -800,12 +815,29 @@ export const LoanDetails: React.FC = () => {
          </div>
       </div>
 
-      <div id="print-area" className="bg-white shadow rounded-lg overflow-hidden print:shadow-none">
+      <div id="print-area" className="bg-white shadow rounded-lg overflow-hidden print:shadow-none print:w-full">
+        {/* Print Header - Only visible on print */}
+        <div className="hidden print:block px-6 py-4 border-b border-gray-200 text-center">
+            <h1 className="text-2xl font-bold text-gray-900">JANALO MANAGEMENT</h1>
+            <p className="text-sm text-gray-500">Loan Account Statement</p>
+            <p className="text-xs text-gray-400 mt-1">Generated on {new Date().toLocaleString()}</p>
+        </div>
+
         <div className="px-6 py-5 border-b border-gray-200">
             <div className="flex justify-between items-start">
                 <div>
                     <h2 className="text-xl font-bold text-gray-900">{loan.borrowers?.full_name}</h2>
-                    <p className="text-sm text-gray-500">Loan ID: {loan.id.slice(0, 8)}</p>
+                    <div className="mt-1 text-sm text-gray-500 space-y-1">
+                        <p>Loan ID: {loan.id.slice(0, 8)}</p>
+                        <p className="flex items-center">
+                            <User className="h-3 w-3 mr-1" /> 
+                            Officer: <span className="font-medium text-gray-700 ml-1">{loan.users?.full_name || 'Unassigned'}</span>
+                        </p>
+                        <p className="flex items-center">
+                            <MapPin className="h-3 w-3 mr-1" /> 
+                            {loan.borrowers?.address || 'No Address'} • {loan.borrowers?.phone || 'No Phone'}
+                        </p>
+                    </div>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
                     loan.status === 'active' ? 'bg-blue-100 text-blue-800' : 
@@ -1161,17 +1193,8 @@ export const LoanDetails: React.FC = () => {
                                 <p className="text-sm text-gray-500 mt-2">Powered by Gemini AI</p>
                             </div>
                         ) : (
-                            <div className="prose prose-indigo max-w-none text-sm text-gray-800">
-                                {/* Simple Markdown rendering by splitting lines */}
-                                {aiAnalysis.split('\n').map((line, i) => {
-                                    if (line.startsWith('###') || line.startsWith('**')) {
-                                        return <p key={i} className="font-bold text-indigo-900 mt-4 mb-2">{line.replace(/[#*]/g, '')}</p>
-                                    } else if (line.startsWith('-')) {
-                                        return <li key={i} className="ml-4 list-disc">{line.replace('-', '').trim()}</li>
-                                    } else {
-                                        return <p key={i} className="mb-2">{line}</p>
-                                    }
-                                })}
+                            <div className="prose prose-indigo max-w-none text-sm text-gray-800 markdown-body">
+                                <Markdown>{aiAnalysis}</Markdown>
                             </div>
                         )}
                     </div>
@@ -1326,6 +1349,52 @@ export const LoanDetails: React.FC = () => {
                                 className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-700 hover:bg-red-800 disabled:opacity-50"
                             >
                                 {processingAction ? 'Processing...' : 'Confirm Bad Debt'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Reassign Modal */}
+      {showReassignModal && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowReassignModal(false)}></div>
+                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                    <div className="p-6">
+                        <h3 className="text-lg font-medium text-gray-900 mb-4">Reassign Loan Officer</h3>
+                        <p className="text-sm text-gray-500 mb-4">
+                            Select a new loan officer to manage this application.
+                        </p>
+                        
+                        <select
+                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                            value={selectedOfficer}
+                            onChange={(e) => setSelectedOfficer(e.target.value)}
+                        >
+                            <option value="">-- Select Officer --</option>
+                            {officers.map(o => (
+                                <option key={o.id} value={o.id}>{o.full_name}</option>
+                            ))}
+                        </select>
+
+                        <div className="flex justify-end space-x-3 mt-6">
+                            <button
+                                type="button"
+                                onClick={() => setShowReassignModal(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleReassign}
+                                disabled={processingAction || !selectedOfficer}
+                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                                {processingAction ? 'Saving...' : 'Confirm Reassignment'}
                             </button>
                         </div>
                     </div>

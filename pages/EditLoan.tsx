@@ -75,12 +75,12 @@ export const EditLoan: React.FC = () => {
           });
 
           // 2. Fetch Borrowers
-          let bQuery = supabase.from('borrowers').select('id, full_name');
+          let bQuery = supabase.from('borrowers').select('*');
           if (profile.role === 'loan_officer') {
             bQuery = bQuery.eq('created_by', profile.id);
           }
           const { data: bData } = await bQuery;
-          if (bData) setBorrowers(bData);
+          if (bData) setBorrowers(bData as Borrower[]);
 
           // 3. Fetch Existing Documents
           const { data: docData } = await supabase.from('loan_documents').select('*').eq('loan_id', id);

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { 
   LayoutDashboard, 
   Users, 
@@ -24,12 +25,42 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { profile, signOut } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [counts, setCounts] = useState({ inbox: 0, loans: 0 });
+
+  useEffect(() => {
+    fetchCounts();
+    
+    // Subscribe to relevant tables
+    const channel = supabase
+      .channel('global-notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
+          console.log('Message change detected, fetching counts...');
+          fetchCounts();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchCounts())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Re-fetch when location changes
+  useEffect(() => {
+      fetchCounts();
+  }, [location.pathname]);
+
+  const fetchCounts = async () => {
+      if (!profile) return;
+      const { data, error } = await supabase.rpc('get_notification_counts');
+      if (!error && data) setCounts(data);
+  };
 
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
-    { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'] },
-    { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer'] },
+    { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
+    { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.inbox },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo'] },
@@ -81,7 +112,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Link
                 key={item.name}
                 to={item.href}
-                className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
+                className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors relative group ${
                   isActive
                     ? 'bg-indigo-700 text-white'
                     : 'text-indigo-100 hover:bg-indigo-700'
@@ -90,6 +121,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               >
                 <item.icon className="mr-3 h-5 w-5" />
                 {item.name}
+                
+                {/* Notification Badge */}
+                {item.badge !== undefined && item.badge > 0 && (
+                    <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
+                        {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                )}
               </Link>
             );
           })}

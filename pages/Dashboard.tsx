@@ -10,8 +10,11 @@ import {
   Activity,
   PieChart as PieChartIcon,
   Target,
-  Shield
+  Shield,
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
+import { analyzeFinancialData } from '../services/aiService';
 import { 
   PieChart, 
   Pie, 
@@ -44,6 +47,8 @@ export const Dashboard: React.FC = () => {
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [officerStats, setOfficerStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiInsights, setAiInsights] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const isExec = profile?.role === 'admin' || profile?.role === 'ceo';
   const titlePrefix = isExec ? 'Total' : 'My';
@@ -99,7 +104,7 @@ export const Dashboard: React.FC = () => {
           ? (completed / totalLoans) * 100 
           : 0;
 
-        setStats({
+        const currentStats = {
           totalPortfolio,
           totalPrincipalOutstanding: totalPrincipal,
           totalInterestOutstanding: totalInterest,
@@ -110,7 +115,9 @@ export const Dashboard: React.FC = () => {
           totalDisbursed: rpcStats.total_disbursed || 0,
           recoveryRate,
           completedLoans: completed
-        });
+        };
+
+        setStats(currentStats);
 
         // Chart Data
         setChartData([
@@ -140,6 +147,17 @@ export const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const generateAIInsights = async () => {
+    setIsAnalyzing(true);
+    const insights = await analyzeFinancialData({
+      stats,
+      revenue: revenueData,
+      officers: officerStats
+    });
+    setAiInsights(insights);
+    setIsAnalyzing(false);
   };
 
   const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => (
@@ -216,6 +234,59 @@ export const Dashboard: React.FC = () => {
           icon={Target}
           color="bg-emerald-500"
         />
+      </div>
+
+      {/* AI Insights Section */}
+      <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <Sparkles className="w-32 h-32 text-white" />
+        </div>
+        
+        <div className="relative z-10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center">
+                    <div className="p-2 bg-indigo-500/20 rounded-lg mr-3">
+                        <Sparkles className="h-5 w-5 text-indigo-300" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold">AI Financial Insights</h3>
+                        <p className="text-sm text-indigo-200/70 italic">Powered by Gemini 2.0 Flash</p>
+                    </div>
+                </div>
+                <button 
+                    onClick={generateAIInsights}
+                    disabled={isAnalyzing}
+                    className="inline-flex items-center px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
+                >
+                    {isAnalyzing ? (
+                        <>
+                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                            Analyzing Portfolio...
+                        </>
+                    ) : (
+                        <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate Insights
+                        </>
+                    )}
+                </button>
+            </div>
+
+            {aiInsights.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {aiInsights.map((insight, idx) => (
+                        <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-start">
+                            <div className="h-2 w-2 rounded-full bg-indigo-400 mt-2 mr-3 shrink-0" />
+                            <p className="text-sm leading-relaxed text-indigo-50">{insight}</p>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="text-center py-8 border border-dashed border-white/20 rounded-xl bg-white/5">
+                    <p className="text-indigo-200/50 text-sm">Click the button to generate real-time AI analysis of your portfolio performance.</p>
+                </div>
+            )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -76,24 +76,24 @@ export const Users: React.FC = () => {
       setIsProcessing(true);
 
       try {
-          // Use Edge Function to create user without logging out the admin
-          const { data, error } = await supabase.functions.invoke('create-user', {
-              body: {
+          // Use Express API to create user
+          const response = await fetch('/api/admin/create-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
                   email: newUser.email,
                   password: newUser.password,
                   full_name: newUser.full_name,
                   role: newUser.role
-              }
+              })
           });
 
-          if (error) {
-               throw new Error(error.message || 'Error invoking function');
+          const data = await response.json();
+
+          if (!response.ok) {
+               throw new Error(data.error || 'Error creating user');
           }
           
-          if (data && data.error) {
-              throw new Error(data.error);
-          }
-
           alert(`User account created successfully for ${newUser.email}.`);
           
           setShowCreateModal(false);
@@ -168,23 +168,23 @@ export const Users: React.FC = () => {
       setIsProcessing(true);
       
       try {
-          // Call the Secure Edge Function
-          const { data, error } = await supabase.functions.invoke('reset-user-password', {
-              body: { 
+          // Call the Express API
+          const response = await fetch('/api/admin/reset-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
                   userId: selectedUser.id, 
                   newPassword: resetPassword 
-              }
+              })
           });
 
-          if (error) {
-              const msg = error.message || 'Unknown error occurred';
+          const data = await response.json();
+
+          if (!response.ok) {
+              const msg = data.error || 'Unknown error occurred';
               throw new Error(msg);
           }
           
-          if (data && data.error) {
-              throw new Error(data.error);
-          }
-
           alert(`Success: Password for ${selectedUser.full_name} has been updated.`);
           setResetPassword('');
       } catch (error: any) {

@@ -466,6 +466,12 @@ create policy "View Borrowers" on public.borrowers for select using (
 drop policy if exists "Create Borrowers" on public.borrowers;
 create policy "Create Borrowers" on public.borrowers for insert with check (public.get_auth_role() in ('admin', 'loan_officer'));
 
+drop policy if exists "Update Borrowers" on public.borrowers;
+create policy "Update Borrowers" on public.borrowers for update using (
+  (created_by = auth.uid() and public.get_auth_role() = 'loan_officer')
+  or public.get_auth_role() in ('admin', 'ceo')
+);
+
 -- Loans
 drop policy if exists "Admins and CEO view all loans" on public.loans;
 create policy "Admins and CEO view all loans" on public.loans for select using (public.get_auth_role() in ('admin', 'ceo'));
@@ -543,29 +549,78 @@ create policy "Create Visitations" on public.visitations for insert with check (
   exists (select 1 from public.loans where id = visitations.loan_id and (officer_id = auth.uid() or public.get_auth_role() = 'loan_officer'))
 );
 
--- MESSAGING POLICIES (Strict Active Check via get_my_conversations)
+-- MESSAGING POLICIES
 drop policy if exists "View Conversations" on public.conversations;
-create policy "View Conversations" on public.conversations for select using (
-  id in (select public.get_my_conversations())
-);
+drop policy if exists "Users can view conversations they are in" on public.conversations;
+create policy "Users can view conversations they are in"
+  on public.conversations for select
+  using (
+    exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = id
+      and cp.user_id = auth.uid()
+    )
+  );
+
 drop policy if exists "Insert Conversations" on public.conversations;
-create policy "Insert Conversations" on public.conversations for insert with check (auth.role() = 'authenticated' and public.is_active_user());
+drop policy if exists "Users can insert conversations" on public.conversations;
+create policy "Users can insert conversations"
+  on public.conversations for insert
+  with check (true);
 
 drop policy if exists "View Participants" on public.conversation_participants;
-create policy "View Participants" on public.conversation_participants for select using (
-  conversation_id in (select public.get_my_conversations())
-);
+drop policy if exists "Users can view participants of their conversations" on public.conversation_participants;
+create policy "Users can view participants of their conversations"
+  on public.conversation_participants for select
+  using (
+    exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = conversation_id
+      and cp.user_id = auth.uid()
+    )
+  );
+
 drop policy if exists "Insert Participants" on public.conversation_participants;
-create policy "Insert Participants" on public.conversation_participants for insert with check (auth.role() = 'authenticated' and public.is_active_user());
+drop policy if exists "Users can add participants" on public.conversation_participants;
+create policy "Users can add participants"
+  on public.conversation_participants for insert
+  with check (true);
 
 drop policy if exists "View Messages" on public.direct_messages;
-create policy "View Messages" on public.direct_messages for select using (
-  conversation_id in (select public.get_my_conversations())
-);
+drop policy if exists "Users can view messages in their conversations" on public.direct_messages;
+create policy "Users can view messages in their conversations"
+  on public.direct_messages for select
+  using (
+    exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = conversation_id
+      and cp.user_id = auth.uid()
+    )
+  );
+
 drop policy if exists "Send Messages" on public.direct_messages;
-create policy "Send Messages" on public.direct_messages for insert with check (
-  conversation_id in (select public.get_my_conversations())
-);
+drop policy if exists "Users can send messages to their conversations" on public.direct_messages;
+create policy "Users can send messages to their conversations"
+  on public.direct_messages for insert
+  with check (
+    auth.uid() = sender_id
+    and exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = conversation_id
+      and cp.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Users can update (read) messages in their conversations" on public.direct_messages;
+create policy "Users can update (read) messages in their conversations"
+  on public.direct_messages for update
+  using (
+    exists (
+      select 1 from public.conversation_participants cp
+      where cp.conversation_id = conversation_id
+      and cp.user_id = auth.uid()
+    )
+  );
 
 -- Storage Buckets
 insert into storage.buckets (id, name, public) values ('loan-documents', 'loan-documents', true) on conflict (id) do nothing;
@@ -583,6 +638,122 @@ create policy "Auth users upload chat" on storage.objects for insert with check 
 
 drop policy if exists "Auth users select chat" on storage.objects;
 create policy "Auth users select chat" on storage.objects for select using (bucket_id = 'chat-attachments' and auth.role() = 'authenticated' and public.is_active_user());
+
+create or replace function public.create_new_conversation(recipient_id uuid)
+returns uuid
+language plpgsql
+security definer
+as $$
+declare
+  new_convo_id uuid;
+begin
+  -- 1. Create Conversation
+  insert into public.conversations (created_at, updated_at) values (now(), now())
+  returning id into new_convo_id;
+
+  -- 2. Add Participants (Current User + Recipient)
+  insert into public.conversation_participants (conversation_id, user_id)
+  values 
+    (new_convo_id, auth.uid()),
+    (new_convo_id, recipient_id);
+
+  return new_convo_id;
+end;
+$$;
+
+-- Helper to count unread messages
+create or replace function public.get_unread_message_count()
+returns integer
+language plpgsql
+security definer
+as $$
+begin
+  return (
+    select count(*)
+    from public.direct_messages dm
+    join public.conversation_participants cp on cp.conversation_id = dm.conversation_id
+    where cp.user_id = auth.uid() -- I am in the conversation
+    and dm.sender_id != auth.uid() -- I didn't send it
+    and dm.is_read = false -- It hasn't been read
+  );
+end;
+$$;
+
+-- Helper to get comprehensive notification counts
+create or replace function public.get_notification_counts()
+returns json
+language plpgsql
+security definer
+as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_role text;
+  v_inbox_count integer;
+  v_loan_count integer;
+begin
+  -- Get user role
+  select role into v_role from public.users where id = v_user_id;
+
+  -- 1. Inbox Count (Unread messages where I am a participant)
+  select count(*) into v_inbox_count
+  from public.direct_messages dm
+  join public.conversation_participants cp on cp.conversation_id = dm.conversation_id
+  where cp.user_id = v_user_id
+  and dm.sender_id != v_user_id
+  and dm.is_read = false;
+
+  -- 2. Loan Action Count (Role Dependent)
+  if v_role in ('admin', 'ceo') then
+    -- Admin/CEO: Count Pending Loans (Need Approval)
+    select count(*) into v_loan_count
+    from public.loans
+    where status = 'pending';
+  elsif v_role = 'loan_officer' then
+    -- Officer: Count Reassess (Need Fix) + Rejected (Need Action)
+    select count(*) into v_loan_count
+    from public.loans
+    where officer_id = v_user_id
+    and status in ('reassess', 'rejected');
+  else
+    v_loan_count := 0;
+  end if;
+
+  return json_build_object(
+    'inbox', v_inbox_count,
+    'loans', v_loan_count
+  );
+end;
+$$;
+
+-- Helper to get conversation list with details
+create or replace function public.get_my_conversations_details()
+returns table (
+  conversation_id uuid,
+  other_user_id uuid,
+  other_user_name text,
+  last_message text,
+  last_message_at timestamptz,
+  unread_count bigint
+)
+language plpgsql
+security definer
+as $$
+begin
+  return query
+  select 
+    c.id as conversation_id,
+    u.id as other_user_id,
+    u.full_name as other_user_name,
+    (select content from direct_messages dm where dm.conversation_id = c.id order by created_at desc limit 1) as last_message,
+    (select created_at from direct_messages dm where dm.conversation_id = c.id order by created_at desc limit 1) as last_message_at,
+    (select count(*) from direct_messages dm where dm.conversation_id = c.id and dm.sender_id != auth.uid() and dm.is_read = false) as unread_count
+  from conversations c
+  join conversation_participants cp_me on cp_me.conversation_id = c.id and cp_me.user_id = auth.uid()
+  join conversation_participants cp_other on cp_other.conversation_id = c.id and cp_other.user_id != auth.uid()
+  join users u on u.id = cp_other.user_id
+  order by last_message_at desc nulls last;
+end;
+$$;
 
 -- Trigger New User
 create or replace function public.handle_new_user() 

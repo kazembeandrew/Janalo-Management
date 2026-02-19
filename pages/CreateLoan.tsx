@@ -58,14 +58,14 @@ export const CreateLoan: React.FC = () => {
     const fetchBorrowers = async () => {
         if (!profile) return;
         
-        let query = supabase.from('borrowers').select('id, full_name');
+        let query = supabase.from('borrowers').select('*');
         // Officer only sees their own borrowers
         if (profile.role === 'loan_officer') {
             query = query.eq('created_by', profile.id);
         }
 
         const { data } = await query;
-        if (data) setBorrowers(data);
+        if (data) setBorrowers(data as Borrower[]);
     };
     fetchBorrowers();
   }, [profile]);

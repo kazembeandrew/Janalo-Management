@@ -1,6 +1,7 @@
 import React, { PropsWithChildren } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PresenceProvider } from './context/PresenceContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -35,8 +36,9 @@ const ProtectedRoute = ({ children }: PropsWithChildren) => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <HashRouter>
-        <Routes>
+      <PresenceProvider>
+        <HashRouter>
+          <Routes>
           <Route path="/login" element={<Login />} />
           <Route
             path="/"
@@ -120,6 +122,7 @@ const App: React.FC = () => {
           />
         </Routes>
       </HashRouter>
+      </PresenceProvider>
     </AuthProvider>
   );
 };
