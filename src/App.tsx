@@ -1,19 +1,19 @@
 import React, { PropsWithChildren } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { PresenceProvider } from './context/PresenceContext';
-import { Layout } from './components/Layout';
-import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Borrowers } from './pages/Borrowers';
-import { Loans } from './pages/Loans';
-import { CreateLoan } from './pages/CreateLoan';
-import { EditLoan } from './pages/EditLoan';
-import { LoanDetails } from './pages/LoanDetails';
-import { Reports } from './pages/Reports';
-import { Expenses } from './pages/Expenses';
-import { Messages } from './pages/Messages';
-import { Users } from './pages/Users';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { PresenceProvider } from '@/context/PresenceContext';
+import { Layout } from '@/components/Layout';
+import { Login } from '@/pages/Login';
+import { Dashboard } from '@/pages/Dashboard';
+import { Borrowers } from '@/pages/Borrowers';
+import { Loans } from '@/pages/Loans';
+import { CreateLoan } from '@/pages/CreateLoan';
+import { EditLoan } from '@/pages/EditLoan';
+import { LoanDetails } from '@/pages/LoanDetails';
+import { Reports } from '@/pages/Reports';
+import { Expenses } from '@/pages/Expenses';
+import { Messages } from '@/pages/Messages';
+import { Users } from '@/pages/Users';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
