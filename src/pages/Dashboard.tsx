@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Activity, Sparkles, RefreshCw } from 'lucide-react';
+import { Activity, Sparkles, RefreshCw, DollarSign, Users, AlertTriangle, Target } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { AccountantView } from '@/components/dashboard/AccountantView';
 import { HRView } from '@/components/dashboard/HRView';
 import { OfficerView } from '@/components/dashboard/OfficerView';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { DollarSign, Users, AlertTriangle, Target } from 'lucide-react';
+import { RecentActivity } from '@/components/dashboard/RecentActivity';
+import { OfficerLeaderboard } from '@/components/dashboard/OfficerLeaderboard';
 import { formatCurrency } from '@/utils/finance';
 
 export const Dashboard: React.FC = () => {
@@ -54,7 +55,6 @@ export const Dashboard: React.FC = () => {
       const { data: offStats } = await supabase.rpc('get_officer_performance');
       const { data: expenses } = await supabase.from('expenses').select('amount, date');
       
-      // Fetch reassess count for officers
       let reassessCount = 0;
       if (profile) {
           const { count } = await supabase
@@ -137,25 +137,36 @@ export const Dashboard: React.FC = () => {
           </div>
       )}
 
-      <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
-        <div className="relative z-10">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div className="flex items-center">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg mr-3"><Sparkles className="h-5 w-5 text-indigo-300" /></div>
-                    <div><h3 className="text-lg font-bold">AI Financial Insights</h3><p className="text-sm text-indigo-200/70 italic">Powered by Gemini 2.0 Flash</p></div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+              <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
+                <div className="relative z-10">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <div className="flex items-center">
+                            <div className="p-2 bg-indigo-500/20 rounded-lg mr-3"><Sparkles className="h-5 w-5 text-indigo-300" /></div>
+                            <div><h3 className="text-lg font-bold">AI Financial Insights</h3><p className="text-sm text-indigo-200/70 italic">Powered by Gemini 2.0 Flash</p></div>
+                        </div>
+                        <button onClick={generateAIInsights} disabled={isAnalyzing} className="inline-flex items-center px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20">
+                            {isAnalyzing ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</> : <><Sparkles className="h-4 w-4 mr-2" /> Generate Insights</>}
+                        </button>
+                    </div>
+                    {aiInsights.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {aiInsights.map((insight, idx) => (
+                                <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-start"><div className="h-2 w-2 rounded-full bg-indigo-400 mt-2 mr-3 shrink-0" /><p className="text-sm leading-relaxed text-indigo-50">{insight}</p></div>
+                            ))}
+                        </div>
+                    ) : <div className="text-center py-8 border border-dashed border-white/20 rounded-xl bg-white/5"><p className="text-indigo-200/50 text-sm">Click the button to generate real-time AI analysis.</p></div>}
                 </div>
-                <button onClick={generateAIInsights} disabled={isAnalyzing} className="inline-flex items-center px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20">
-                    {isAnalyzing ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</> : <><Sparkles className="h-4 w-4 mr-2" /> Generate Insights</>}
-                </button>
-            </div>
-            {aiInsights.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {aiInsights.map((insight, idx) => (
-                        <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-start"><div className="h-2 w-2 rounded-full bg-indigo-400 mt-2 mr-3 shrink-0" /><p className="text-sm leading-relaxed text-indigo-50">{insight}</p></div>
-                    ))}
-                </div>
-            ) : <div className="text-center py-8 border border-dashed border-white/20 rounded-xl bg-white/5"><p className="text-indigo-200/50 text-sm">Click the button to generate real-time AI analysis.</p></div>}
-        </div>
+              </div>
+              
+              {isExec && <HRView stats={stats} officerStats={officerStats} />}
+          </div>
+
+          <div className="space-y-6">
+              <RecentActivity />
+              {isExec && <OfficerLeaderboard officers={officerStats} />}
+          </div>
       </div>
     </div>
   );

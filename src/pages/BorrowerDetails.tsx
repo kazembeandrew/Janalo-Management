@@ -3,7 +3,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { Borrower, Loan, LoanDocument } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, CheckCircle, AlertCircle, ChevronRight, History, FileText, ZoomIn, ExternalLink, X } from 'lucide-react';
+import { assessLoanRisk } from '@/services/aiService';
+import Markdown from 'react-markdown';
+import { ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, ChevronRight, ZoomIn, X, Sparkles, ShieldAlert, RefreshCw } from 'lucide-react';
 
 export const BorrowerDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,6 +16,10 @@ export const BorrowerDetails: React.FC = () => {
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   const [viewImage, setViewImage] = useState<string | null>(null);
+  
+  // AI Risk State
+  const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
+  const [isAssessing, setIsAssessing] = useState(false);
 
   useEffect(() => {
     fetchBorrowerData();
@@ -22,35 +28,17 @@ export const BorrowerDetails: React.FC = () => {
   const fetchBorrowerData = async () => {
     if (!id) return;
     try {
-      // 1. Fetch Borrower
-      const { data: bData, error: bError } = await supabase
-        .from('borrowers')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
+      const { data: bData, error: bError } = await supabase.from('borrowers').select('*').eq('id', id).single();
       if (bError) throw bError;
       setBorrower(bData);
 
-      // 2. Fetch Loans
-      const { data: lData, error: lError } = await supabase
-        .from('loans')
-        .select('*')
-        .eq('borrower_id', id)
-        .order('created_at', { ascending: false });
-      
+      const { data: lData, error: lError } = await supabase.from('loans').select('*').eq('borrower_id', id).order('created_at', { ascending: false });
       if (lError) throw lError;
       setLoans(lData || []);
 
-      // 3. Fetch All Documents for all loans of this borrower
       if (lData && lData.length > 0) {
           const loanIds = lData.map(l => l.id);
-          const { data: dData } = await supabase
-            .from('loan_documents')
-            .select('*')
-            .in('loan_id', loanIds)
-            .order('created_at', { ascending: false });
-          
+          const { data: dData } = await supabase.from('loan_documents').select('*').in('loan_id', loanIds).order('created_at', { ascending: false });
           if (dData) {
               setAllDocuments(dData);
               const urlMap: {[key: string]: string} = {};
@@ -61,13 +49,29 @@ export const BorrowerDetails: React.FC = () => {
               setDocumentUrls(urlMap);
           }
       }
-
     } catch (error) {
       console.error(error);
       navigate('/borrowers');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAssessRisk = async () => {
+      setIsAssessing(true);
+      try {
+          const risk = await assessLoanRisk({
+              borrower,
+              loanHistory: loans.map(l => ({ amount: l.principal_amount, status: l.status, term: l.term_months })),
+              totalLoans: loans.length,
+              activeLoans: loans.filter(l => l.status === 'active').length
+          });
+          setRiskAssessment(risk);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setIsAssessing(false);
+      }
   };
 
   if (loading || !borrower) return <div className="p-8 text-center">Loading profile...</div>;
@@ -115,26 +119,43 @@ export const BorrowerDetails: React.FC = () => {
                     <div className="space-y-3">
                         <div className="flex items-start">
                             <Phone className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                            <div>
-                                <p className="text-xs text-gray-500">Phone Number</p>
-                                <p className="text-sm font-medium text-gray-900">{borrower.phone || 'N/A'}</p>
-                            </div>
+                            <div><p className="text-xs text-gray-500">Phone Number</p><p className="text-sm font-medium text-gray-900">{borrower.phone || 'N/A'}</p></div>
                         </div>
                         <div className="flex items-start">
                             <MapPin className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                            <div>
-                                <p className="text-xs text-gray-500">Residential Address</p>
-                                <p className="text-sm font-medium text-gray-900">{borrower.address || 'N/A'}</p>
-                            </div>
+                            <div><p className="text-xs text-gray-500">Residential Address</p><p className="text-sm font-medium text-gray-900">{borrower.address || 'N/A'}</p></div>
                         </div>
                         <div className="flex items-start">
                             <Briefcase className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                            <div>
-                                <p className="text-xs text-gray-500">Employment / Business</p>
-                                <p className="text-sm font-medium text-gray-900">{borrower.employment || 'N/A'}</p>
-                            </div>
+                            <div><p className="text-xs text-gray-500">Employment / Business</p><p className="text-sm font-medium text-gray-900">{borrower.employment || 'N/A'}</p></div>
                         </div>
                     </div>
+                </div>
+
+                <div className="bg-indigo-50 rounded-xl p-4 border border-indigo-100">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-bold text-indigo-900 flex items-center">
+                            <Sparkles className="h-4 w-4 mr-2 text-indigo-600" />
+                            AI Risk Profile
+                        </h3>
+                        {!riskAssessment && (
+                            <button 
+                                onClick={handleAssessRisk} 
+                                disabled={isAssessing}
+                                className="text-[10px] bg-indigo-600 text-white px-2 py-1 rounded font-bold hover:bg-indigo-700 disabled:bg-gray-400"
+                            >
+                                {isAssessing ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Analyze'}
+                            </button>
+                        )}
+                    </div>
+                    {riskAssessment ? (
+                        <div className="prose prose-sm text-[11px] text-indigo-800 leading-relaxed">
+                            <Markdown>{riskAssessment}</Markdown>
+                            <button onClick={() => setRiskAssessment(null)} className="mt-2 text-[10px] font-bold text-indigo-600 hover:underline">Clear Analysis</button>
+                        </div>
+                    ) : (
+                        <p className="text-[11px] text-indigo-600/70 italic">Click analyze to generate a risk assessment based on client history.</p>
+                    )}
                 </div>
 
                 <div>
@@ -144,18 +165,10 @@ export const BorrowerDetails: React.FC = () => {
                     ) : (
                         <div className="grid grid-cols-2 gap-2">
                             {allDocuments.map(doc => (
-                                <div 
-                                    key={doc.id} 
-                                    onClick={() => setViewImage(documentUrls[doc.id])}
-                                    className="relative aspect-square rounded border overflow-hidden cursor-pointer group hover:border-indigo-500 transition-colors"
-                                >
+                                <div key={doc.id} onClick={() => setViewImage(documentUrls[doc.id])} className="relative aspect-square rounded border overflow-hidden cursor-pointer group hover:border-indigo-500 transition-colors">
                                     <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-all">
-                                        <ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" />
-                                    </div>
-                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-[8px] text-white p-1 truncate">
-                                        {doc.type.replace('_', ' ')}
-                                    </div>
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-all"><ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" /></div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-[8px] text-white p-1 truncate">{doc.type.replace('_', ' ')}</div>
                                 </div>
                             ))}
                         </div>
@@ -173,34 +186,13 @@ export const BorrowerDetails: React.FC = () => {
                 ) : (
                     <div className="space-y-3">
                         {loans.map(loan => (
-                            <Link 
-                                key={loan.id} 
-                                to={`/loans/${loan.id}`}
-                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors group"
-                            >
+                            <Link key={loan.id} to={`/loans/${loan.id}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors group">
                                 <div className="flex items-center">
-                                    <div className={`p-2 rounded-lg mr-4 ${
-                                        loan.status === 'active' ? 'bg-blue-50 text-blue-600' :
-                                        loan.status === 'completed' ? 'bg-green-50 text-green-600' :
-                                        loan.status === 'pending' ? 'bg-yellow-50 text-yellow-600' :
-                                        'bg-gray-50 text-gray-600'
-                                    }`}>
-                                        <Banknote className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-gray-900">{formatCurrency(loan.principal_amount)}</p>
-                                        <p className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()} • {loan.term_months} Months</p>
-                                    </div>
+                                    <div className={`p-2 rounded-lg mr-4 ${loan.status === 'active' ? 'bg-blue-50 text-blue-600' : loan.status === 'completed' ? 'bg-green-50 text-green-600' : loan.status === 'pending' ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 text-gray-600'}`}><Banknote className="h-5 w-5" /></div>
+                                    <div><p className="text-sm font-bold text-gray-900">{formatCurrency(loan.principal_amount)}</p><p className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()} • {loan.term_months} Months</p></div>
                                 </div>
                                 <div className="flex items-center">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase mr-4 ${
-                                        loan.status === 'active' ? 'bg-blue-100 text-blue-700' :
-                                        loan.status === 'completed' ? 'bg-green-100 text-green-700' :
-                                        loan.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                        'bg-gray-100 text-gray-700'
-                                    }`}>
-                                        {loan.status}
-                                    </span>
+                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase mr-4 ${loan.status === 'active' ? 'bg-blue-100 text-blue-700' : loan.status === 'completed' ? 'bg-green-100 text-green-700' : loan.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>{loan.status}</span>
                                     <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-600 transition-colors" />
                                 </div>
                             </Link>
