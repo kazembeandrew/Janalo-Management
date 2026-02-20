@@ -41,7 +41,7 @@ export const Login: React.FC = () => {
           <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-indigo-800 mb-4">
             <PieChart className="h-8 w-8 text-indigo-300" />
           </div>
-          <h2 className="text-2xl font-bold text-white">Janalo Management</h2>
+          <h2 className="text-2xl font-bold text-white">Janalo Enterprises</h2>
           <p className="text-indigo-200 mt-2">Sign in to your account</p>
         </div>
 

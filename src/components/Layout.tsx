@@ -178,7 +178,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             >
                 <Menu className="h-6 w-6" />
             </button>
-            <span className="font-bold text-gray-900">Janalo Management</span>
+            <span className="font-bold text-gray-900">Janalo Enterprises</span>
             <NotificationBell />
         </header>
 

@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { formatCurrency } from './finance';
 
 /**
  * Converts an array of objects into a CSV string and triggers a download.
@@ -40,7 +41,7 @@ export const generateReceiptPDF = (loan: any, repayment: any, officerName: strin
     // Header
     doc.setFontSize(22);
     doc.setTextColor(79, 70, 229); // Indigo-600
-    doc.text('JANALO MANAGEMENT', 105, 20, { align: 'center' });
+    doc.text('JANALO ENTERPRISES', 105, 20, { align: 'center' });
     
     doc.setFontSize(12);
     doc.setTextColor(100);
@@ -100,17 +101,99 @@ export const generateReceiptPDF = (loan: any, repayment: any, officerName: strin
 };
 
 /**
+ * Generates a full account statement PDF for a loan.
+ */
+export const generateStatementPDF = (loan: any, repayments: any[]) => {
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(24);
+    doc.setTextColor(79, 70, 229);
+    doc.text('JANALO ENTERPRISES', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(100);
+    doc.text('Loan Account Statement', 105, 30, { align: 'center' });
+    
+    // Client & Loan Info
+    doc.setFontSize(10);
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CLIENT INFORMATION', 20, 45);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Name: ${loan.borrowers?.full_name}`, 20, 52);
+    doc.text(`Phone: ${loan.borrowers?.phone || 'N/A'}`, 20, 58);
+    doc.text(`Address: ${loan.borrowers?.address || 'N/A'}`, 20, 64);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('LOAN SUMMARY', 120, 45);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Loan ID: ${loan.id.slice(0, 8).toUpperCase()}`, 120, 52);
+    doc.text(`Principal: ${formatCurrency(loan.principal_amount)}`, 120, 58);
+    doc.text(`Status: ${loan.status.toUpperCase()}`, 120, 64);
+    
+    // Balances Box
+    doc.setDrawColor(230);
+    doc.setFillColor(249, 250, 251);
+    doc.rect(20, 75, 170, 25, 'FD');
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL OUTSTANDING BALANCE', 105, 85, { align: 'center' });
+    doc.setFontSize(16);
+    const total = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+    doc.text(formatCurrency(total), 105, 93, { align: 'center' });
+    
+    // Repayment Table
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPAYMENT HISTORY', 20, 115);
+    
+    const tableRows = repayments.map(r => [
+        new Date(r.payment_date).toLocaleDateString(),
+        formatCurrency(r.amount_paid),
+        formatCurrency(r.principal_paid),
+        formatCurrency(r.interest_paid),
+        formatCurrency(r.penalty_paid)
+    ]);
+    
+    autoTable(doc, {
+        startY: 120,
+        head: [['Date', 'Total Paid', 'Principal', 'Interest', 'Penalty']],
+        body: tableRows.length > 0 ? tableRows : [['-', 'No repayments recorded', '-', '-', '-']],
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229] }
+    });
+    
+    // Footer
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(`Generated on ${new Date().toLocaleString()} • Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+    }
+    
+    doc.save(`Statement_${loan.borrowers?.full_name.replace(/\s+/g, '_')}.pdf`);
+};
+
+/**
  * Generates a PDF report for a table of data.
  */
 export const generateTablePDF = (title: string, headers: string[], rows: any[][], filename: string) => {
     const doc = new jsPDF();
     doc.setFontSize(18);
-    doc.text(title, 105, 15, { align: 'center' });
+    doc.setTextColor(79, 70, 229);
+    doc.text('JANALO ENTERPRISES', 105, 15, { align: 'center' });
+    
+    doc.setFontSize(14);
+    doc.setTextColor(100);
+    doc.text(title, 105, 25, { align: 'center' });
+    
     doc.setFontSize(10);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, 22, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, 32, { align: 'center' });
     
     autoTable(doc, {
-        startY: 30,
+        startY: 40,
         head: [headers],
         body: rows,
         theme: 'grid',

@@ -6,7 +6,7 @@ import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InterestType } fro
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
 import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
-import { exportToCSV, generateReceiptPDF } from '@/utils/export';
+import { exportToCSV, generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
     FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt
@@ -750,11 +750,11 @@ export const LoanDetails: React.FC = () => {
   };
 
   const handlePostNote = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!newNote.trim()) return;
-      await addNote(newNote, false);
-      setNewNote('');
-      toast.success('Note added');
+    e.preventDefault();
+    if (!newNote.trim()) return;
+    await addNote(newNote, false);
+    setNewNote('');
+    toast.success('Note added');
   };
 
   const handleRecordVisit = async (e: React.FormEvent) => {
@@ -835,6 +835,11 @@ export const LoanDetails: React.FC = () => {
       exportToCSV(data, `Repayments_${loan.borrowers?.full_name.replace(/\s+/g, '_')}`);
   };
 
+  const handleDownloadStatement = () => {
+      if (!loan) return;
+      generateStatementPDF(loan, repayments);
+  };
+
   const openDecisionModal = (type: 'approve' | 'reject' | 'reassess') => {
       setDecisionReason('');
       setSendToChat(false);
@@ -857,23 +862,30 @@ export const LoanDetails: React.FC = () => {
          <button onClick={() => navigate('/loans')} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to List
          </button>
-         <div className="flex space-x-2">
+         <div className="flex flex-wrap gap-2 justify-end">
             <button
                 onClick={handleAnalyzeLoan}
-                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center mr-4"
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center"
             >
                 <Sparkles className="h-4 w-4 mr-1" /> Smart Analysis
             </button>
 
             <button 
-                onClick={() => window.print()}
-                className="bg-white hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-gray-300 flex items-center mr-4"
+                onClick={handleDownloadStatement}
+                className="bg-white hover:bg-gray-50 text-indigo-600 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center"
             >
-                <Printer className="h-4 w-4 mr-1" /> Print Statement
+                <FileText className="h-4 w-4 mr-1" /> Download Statement
+            </button>
+
+            <button 
+                onClick={() => window.print()}
+                className="bg-white hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-gray-300 flex items-center"
+            >
+                <Printer className="h-4 w-4 mr-1" /> Print View
             </button>
 
             {(isPending || isRejected || isReassess) && isOwner && (
-                <div className="flex space-x-2 mr-4 border-r pr-4 border-gray-300">
+                <div className="flex space-x-2 border-l pl-2 border-gray-300">
                     <button 
                         onClick={handleDelete}
                         className="text-red-600 hover:text-red-800 px-3 py-2 text-sm font-medium flex items-center"
@@ -893,7 +905,7 @@ export const LoanDetails: React.FC = () => {
             {isExecutive && (
                 <button 
                     onClick={() => setShowReassignModal(true)}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center mr-4 border border-gray-300"
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center border border-gray-300"
                 >
                     <User className="h-4 w-4 mr-1" /> Reassign
                 </button>
@@ -902,14 +914,14 @@ export const LoanDetails: React.FC = () => {
             {isRejected && profile?.role === 'ceo' && (
                 <button 
                     onClick={() => openDecisionModal('reassess')}
-                    className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center mr-4"
+                    className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
                 >
                     <RefreshCw className="h-4 w-4 mr-1" /> Reassess Application
                 </button>
             )}
 
             {(isPending || isReassess) && isExecutive && (
-                <div className="flex space-x-2 mr-4 border-r pr-4 border-gray-300">
+                <div className="flex space-x-2 border-l pl-2 border-gray-300">
                      <button 
                         onClick={() => openDecisionModal('reassess')}
                         className="bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-purple-200 flex items-center"
@@ -932,7 +944,7 @@ export const LoanDetails: React.FC = () => {
             )}
 
             {loan.status === 'active' && (
-                <>
+                <div className="flex space-x-2 border-l pl-2 border-gray-300">
                     <button 
                         onClick={() => setShowRestructureModal(true)}
                         className="bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-orange-200 flex items-center"
@@ -953,11 +965,11 @@ export const LoanDetails: React.FC = () => {
                             Record Repayment
                         </button>
                     )}
-                </>
+                </div>
             )}
 
             {loan.status === 'active' && (
-                <div className="ml-2 border-l pl-4 border-gray-300 flex space-x-2">
+                <div className="flex space-x-2 border-l pl-2 border-gray-300">
                     <button
                         onClick={() => setShowVisitModal(true)}
                         className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
@@ -981,7 +993,7 @@ export const LoanDetails: React.FC = () => {
 
       <div id="print-area" className="bg-white shadow rounded-lg overflow-hidden print:shadow-none print:w-full">
         <div className="hidden print:block px-6 py-4 border-b border-gray-200 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">JANALO MANAGEMENT</h1>
+            <h1 className="text-2xl font-bold text-gray-900">JANALO ENTERPRISES</h1>
             <p className="text-sm text-gray-500">Loan Account Statement</p>
             <p className="text-xs text-gray-400 mt-1">Generated on {new Date().toLocaleString()}</p>
         </div>
