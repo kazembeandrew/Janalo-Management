@@ -15,7 +15,8 @@ import {
   Receipt,
   MessageSquare,
   Shield,
-  History
+  History,
+  Calendar
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -62,6 +63,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
+    { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.inbox },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo'] },

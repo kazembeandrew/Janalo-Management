@@ -44,6 +44,35 @@ export const analyzeFinancialData = async (data: any): Promise<string[]> => {
   }
 };
 
+export const predictCashFlow = async (loanData: any[]): Promise<any> => {
+  try {
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    
+    const prompt = `
+      Based on the following active loan data, predict the expected cash flow (principal + interest) for the next 3 months.
+      Consider potential default risks (PAR).
+      
+      Loans: ${JSON.stringify(loanData)}
+      
+      Format: Return a JSON object with keys 'month1', 'month2', 'month3' (values are numbers) and a 'summary' string.
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+    const jsonStr = text.replace(/```json|```/g, "").trim();
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    console.error("AI Forecast Error:", error);
+    return {
+        month1: 0,
+        month2: 0,
+        month3: 0,
+        summary: "Unable to generate forecast at this time."
+    };
+  }
+};
+
 export const assessLoanRisk = async (loanData: any): Promise<string> => {
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
