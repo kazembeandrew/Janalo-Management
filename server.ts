@@ -11,26 +11,27 @@ const PORT = 3000;
 app.use(express.json());
 
 // Default credentials for the project
-const DEFAULT_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
+const SUPABASE_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
 const DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ";
 
-// Robust environment variable detection
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || "";
+// The Service Role Key is required for administrative tasks (creating users, resetting passwords)
+// It should be set in your environment variables as SUPABASE_SERVICE_ROLE_KEY
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // Initialize Supabase Admin Client
-// If SERVICE_ROLE_KEY is missing, we use the anon key so the server doesn't crash, 
-// but admin functions will return a 401/403 error which we handle below.
+// We use the service role key if available, otherwise we fall back to the anon key
+// Note: Admin functions will only work if the SERVICE_ROLE_KEY is provided
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY || DEFAULT_ANON_KEY);
 
 // Startup Health Check
-console.log("--- Server Configuration ---");
-console.log(`URL: ${SUPABASE_URL}`);
-console.log(`Service Role Key: ${SERVICE_ROLE_KEY ? "DETECTED (starts with " + SERVICE_ROLE_KEY.substring(0, 5) + "...)" : "MISSING"}`);
-if (!SERVICE_ROLE_KEY) {
-    console.warn("⚠️ WARNING: SUPABASE_SERVICE_ROLE_KEY is missing. User creation and password resets will fail.");
+console.log("--- Janalo Server Configuration ---");
+console.log(`Supabase URL: ${SUPABASE_URL}`);
+if (SERVICE_ROLE_KEY) {
+    console.log("✅ SUPABASE_SERVICE_ROLE_KEY detected. Admin features enabled.");
+} else {
+    console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY is missing. User management features will be restricted.");
 }
-console.log("---------------------------");
+console.log("----------------------------------");
 
 // --- ADMIN API ROUTES ---
 
@@ -40,12 +41,11 @@ app.post("/api/admin/create-user", async (req, res) => {
 
   if (!SERVICE_ROLE_KEY) {
       return res.status(500).json({ 
-          error: "SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled." 
+          error: "SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Please add it to your environment variables." 
       });
   }
 
   try {
-    // 1. Create user in Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -55,13 +55,13 @@ app.post("/api/admin/create-user", async (req, res) => {
 
     if (authError) throw authError;
 
-    // 2. Update the public users table (Supabase trigger usually handles this, but we ensure role is set)
+    // Ensure the user profile is updated with the correct role
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({ role: role })
       .eq('id', authData.user.id);
 
-    if (updateError) console.warn("Note: User created but role update in public table failed. Check triggers.");
+    if (updateError) console.warn("User created, but profile role update failed. Check database triggers.");
     
     res.json({ success: true, user: authData.user });
   } catch (error: any) {
@@ -76,7 +76,7 @@ app.post("/api/admin/reset-password", async (req, res) => {
 
   if (!SERVICE_ROLE_KEY) {
       return res.status(500).json({ 
-          error: "SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled." 
+          error: "SUPABASE_SERVICE_ROLE_KEY is not configured on the server." 
       });
   }
 
