@@ -2,14 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '@/types';
+import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InterestType } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
 import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
-import { exportToCSV } from '@/utils/export';
+import { exportToCSV, generateReceiptPDF } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -38,6 +38,7 @@ export const LoanDetails: React.FC = () => {
   const [showReassessModal, setShowReassessModal] = useState(false);
   const [showVisitModal, setShowVisitModal] = useState(false);
   const [showDefaultModal, setShowDefaultModal] = useState(false);
+  const [showRestructureModal, setShowRestructureModal] = useState(false);
   const [viewImage, setViewImage] = useState<string | null>(null);
   
   // AI Analysis State
@@ -55,6 +56,13 @@ export const LoanDetails: React.FC = () => {
   const [decisionReason, setDecisionReason] = useState('');
   const [sendToChat, setSendToChat] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
+
+  // Restructure Form State
+  const [restructureData, setRestructureData] = useState({
+      new_rate: 5,
+      new_term: 6,
+      new_type: 'flat' as InterestType
+  });
 
   // Visit Form State
   const [visitNote, setVisitNote] = useState('');
@@ -550,6 +558,55 @@ export const LoanDetails: React.FC = () => {
       }
   };
 
+  const handleRestructure = async () => {
+      if (!loan) return;
+      setProcessingAction(true);
+      
+      try {
+          const outstandingPrincipal = loan.principal_outstanding;
+          const outstandingInterest = loan.interest_outstanding;
+          const outstandingPenalty = loan.penalty_outstanding || 0;
+          const newPrincipal = outstandingPrincipal + outstandingInterest + outstandingPenalty;
+          
+          const details = calculateLoanDetails(
+              newPrincipal,
+              restructureData.new_rate,
+              restructureData.new_term,
+              restructureData.new_type
+          );
+          
+          const { error } = await supabase
+            .from('loans')
+            .update({
+                principal_amount: newPrincipal,
+                interest_rate: restructureData.new_rate,
+                term_months: restructureData.new_term,
+                interest_type: restructureData.new_type,
+                principal_outstanding: newPrincipal,
+                interest_outstanding: details.totalInterest,
+                penalty_outstanding: 0,
+                monthly_installment: details.monthlyInstallment,
+                total_payable: details.totalPayable,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', loan.id);
+            
+          if (error) throw error;
+          
+          await addNote(`LOAN RESTRUCTURED by ${profile?.full_name}. New Principal: ${formatCurrency(newPrincipal)}, Term: ${restructureData.new_term} months.`, true);
+          await logAudit('Loan Restructured', { new_principal: newPrincipal, term: restructureData.new_term });
+          
+          toast.success('Loan successfully restructured');
+          setShowRestructureModal(false);
+          fetchData();
+      } catch (e: any) {
+          console.error(e);
+          toast.error('Failed to restructure loan');
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
   const handlePenalty = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loan || !profile) return;
@@ -617,7 +674,7 @@ export const LoanDetails: React.FC = () => {
     const isCompleted = newPrinOutstanding <= 0.01 && newIntOutstanding <= 0.01 && newPenOutstanding <= 0.01;
 
     try {
-      const { error: rError } = await supabase.from('repayments').insert([{
+      const { data: rData, error: rError } = await supabase.from('repayments').insert([{
         loan_id: loan.id,
         amount_paid: Number(repayAmount),
         principal_paid: prinPaid,
@@ -625,7 +682,7 @@ export const LoanDetails: React.FC = () => {
         penalty_paid: penPaid,
         payment_date: new Date().toISOString().split('T')[0],
         recorded_by: profile.id
-      }]);
+      }]).select().single();
 
       if (rError) throw rError;
 
@@ -654,6 +711,13 @@ export const LoanDetails: React.FC = () => {
       setShowRepayModal(false);
       setRepayAmount(0);
       fetchData();
+      
+      // Offer receipt download
+      if (rData) {
+          if (window.confirm("Repayment recorded. Would you like to download the receipt?")) {
+              generateReceiptPDF(loan, rData, profile.full_name);
+          }
+      }
 
     } catch (error) {
       console.error("Repayment failed", error);
@@ -845,6 +909,12 @@ export const LoanDetails: React.FC = () => {
 
             {loan.status === 'active' && (
                 <>
+                    <button 
+                        onClick={() => setShowRestructureModal(true)}
+                        className="bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-orange-200 flex items-center"
+                    >
+                        <RefreshCw className="h-4 w-4 mr-1" /> Restructure
+                    </button>
                     <button 
                         onClick={() => setShowPenaltyModal(true)}
                         className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
@@ -1094,11 +1164,12 @@ export const LoanDetails: React.FC = () => {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Breakdown</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase print:hidden">Receipt</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {repayments.length === 0 ? (
-                                <tr><td colSpan={3} className="px-6 py-4 text-center text-sm text-gray-500">No repayments recorded.</td></tr>
+                                <tr><td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">No repayments recorded.</td></tr>
                             ) : (
                                 repayments.map(r => (
                                     <tr key={r.id}>
@@ -1108,6 +1179,15 @@ export const LoanDetails: React.FC = () => {
                                             P: {formatCurrency(r.principal_paid)}<br/>
                                             I: {formatCurrency(r.interest_paid)}
                                             {r.penalty_paid > 0 && <span className="text-red-500 block">Late: {formatCurrency(r.penalty_paid)}</span>}
+                                        </td>
+                                        <td className="px-4 py-4 text-right print:hidden">
+                                            <button 
+                                                onClick={() => generateReceiptPDF(loan, r, profile?.full_name || 'Officer')}
+                                                className="text-indigo-600 hover:text-indigo-900"
+                                                title="Download Receipt PDF"
+                                            >
+                                                <Receipt className="h-5 w-5" />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))
@@ -1205,6 +1285,87 @@ export const LoanDetails: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {showRestructureModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                  <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowRestructureModal(false)}></div>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                      <div className="p-6">
+                          <div className="flex items-center mb-4">
+                               <div className="bg-orange-100 rounded-full p-2 mr-3">
+                                  <RefreshCw className="h-6 w-6 text-orange-600" />
+                               </div>
+                               <h3 className="text-lg font-medium text-gray-900">Restructure Loan</h3>
+                          </div>
+                          <p className="text-sm text-gray-500 mb-4">
+                              This will combine the current outstanding principal, interest, and penalties into a <strong>new principal amount</strong> and reset the repayment schedule.
+                          </p>
+                          
+                          <div className="bg-orange-50 p-4 rounded-lg mb-6 border border-orange-100">
+                              <div className="flex justify-between text-sm mb-1">
+                                  <span className="text-orange-700">New Principal:</span>
+                                  <span className="font-bold text-orange-900">
+                                      {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
+                                  </span>
+                              </div>
+                          </div>
+
+                          <div className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">New Interest Rate (% Monthly)</label>
+                                  <input 
+                                      type="number"
+                                      step="0.1"
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      value={restructureData.new_rate}
+                                      onChange={e => setRestructureData({...restructureData, new_rate: Number(e.target.value)})}
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">New Term (Months)</label>
+                                  <input 
+                                      type="number"
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      value={restructureData.new_term}
+                                      onChange={e => setRestructureData({...restructureData, new_term: Number(e.target.value)})}
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">Interest Type</label>
+                                  <select
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      value={restructureData.new_type}
+                                      onChange={e => setRestructureData({...restructureData, new_type: e.target.value as InterestType})}
+                                  >
+                                      <option value="flat">Flat Rate</option>
+                                      <option value="reducing">Reducing Balance</option>
+                                  </select>
+                              </div>
+                          </div>
+
+                          <div className="flex justify-end space-x-3 mt-6">
+                              <button
+                                  type="button"
+                                  onClick={() => setShowRestructureModal(false)}
+                                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                              >
+                                  Cancel
+                              </button>
+                              <button
+                                  type="button"
+                                  onClick={handleRestructure}
+                                  disabled={processingAction}
+                                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+                              >
+                                  {processingAction ? 'Processing...' : 'Confirm Restructure'}
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {showAIModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">

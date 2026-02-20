@@ -4,8 +4,9 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency } from '@/utils/finance';
-import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText } from 'lucide-react';
+import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
+import toast from 'react-hot-toast';
 
 type Step = 'borrower' | 'terms' | 'documents' | 'review';
 
@@ -15,12 +16,13 @@ export const CreateLoan: React.FC = () => {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('borrower');
+  const [existingLoanError, setExistingLoanError] = useState<string | null>(null);
   
   // Form State
   const [formData, setFormData] = useState({
     borrower_id: '',
     principal_amount: 1000,
-    interest_rate: 5, // Default to 5% monthly
+    interest_rate: 5, 
     interest_type: 'flat' as InterestType,
     term_months: 12,
     disbursement_date: new Date().toISOString().split('T')[0]
@@ -31,12 +33,10 @@ export const CreateLoan: React.FC = () => {
   const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
   const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
   
-  // Multiple Collaterals State
   const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
       { id: Date.now(), blob: null }
   ]);
 
-  // Calculated Preview
   const [preview, setPreview] = useState<any>(null);
 
   useEffect(() => {
@@ -61,6 +61,26 @@ export const CreateLoan: React.FC = () => {
     );
     setPreview(details);
   }, [formData]);
+
+  const checkExistingLoans = async (borrowerId: string) => {
+      if (!borrowerId) return;
+      setExistingLoanError(null);
+      
+      const { data, error } = await supabase
+        .from('loans')
+        .select('id, status')
+        .eq('borrower_id', borrowerId)
+        .in('status', ['active', 'pending', 'reassess']);
+      
+      if (data && data.length > 0) {
+          setExistingLoanError(`This client already has an ${data[0].status} loan. Clients cannot have multiple active loans.`);
+      }
+  };
+
+  const handleBorrowerChange = (id: string) => {
+      setFormData({ ...formData, borrower_id: id });
+      checkExistingLoans(id);
+  };
 
   const addCollateralField = () => {
       setCollaterals([...collaterals, { id: Date.now(), blob: null }]);
@@ -90,7 +110,7 @@ export const CreateLoan: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile) return;
+    if (!profile || existingLoanError) return;
     setLoading(true);
 
     try {
@@ -142,10 +162,11 @@ export const CreateLoan: React.FC = () => {
          if (uploads.length > 0) await Promise.all(uploads);
       }
 
+      toast.success("Loan application submitted successfully");
       navigate('/loans');
     } catch (error: any) {
       console.error(error);
-      alert('Failed to create loan application.');
+      toast.error('Failed to create loan application.');
     } finally {
       setLoading(false);
     }
@@ -219,16 +240,23 @@ export const CreateLoan: React.FC = () => {
                            <label className="block text-sm font-medium text-gray-700">Client Name</label>
                            <select 
                                required
-                               className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg"
+                               className={`mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg ${existingLoanError ? 'border-red-500 ring-red-500' : ''}`}
                                value={formData.borrower_id}
-                               onChange={e => setFormData({...formData, borrower_id: e.target.value})}
+                               onChange={e => handleBorrowerChange(e.target.value)}
                            >
                                <option value="">-- Select Client --</option>
                                {borrowers.map(b => (
                                    <option key={b.id} value={b.id}>{b.full_name}</option>
                                ))}
                            </select>
-                           <p className="mt-2 text-xs text-gray-500">If the client is not listed, please register them in the Borrowers section first.</p>
+                           {existingLoanError ? (
+                               <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
+                                   <AlertTriangle className="h-5 w-5 text-red-500 mr-2 shrink-0" />
+                                   <p className="text-sm text-red-700 font-medium">{existingLoanError}</p>
+                               </div>
+                           ) : (
+                               <p className="mt-2 text-xs text-gray-500">If the client is not listed, please register them in the Borrowers section first.</p>
+                           )}
                        </div>
                    </div>
                )}
@@ -348,7 +376,7 @@ export const CreateLoan: React.FC = () => {
                
                <button
                    type="button"
-                   disabled={loading || (currentStep === 'borrower' && !formData.borrower_id)}
+                   disabled={loading || (currentStep === 'borrower' && (!formData.borrower_id || !!existingLoanError))}
                    onClick={() => {
                        if (currentStep === 'borrower') setCurrentStep('terms');
                        else if (currentStep === 'terms') setCurrentStep('documents');
