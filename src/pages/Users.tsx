@@ -261,8 +261,10 @@ export const Users: React.FC = () => {
   const handleSaveDelegation = async () => {
       if (!selectedUser) return;
       
+      const isClearing = !delegationData.role;
+      
       // If setting a role, check if this role is already delegated to someone else
-      if (delegationData.role) {
+      if (!isClearing) {
           const existingDelegate = users.find(u => 
               u.id !== selectedUser.id && 
               u.delegated_role === delegationData.role &&
@@ -277,22 +279,25 @@ export const Users: React.FC = () => {
       
       setIsProcessing(true);
       try {
+          const updatePayload = {
+              delegated_role: isClearing ? null : delegationData.role,
+              delegation_start: isClearing ? null : delegationData.start,
+              delegation_end: (isClearing || !delegationData.end) ? null : delegationData.end
+          };
+
           const { error } = await supabase
             .from('users')
-            .update({
-                delegated_role: delegationData.role || null,
-                delegation_start: delegationData.role ? delegationData.start : null,
-                delegation_end: (delegationData.role && delegationData.end) ? delegationData.end : null
-            })
+            .update(updatePayload)
             .eq('id', selectedUser.id);
           
           if (error) throw error;
           
-          const action = delegationData.role ? 'Role Delegated' : 'Delegation Cleared';
+          const action = isClearing ? 'Delegation Cleared' : 'Role Delegated';
           await logAudit(action, { role: delegationData.role, end: delegationData.end }, selectedUser.id);
-          toast.success(delegationData.role ? `Duties delegated to ${selectedUser.full_name}.` : `Delegation cleared for ${selectedUser.full_name}.`);
+          toast.success(isClearing ? `Delegation cleared for ${selectedUser.full_name}.` : `Duties delegated to ${selectedUser.full_name}.`);
+          
           setShowEditModal(false);
-          fetchUsers();
+          await fetchUsers();
       } catch (e: any) {
           toast.error("Delegation failed: " + e.message);
       } finally {
