@@ -6,7 +6,6 @@ import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
 import { analyzeFinancialData } from '@/services/aiService';
-import { recordAuditLog } from '@/utils/audit';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
     FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles
@@ -94,8 +93,6 @@ export const LoanDetails: React.FC = () => {
           const newOfficerName = officers.find(o => o.id === selectedOfficer)?.full_name || 'New Officer';
           await addNote(`Loan reassigned to ${newOfficerName} by ${profile?.full_name}.`, true);
           
-          await recordAuditLog('Reassign Loan', 'Loan', loan.id, { from: loan.officer_id, to: selectedOfficer });
-
           await createNotification(
               selectedOfficer,
               'Loan Reassigned',
@@ -363,8 +360,6 @@ export const LoanDetails: React.FC = () => {
         
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
-        
-        await recordAuditLog('Approve Loan', 'Loan', loan.id, { reason: decisionReason });
 
         await createNotification(
             loan.officer_id,
@@ -418,8 +413,6 @@ export const LoanDetails: React.FC = () => {
         if (error) throw error;
         
         await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
-        
-        await recordAuditLog('Reject Loan', 'Loan', loan.id, { reason: decisionReason });
 
         await createNotification(
             loan.officer_id,
@@ -470,8 +463,6 @@ export const LoanDetails: React.FC = () => {
             
           if (error) throw error;
           await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
-          
-          await recordAuditLog('Reassess Loan', 'Loan', loan.id, { instructions: decisionReason });
 
           await createNotification(
               loan.officer_id,
@@ -524,8 +515,6 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`MARKED AS BAD DEBT (Defaulted) by ${profile?.full_name}. Justification: ${decisionReason}`, true);
         
-        await recordAuditLog('Mark Default', 'Loan', loan.id, { reason: decisionReason });
-        
         toast.success('Loan marked as defaulted');
         setShowDefaultModal(false);
         setDecisionReason('');
@@ -552,8 +541,6 @@ export const LoanDetails: React.FC = () => {
         if (error) throw error;
         
         await addNote(`Late Fee of ${formatCurrency(penaltyAmount)} applied.`, true);
-        
-        await recordAuditLog('Apply Penalty', 'Loan', loan.id, { amount: penaltyAmount });
 
         toast.success('Late fee applied');
         setShowPenaltyModal(false);
@@ -629,8 +616,6 @@ export const LoanDetails: React.FC = () => {
         .eq('id', loan.id);
       
       if (lError) throw lError;
-      
-      await recordAuditLog('Record Repayment', 'Loan', loan.id, { amount: repayAmount });
 
       if (isCompleted) {
           await addNote('Loan fully repaid and marked as Completed.', true);
@@ -687,8 +672,6 @@ export const LoanDetails: React.FC = () => {
           const locationText = visitLocation ? ' (with Geotag)' : '';
           await addNote(`Official Client Visitation recorded on ${visitDate}${locationText}.`, true);
           
-          await recordAuditLog('Record Visitation', 'Loan', loan.id, { date: visitDate, geotagged: !!visitLocation });
-          
           toast.success('Visitation recorded');
           setShowVisitModal(false);
           setVisitNote('');
@@ -711,9 +694,6 @@ export const LoanDetails: React.FC = () => {
       try {
           const { error } = await supabase.from('loans').delete().eq('id', loan.id);
           if (error) throw error;
-          
-          await recordAuditLog('Delete Loan', 'Loan', loan.id);
-          
           toast.success('Application deleted');
           navigate('/loans');
       } catch (error) {
