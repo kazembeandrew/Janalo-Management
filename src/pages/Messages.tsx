@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { usePresence } from '@/context/PresenceContext';
-import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info } from 'lucide-react';
+import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info, UserPlus, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface ConversationSummary {
   conversation_id: string;
@@ -28,6 +29,11 @@ interface UserListItem {
   role: string;
 }
 
+interface BorrowerListItem {
+    id: string;
+    full_name: string;
+}
+
 export const Messages: React.FC = () => {
   const { profile } = useAuth();
   const { onlineUsers } = usePresence();
@@ -36,10 +42,20 @@ export const Messages: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  
+  // Modals
   const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [showAttachClientModal, setShowAttachClientModal] = useState(false);
+  
+  // Data Lists
   const [users, setUsers] = useState<UserListItem[]>([]);
+  const [borrowers, setBorrowers] = useState<BorrowerListItem[]>([]);
+  
+  // Search States
   const [userSearch, setUserSearch] = useState('');
   const [convoSearch, setConvoSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +132,15 @@ export const Messages: React.FC = () => {
       if (!error) setUsers(data || []);
   };
 
+  const fetchBorrowers = async () => {
+      const { data, error } = await supabase
+        .from('borrowers')
+        .select('id, full_name')
+        .order('full_name', { ascending: true });
+      
+      if (!error) setBorrowers(data || []);
+  };
+
   const markAsRead = async (convoId: string) => {
     if (!profile) return;
     
@@ -131,25 +156,33 @@ export const Messages: React.FC = () => {
     ));
   };
 
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !selectedConvo || !profile) return;
-
-    const tempMsg = newMessage.trim();
-    setNewMessage('');
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || !selectedConvo || !profile) return;
 
     try {
       const { error } = await supabase.from('direct_messages').insert({
         conversation_id: selectedConvo.conversation_id,
         sender_id: profile.id,
-        content: tempMsg
+        content: content.trim()
       });
 
       if (error) throw error;
     } catch (error) {
       console.error('Error sending message:', error);
-      setNewMessage(tempMsg);
     }
+  };
+
+  const handleSendText = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newMessage.trim()) return;
+      sendMessage(newMessage);
+      setNewMessage('');
+  };
+
+  const attachClient = (borrower: BorrowerListItem) => {
+      const ref = `[CLIENT_REF:${borrower.id}:${borrower.full_name}]`;
+      sendMessage(ref);
+      setShowAttachClientModal(false);
   };
 
   const startNewChat = async (recipient: UserListItem) => {
@@ -196,12 +229,58 @@ export const Messages: React.FC = () => {
     }
   };
 
+  const renderMessageContent = (content: string, isMe: boolean) => {
+      const clientRefRegex = /\[CLIENT_REF:([^:]+):([^\]]+)\]/;
+      const match = content.match(clientRefRegex);
+
+      if (match) {
+          const [, id, name] = match;
+          return (
+              <div className={`p-4 rounded-2xl border shadow-sm max-w-xs ${isMe ? 'bg-indigo-700 border-indigo-500 text-white' : 'bg-white border-gray-100 text-gray-900'}`}>
+                  <div className="flex items-center gap-3 mb-3">
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center font-bold ${isMe ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
+                          {name.charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-wider opacity-70">Linked Client</p>
+                          <p className="font-bold truncate">{name}</p>
+                      </div>
+                  </div>
+                  <Link 
+                    to={`/borrowers/${id}`}
+                    className={`flex items-center justify-center gap-2 py-2 px-4 rounded-xl text-xs font-bold transition-all ${
+                        isMe 
+                        ? 'bg-white/10 hover:bg-white/20 text-white' 
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    }`}
+                  >
+                      View Profile <ExternalLink className="h-3 w-3" />
+                  </Link>
+              </div>
+          );
+      }
+
+      return (
+          <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
+              isMe 
+              ? 'bg-indigo-600 text-white rounded-tr-none' 
+              : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+          }`}>
+              {content}
+          </div>
+      );
+  };
+
   const filteredUsers = users.filter(u => {
     const name = (u.full_name || '').toLowerCase();
     const email = (u.email || '').toLowerCase();
     const search = userSearch.toLowerCase();
     return name.includes(search) || email.includes(search);
   });
+
+  const filteredBorrowers = borrowers.filter(b => 
+    (b.full_name || '').toLowerCase().includes(clientSearch.toLowerCase())
+  );
 
   const filteredConversations = conversations.filter(c => 
     (c.other_user_name || '').toLowerCase().includes(convoSearch.toLowerCase()) ||
@@ -285,7 +364,7 @@ export const Messages: React.FC = () => {
                             </div>
                             <div className="flex justify-between items-center gap-2">
                                 <p className={`text-sm truncate ${convo.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                                    {convo.last_message || 'No messages yet'}
+                                    {convo.last_message?.startsWith('[CLIENT_REF:') ? '📎 Linked a client' : (convo.last_message || 'No messages yet')}
                                 </p>
                                 {convo.unread_count > 0 && (
                                     <span className="flex-shrink-0 bg-indigo-600 text-white text-[10px] font-bold h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center">
@@ -351,13 +430,7 @@ export const Messages: React.FC = () => {
                             )}
                             <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] group ${isMe ? 'items-end' : 'items-start'}`}>
-                                    <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                                        isMe 
-                                        ? 'bg-indigo-600 text-white rounded-tr-none' 
-                                        : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                                    }`}>
-                                        {msg.content}
-                                    </div>
+                                    {renderMessageContent(msg.content, isMe)}
                                     <div className={`flex items-center gap-1 mt-1.5 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                         <span className="text-[10px] text-gray-400 font-medium">
                                             {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -376,7 +449,15 @@ export const Messages: React.FC = () => {
 
             {/* Input Area */}
             <div className="p-6 bg-white border-t border-gray-100">
-                <form onSubmit={sendMessage} className="flex items-center gap-3">
+                <form onSubmit={handleSendText} className="flex items-center gap-3">
+                    <button 
+                        type="button"
+                        onClick={() => { fetchBorrowers(); setShowAttachClientModal(true); }}
+                        className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
+                        title="Link Client"
+                    >
+                        <UserPlus className="h-5 w-5" />
+                    </button>
                     <div className="flex-1 relative">
                         <input
                             type="text"
@@ -439,6 +520,59 @@ export const Messages: React.FC = () => {
                                       <div className="flex-1 min-w-0">
                                           <p className="font-bold text-gray-900 truncate">{user.full_name}</p>
                                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{(user.role || 'User').replace('_', ' ')}</p>
+                                      </div>
+                                      <div className="h-8 w-8 rounded-full flex items-center justify-center text-indigo-600 opacity-0 group-hover:opacity-100 transition-all">
+                                          <Plus className="h-5 w-5" />
+                                      </div>
+                                  </button>
+                              ))
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Attach Client Modal */}
+      {showAttachClientModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="p-6 border-b border-gray-50 flex justify-between items-center">
+                      <h3 className="text-xl font-bold text-gray-900">Link Client</h3>
+                      <button onClick={() => setShowAttachClientModal(false)} className="p-2 text-gray-400 hover:text-gray-600 rounded-xl hover:bg-gray-50 transition-all">
+                          <X className="h-5 w-5" />
+                      </button>
+                  </div>
+                  <div className="p-6">
+                      <div className="relative mb-6">
+                          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <input 
+                            type="text"
+                            placeholder="Search clients..."
+                            className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                            value={clientSearch}
+                            onChange={(e) => setClientSearch(e.target.value)}
+                          />
+                      </div>
+                      <div className="max-h-80 overflow-y-auto custom-scrollbar space-y-1 pr-2">
+                          {filteredBorrowers.length === 0 ? (
+                              <div className="py-12 text-center">
+                                  <User className="h-12 w-12 text-gray-100 mx-auto mb-3" />
+                                  <p className="text-gray-400 text-sm">No clients found</p>
+                              </div>
+                          ) : (
+                              filteredBorrowers.map(borrower => (
+                                  <button
+                                    key={borrower.id}
+                                    onClick={() => attachClient(borrower)}
+                                    className="w-full flex items-center p-3 rounded-2xl hover:bg-indigo-50 transition-all text-left group active:scale-[0.98]"
+                                  >
+                                      <div className="h-11 w-11 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-4 group-hover:bg-indigo-200 transition-colors">
+                                          {(borrower.full_name || 'C').charAt(0)}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                          <p className="font-bold text-gray-900 truncate">{borrower.full_name}</p>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Borrower</p>
                                       </div>
                                       <div className="h-8 w-8 rounded-full flex items-center justify-center text-indigo-600 opacity-0 group-hover:opacity-100 transition-all">
                                           <Plus className="h-5 w-5" />
