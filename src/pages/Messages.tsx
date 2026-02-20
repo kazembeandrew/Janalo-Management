@@ -145,9 +145,13 @@ export const Messages: React.FC = () => {
       });
 
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
       setNewMessage(tempMsg);
+      // If it's the recursion error, inform the user
+      if (error.code === '42P17') {
+          alert("Security policy error detected. Please ensure the SQL fix has been applied to the database.");
+      }
     }
   };
 
@@ -191,14 +195,14 @@ export const Messages: React.FC = () => {
   };
 
   const scrollToBottom = () => {
-    setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, 100);
+    if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const filteredUsers = users.filter(u => {
-    const name = u.full_name?.toLowerCase() || '';
-    const email = u.email?.toLowerCase() || '';
+    const name = (u.full_name || '').toLowerCase();
+    const email = (u.email || '').toLowerCase();
     const search = userSearch.toLowerCase();
     return name.includes(search) || email.includes(search);
   });
