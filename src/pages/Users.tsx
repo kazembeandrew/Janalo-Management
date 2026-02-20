@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { UserProfile, UserRole } from '@/types';
-import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark } from 'lucide-react';
+import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -16,6 +16,7 @@ export const Users: React.FC = () => {
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showReassignModal, setShowReassignModal] = useState(false);
   
   // Editing State
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -27,6 +28,8 @@ export const Users: React.FC = () => {
   const [resetPassword, setResetPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'delegation'>('profile');
 
+  // Reassignment State
+  const [successorId, setSuccessorId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Create Form States
@@ -73,6 +76,87 @@ export const Users: React.FC = () => {
           entity_id: targetUserId,
           details
       });
+  };
+
+  // --- PORTFOLIO REASSIGNMENT & DEACTIVATION ---
+
+  const handleDeactivateWithReassign = async () => {
+      if (!selectedUser || !successorId) return;
+      setIsProcessing(true);
+
+      try {
+          // 1. Execute atomic transfer via RPC
+          const { error } = await supabase.rpc('reassign_officer_portfolio', {
+              old_officer_id: selectedUser.id,
+              new_officer_id: successorId
+          });
+
+          if (error) throw error;
+
+          // 2. Log Audit
+          const successorName = users.find(u => u.id === successorId)?.full_name || 'Unknown';
+          await logAudit('Officer Portfolio Transferred', { 
+              from: selectedUser.full_name, 
+              to: successorName,
+              reason: 'Deactivation'
+          }, selectedUser.id);
+
+          // 3. Notify Successor
+          await supabase.from('notifications').insert({
+              user_id: successorId,
+              title: 'Portfolio Transferred',
+              message: `You have been assigned the portfolio of ${selectedUser.full_name}.`,
+              link: '/borrowers'
+          });
+
+          toast.success(`Portfolio transferred to ${successorName} and account deactivated.`);
+          setShowReassignModal(false);
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e: any) {
+          toast.error("Transfer failed: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleToggleActive = async () => {
+      if (!selectedUser) return;
+
+      // If we are deactivating a Loan Officer, check if they have a portfolio
+      if (selectedUser.is_active && selectedUser.role === 'loan_officer') {
+          const { count } = await supabase
+            .from('loans')
+            .select('*', { count: 'exact', head: true })
+            .eq('officer_id', selectedUser.id)
+            .neq('status', 'completed');
+          
+          if (count && count > 0) {
+              setSuccessorId('');
+              setShowReassignModal(true);
+              return;
+          }
+      }
+
+      // Simple toggle if no portfolio or not an officer
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({ is_active: !selectedUser.is_active })
+            .eq('id', selectedUser.id);
+          
+          if (error) throw error;
+          
+          await logAudit(selectedUser.is_active ? 'User Deactivated' : 'User Activated', {}, selectedUser.id);
+          toast.success(`User ${selectedUser.is_active ? 'deactivated' : 'activated'}.`);
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e: any) {
+          toast.error("Failed to update status: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   // --- CREATE USER LOGIC (Admin Only) ---
@@ -286,25 +370,6 @@ export const Users: React.FC = () => {
       }
   };
 
-  const handleRevokeAccess = async () => {
-      if (!selectedUser) return;
-      if (!window.confirm("Are you sure? This will immediately block the user from logging in.")) return;
-
-      setIsProcessing(true);
-      try {
-          const { error } = await supabase.from('users').update({ is_active: false }).eq('id', selectedUser.id);
-          if (error) throw error;
-          await logAudit('Access Revoked', {}, selectedUser.id);
-          toast.success("User access revoked.");
-          setShowEditModal(false);
-          fetchUsers();
-      } catch (e: any) {
-          toast.error("Failed to revoke access: " + e.message);
-      } finally {
-          setIsProcessing(false);
-      }
-  };
-
   const handleRequestDeletion = async () => {
       if (!selectedUser) return;
       if (!window.confirm("Request deletion for this user? CEO must approve.")) return;
@@ -383,6 +448,13 @@ export const Users: React.FC = () => {
   // Delegation Availability Checks
   const hrExists = users.some(u => u.role === 'hr' && u.is_active);
   const accountantExists = users.some(u => u.role === 'accountant' && u.is_active);
+
+  // Successor List (Active Loan Officers excluding the one being deactivated)
+  const potentialSuccessors = users.filter(u => 
+      u.role === 'loan_officer' && 
+      u.is_active && 
+      u.id !== selectedUser?.id
+  );
 
   if (!profile || (profile.role !== 'admin' && profile.role !== 'ceo')) return null;
 
@@ -580,6 +652,56 @@ export const Users: React.FC = () => {
         </div>
       )}
 
+      {/* REASSIGN PORTFOLIO MODAL */}
+      {showReassignModal && selectedUser && (
+          <div className="fixed inset-0 z-[60] overflow-y-auto">
+              <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                  <div className="fixed inset-0 bg-gray-900 bg-opacity-75" onClick={() => setShowReassignModal(false)}></div>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                      <div className="p-6">
+                          <div className="flex items-center mb-4 text-orange-600">
+                              <RefreshCw className="h-6 w-6 mr-2 animate-spin-slow" />
+                              <h3 className="text-lg font-bold">Mandatory Portfolio Reassignment</h3>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-4">
+                              <strong>{selectedUser.full_name}</strong> has active clients and loans. You must reassign their entire portfolio to another active officer before deactivation.
+                          </p>
+                          
+                          <div className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">Select Successor Officer</label>
+                                  <select
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 sm:text-sm"
+                                      value={successorId}
+                                      onChange={e => setSuccessorId(e.target.value)}
+                                  >
+                                      <option value="">-- Select Active Officer --</option>
+                                      {potentialSuccessors.map(u => (
+                                          <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>
+                                      ))}
+                                  </select>
+                                  {potentialSuccessors.length === 0 && (
+                                      <p className="mt-2 text-xs text-red-600 font-medium">No other active loan officers available. Please activate or create another officer first.</p>
+                                  )}
+                              </div>
+                          </div>
+
+                          <div className="mt-6 flex justify-end space-x-3">
+                              <button type="button" onClick={() => setShowReassignModal(false)} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">Cancel</button>
+                              <button 
+                                onClick={handleDeactivateWithReassign} 
+                                disabled={isProcessing || !successorId} 
+                                className="px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50"
+                              >
+                                {isProcessing ? 'Transferring...' : 'Transfer & Deactivate'}
+                              </button>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* EDIT / APPROVAL MODAL */}
       {showEditModal && selectedUser && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -651,8 +773,14 @@ export const Users: React.FC = () => {
                                     <div className="pt-2">
                                         <label className="text-sm font-medium text-gray-700">Account Status</label>
                                         <div className="mt-2 flex items-center space-x-4">
-                                            <button type="button" disabled={profile.role === 'ceo'} onClick={() => setEditFormData({...editFormData, is_active: true})} className={`flex-1 py-2 px-4 rounded-md text-sm font-medium border ${editFormData.is_active ? 'bg-green-50 border-green-200 text-green-700 ring-2 ring-green-500' : 'bg-white border-gray-200 text-gray-500'}`}>Active</button>
-                                            <button type="button" disabled={profile.role === 'ceo'} onClick={() => setEditFormData({...editFormData, is_active: false})} className={`flex-1 py-2 px-4 rounded-md text-sm font-medium border ${!editFormData.is_active ? 'bg-red-50 border-red-200 text-red-700 ring-2 ring-red-500' : 'bg-white border-gray-200 text-gray-500'}`}>Inactive</button>
+                                            <button type="button" onClick={handleToggleActive} className={`flex-1 py-2 px-4 rounded-md text-sm font-medium border transition-all ${editFormData.is_active ? 'bg-green-50 border-green-200 text-green-700 ring-2 ring-green-500' : 'bg-white border-gray-200 text-gray-500'}`}>
+                                                {editFormData.is_active ? 'Active' : 'Activate Account'}
+                                            </button>
+                                            {editFormData.is_active && (
+                                                <button type="button" onClick={handleToggleActive} className="flex-1 py-2 px-4 rounded-md text-sm font-medium border bg-white border-red-200 text-red-600 hover:bg-red-50">
+                                                    Deactivate
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-100">
@@ -676,7 +804,7 @@ export const Users: React.FC = () => {
                                         <div className="flex flex-col gap-3">
                                             {profile.role === 'admin' && (
                                                 <>
-                                                    <button type="button" onClick={handleRevokeAccess} disabled={isProcessing} className="inline-flex justify-center items-center px-4 py-2 border border-orange-300 rounded-md text-sm font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 disabled:opacity-50"><Power className="h-4 w-4 mr-2" />Revoke Access</button>
+                                                    <button type="button" onClick={handleToggleActive} disabled={isProcessing || !selectedUser.is_active} className="inline-flex justify-center items-center px-4 py-2 border border-orange-300 rounded-md text-sm font-medium text-orange-700 bg-orange-50 hover:bg-orange-100 disabled:opacity-50"><Power className="h-4 w-4 mr-2" />Revoke Access</button>
                                                     {selectedUser.deletion_status !== 'pending' && selectedUser.deletion_status !== 'pending_approval' && (
                                                         <button type="button" onClick={handleRequestDeletion} disabled={isProcessing} className="inline-flex justify-center items-center px-4 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50"><Trash2 className="h-4 w-4 mr-2" />Request Deletion</button>
                                                     )}

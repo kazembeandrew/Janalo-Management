@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Borrower, Loan } from '@/types';
+import { Borrower, Loan, LoanDocument } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, CheckCircle, AlertCircle, ChevronRight, History } from 'lucide-react';
+import { ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, CheckCircle, AlertCircle, ChevronRight, History, FileText, ZoomIn, ExternalLink, X } from 'lucide-react';
 
 export const BorrowerDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [borrower, setBorrower] = useState<Borrower | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [allDocuments, setAllDocuments] = useState<LoanDocument[]>([]);
+  const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
+  const [viewImage, setViewImage] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBorrowerData();
@@ -19,6 +22,7 @@ export const BorrowerDetails: React.FC = () => {
   const fetchBorrowerData = async () => {
     if (!id) return;
     try {
+      // 1. Fetch Borrower
       const { data: bData, error: bError } = await supabase
         .from('borrowers')
         .select('*')
@@ -28,6 +32,7 @@ export const BorrowerDetails: React.FC = () => {
       if (bError) throw bError;
       setBorrower(bData);
 
+      // 2. Fetch Loans
       const { data: lData, error: lError } = await supabase
         .from('loans')
         .select('*')
@@ -36,6 +41,27 @@ export const BorrowerDetails: React.FC = () => {
       
       if (lError) throw lError;
       setLoans(lData || []);
+
+      // 3. Fetch All Documents for all loans of this borrower
+      if (lData && lData.length > 0) {
+          const loanIds = lData.map(l => l.id);
+          const { data: dData } = await supabase
+            .from('loan_documents')
+            .select('*')
+            .in('loan_id', loanIds)
+            .order('created_at', { ascending: false });
+          
+          if (dData) {
+              setAllDocuments(dData);
+              const urlMap: {[key: string]: string} = {};
+              for (const doc of dData) {
+                  const { data: pUrl } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
+                  if (pUrl) urlMap[doc.id] = pUrl.publicUrl;
+              }
+              setDocumentUrls(urlMap);
+          }
+      }
+
     } catch (error) {
       console.error(error);
       navigate('/borrowers');
@@ -46,8 +72,6 @@ export const BorrowerDetails: React.FC = () => {
 
   if (loading || !borrower) return <div className="p-8 text-center">Loading profile...</div>;
 
-  const activeLoans = loans.filter(l => l.status === 'active');
-  const completedLoans = loans.filter(l => l.status === 'completed');
   const totalBorrowed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
   const totalOutstanding = loans.reduce((sum, l) => sum + (l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0)), 0);
 
@@ -85,30 +109,57 @@ export const BorrowerDetails: React.FC = () => {
         </div>
 
         <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="space-y-4">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight border-b pb-2">Contact Information</h3>
-                <div className="space-y-3">
-                    <div className="flex items-start">
-                        <Phone className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                        <div>
-                            <p className="text-xs text-gray-500">Phone Number</p>
-                            <p className="text-sm font-medium text-gray-900">{borrower.phone || 'N/A'}</p>
+            <div className="space-y-6">
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight border-b pb-2 mb-4">Contact Information</h3>
+                    <div className="space-y-3">
+                        <div className="flex items-start">
+                            <Phone className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
+                            <div>
+                                <p className="text-xs text-gray-500">Phone Number</p>
+                                <p className="text-sm font-medium text-gray-900">{borrower.phone || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start">
+                            <MapPin className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
+                            <div>
+                                <p className="text-xs text-gray-500">Residential Address</p>
+                                <p className="text-sm font-medium text-gray-900">{borrower.address || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-start">
+                            <Briefcase className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
+                            <div>
+                                <p className="text-xs text-gray-500">Employment / Business</p>
+                                <p className="text-sm font-medium text-gray-900">{borrower.employment || 'N/A'}</p>
+                            </div>
                         </div>
                     </div>
-                    <div className="flex items-start">
-                        <MapPin className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                        <div>
-                            <p className="text-xs text-gray-500">Residential Address</p>
-                            <p className="text-sm font-medium text-gray-900">{borrower.address || 'N/A'}</p>
+                </div>
+
+                <div>
+                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight border-b pb-2 mb-4">Document Hub</h3>
+                    {allDocuments.length === 0 ? (
+                        <p className="text-xs text-gray-500 italic">No documents uploaded yet.</p>
+                    ) : (
+                        <div className="grid grid-cols-2 gap-2">
+                            {allDocuments.map(doc => (
+                                <div 
+                                    key={doc.id} 
+                                    onClick={() => setViewImage(documentUrls[doc.id])}
+                                    className="relative aspect-square rounded border overflow-hidden cursor-pointer group hover:border-indigo-500 transition-colors"
+                                >
+                                    <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-all">
+                                        <ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" />
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-[8px] text-white p-1 truncate">
+                                        {doc.type.replace('_', ' ')}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    </div>
-                    <div className="flex items-start">
-                        <Briefcase className="h-5 w-5 text-gray-400 mr-3 shrink-0" />
-                        <div>
-                            <p className="text-xs text-gray-500">Employment / Business</p>
-                            <p className="text-sm font-medium text-gray-900">{borrower.employment || 'N/A'}</p>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
@@ -159,6 +210,13 @@ export const BorrowerDetails: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {viewImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-95 p-4" onClick={() => setViewImage(null)}>
+            <button className="absolute top-4 right-4 text-white p-2 bg-gray-800 rounded-full"><X className="h-6 w-6" /></button>
+            <img src={viewImage} alt="Full View" className="max-w-full max-h-screen object-contain" />
+        </div>
+      )}
     </div>
   );
 };
