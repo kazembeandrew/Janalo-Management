@@ -2,7 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { UserProfile, UserRole } from '@/types';
-import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark, RefreshCw, Calendar, TrendingUp, Ban, Server, AlertCircle } from 'lucide-react';
+import { 
+    Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, 
+    AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, 
+    Landmark, RefreshCw, Calendar, TrendingUp, Ban, Server, 
+    AlertCircle, Copy, CheckCircle2, UserCog
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -101,7 +106,7 @@ export const Users: React.FC = () => {
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       if (serverStatus && !serverStatus.admin_enabled) {
-          toast.error("Server is not configured for user creation. Please add SUPABASE_SERVICE_ROLE_KEY.");
+          toast.error("Server is not configured for user creation.");
           return;
       }
       setIsProcessing(true);
@@ -292,6 +297,11 @@ export const Users: React.FC = () => {
       setShowEditModal(true);
   };
 
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      toast.success('Copied to clipboard');
+  };
+
   const filteredUsers = users.filter(u => 
     u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -301,34 +311,37 @@ export const Users: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
             <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
             <p className="text-sm text-gray-500">Manage staff access, roles, and delegations.</p>
         </div>
         <div className="flex items-center space-x-3">
             {serverStatus && (
-                <div className={`flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                <div className={`flex items-center px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
                     serverStatus.admin_enabled 
                     ? 'bg-green-50 text-green-700 border-green-100' 
                     : 'bg-amber-50 text-amber-700 border-amber-100'
                 }`}>
-                    <Server className="h-3 w-3 mr-1" />
+                    <Server className="h-3.5 w-3.5 mr-1.5" />
                     {serverStatus.admin_enabled ? 'Admin Server Ready' : 'Admin Server Restricted'}
                 </div>
             )}
-            <button onClick={() => setShowCreateModal(true)} className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors">
+            <button 
+                onClick={() => setShowCreateModal(true)} 
+                className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center transition-all shadow-lg shadow-indigo-200 active:scale-95"
+            >
                 <Plus className="h-4 w-4 mr-2" /> Add User
             </button>
         </div>
       </div>
 
       {serverStatus && !serverStatus.admin_enabled && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start">
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start shadow-sm">
               <AlertCircle className="h-5 w-5 text-amber-600 mr-3 shrink-0 mt-0.5" />
               <div>
                   <h4 className="text-sm font-bold text-amber-800">Administrative Actions Restricted</h4>
-                  <p className="text-xs text-amber-700 mt-1">
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">
                       The backend server is missing the <strong>SUPABASE_SERVICE_ROLE_KEY</strong>. 
                       You can view users, but creating new accounts or resetting passwords will not work until this secret is added to the environment variables.
                   </p>
@@ -342,114 +355,132 @@ export const Users: React.FC = () => {
         </div>
         <input
           type="text"
-          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          placeholder="Search users..."
+          className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent sm:text-sm transition-all"
+          placeholder="Search by name or email..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
       </div>
 
-      <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">User</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Role</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">Loading users...</td></tr>
-            ) : filteredUsers.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No users found.</td></tr>
-            ) : (
-                filteredUsers.map(user => (
-                <tr key={user.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                        {user.full_name?.charAt(0)}
-                        </div>
-                        <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
-                        <div className="text-xs text-gray-500">{user.email}</div>
-                        </div>
-                    </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex flex-col">
-                        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 uppercase w-fit">{user.role.replace('_', ' ')}</span>
-                        {user.delegated_role && (
-                            <span className="text-[10px] text-blue-600 font-bold mt-1">+ {user.delegated_role.replace('_', ' ')}</span>
-                        )}
-                    </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                        {user.is_active ? 'Active' : 'Inactive'}
-                    </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button onClick={() => openEditModal(user)} className="text-indigo-600 hover:text-indigo-900">Manage</button>
-                    </td>
+      <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+                <tr>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">User Details</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Primary Role</th>
+                <th className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-4 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Actions</th>
                 </tr>
-                ))
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+                {loading ? (
+                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500"><RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" /> Loading users...</td></tr>
+                ) : filteredUsers.length === 0 ? (
+                    <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No users found matching your search.</td></tr>
+                ) : (
+                    filteredUsers.map(user => (
+                    <tr key={user.id} className="hover:bg-gray-50 transition-colors group">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                            <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
+                            {user.full_name?.charAt(0)}
+                            </div>
+                            <div className="ml-4">
+                            <div className="text-sm font-bold text-gray-900">{user.full_name}</div>
+                            <div className="text-xs text-gray-500 flex items-center">
+                                {user.email}
+                                <button onClick={() => copyToClipboard(user.email)} className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-indigo-600">
+                                    <Copy className="h-3 w-3" />
+                                </button>
+                            </div>
+                            </div>
+                        </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                            <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-700 uppercase w-fit border border-gray-200">{user.role.replace('_', ' ')}</span>
+                            {user.delegated_role && (
+                                <div className="flex items-center mt-1.5 text-[10px] text-indigo-600 font-bold bg-indigo-50 px-2 py-0.5 rounded-md w-fit border border-indigo-100">
+                                    <Briefcase className="h-2.5 w-2.5 mr-1" />
+                                    + {user.delegated_role.replace('_', ' ')}
+                                </div>
+                            )}
+                        </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                            user.is_active 
+                            ? 'bg-green-50 text-green-700 border-green-100' 
+                            : 'bg-red-50 text-red-700 border-red-100'
+                        }`}>
+                            {user.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button 
+                            onClick={() => openEditModal(user)} 
+                            className="inline-flex items-center px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 hover:text-indigo-600 transition-all shadow-sm"
+                        >
+                            <UserCog className="h-4 w-4 mr-1.5" />
+                            Manage
+                        </button>
+                        </td>
+                    </tr>
+                    ))
+                )}
+            </tbody>
+            </table>
+        </div>
       </div>
 
       {/* CREATE USER MODAL */}
       {showCreateModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
-                  <div className="bg-indigo-900 px-6 py-4 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center"><UserPlus className="mr-2 h-5 w-5" /> Add New Staff Member</h3>
-                      <button onClick={() => setShowCreateModal(false)}><X className="h-5 w-5 text-indigo-300" /></button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><UserPlus className="mr-3 h-6 w-6 text-indigo-300" /> Add New Staff</h3>
+                      <button onClick={() => setShowCreateModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
-                  <form onSubmit={handleCreateUser} className="p-6 space-y-4">
-                      {serverStatus && !serverStatus.admin_enabled && (
-                          <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
-                              User creation is currently disabled due to missing server configuration.
-                          </div>
-                      )}
+                  <form onSubmit={handleCreateUser} className="p-8 space-y-5">
                       <div>
-                          <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
                           <input 
                             required
                             type="text"
-                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                            placeholder="e.g. John Doe"
                             value={newUser.full_name}
                             onChange={e => setNewUser({...newUser, full_name: e.target.value})}
                           />
                       </div>
                       <div>
-                          <label className="block text-sm font-medium text-gray-700">Email Address</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
                           <input 
                             required
                             type="email"
-                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                            placeholder="john@janalo.com"
                             value={newUser.email}
                             onChange={e => setNewUser({...newUser, email: e.target.value})}
                           />
                       </div>
                       <div>
-                          <label className="block text-sm font-medium text-gray-700">Initial Password</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Password</label>
                           <input 
                             required
                             type="password"
                             minLength={6}
-                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+                            placeholder="••••••••"
                             value={newUser.password}
                             onChange={e => setNewUser({...newUser, password: e.target.value})}
                           />
                       </div>
                       <div>
-                          <label className="block text-sm font-medium text-gray-700">Primary Role</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Primary Role</label>
                           <select 
-                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white"
                             value={newUser.role}
                             onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
                           >
@@ -464,7 +495,7 @@ export const Users: React.FC = () => {
                           <button 
                             type="submit"
                             disabled={isProcessing || (serverStatus && !serverStatus.admin_enabled)}
-                            className="w-full bg-indigo-600 text-white py-2 rounded-md font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
+                            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
                           >
                               {isProcessing ? 'Creating Account...' : 'Create User Account'}
                           </button>
@@ -476,56 +507,74 @@ export const Users: React.FC = () => {
 
       {/* MANAGE USER MODAL */}
       {showEditModal && selectedUser && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
-              <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden">
-                  <div className="bg-gray-50 px-6 py-4 border-b flex justify-between items-center">
-                      <h3 className="font-bold text-gray-900">Manage: {selectedUser.full_name}</h3>
-                      <button onClick={() => setShowEditModal(false)}><X className="h-5 w-5 text-gray-400" /></button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-gray-50 px-6 py-5 border-b flex justify-between items-center">
+                      <div className="flex items-center">
+                          <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-4">
+                              {selectedUser.full_name?.charAt(0)}
+                          </div>
+                          <div>
+                              <h3 className="font-bold text-gray-900">{selectedUser.full_name}</h3>
+                              <p className="text-xs text-gray-500">{selectedUser.email}</p>
+                          </div>
+                      </div>
+                      <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-gray-200 rounded-xl transition-colors"><X className="h-5 w-5 text-gray-400" /></button>
                   </div>
                   
-                  <div className="flex border-b">
-                      <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'profile' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Profile</button>
-                      <button onClick={() => setActiveTab('promotion')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'promotion' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Promotion</button>
-                      <button onClick={() => setActiveTab('delegation')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'delegation' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Delegation</button>
-                      <button onClick={() => setActiveTab('security')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'security' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Security</button>
+                  <div className="flex border-b bg-gray-50/50">
+                      <button onClick={() => setActiveTab('profile')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'profile' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-white' : 'text-gray-500 hover:text-gray-700'}`}>Profile</button>
+                      <button onClick={() => setActiveTab('promotion')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'promotion' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-white' : 'text-gray-500 hover:text-gray-700'}`}>Promotion</button>
+                      <button onClick={() => setActiveTab('delegation')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'delegation' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-white' : 'text-gray-500 hover:text-gray-700'}`}>Delegation</button>
+                      <button onClick={() => setActiveTab('security')} className={`flex-1 py-4 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === 'security' ? 'border-b-2 border-indigo-600 text-indigo-600 bg-white' : 'text-gray-500 hover:text-gray-700'}`}>Security</button>
                   </div>
 
-                  <div className="p-6">
+                  <div className="p-8">
                       {activeTab === 'profile' && (
-                          <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                  <div className="p-4 bg-gray-50 rounded-lg">
-                                      <p className="text-xs text-gray-500 uppercase font-bold">Primary Role</p>
+                          <div className="space-y-6">
+                              <div className="grid grid-cols-2 gap-6">
+                                  <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Primary Role</p>
                                       <p className="text-lg font-bold text-gray-900 capitalize">{selectedUser.role.replace('_', ' ')}</p>
                                   </div>
-                                  <div className="p-4 bg-gray-50 rounded-lg">
-                                      <p className="text-xs text-gray-500 uppercase font-bold">Status</p>
-                                      <p className={`text-lg font-bold ${selectedUser.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                                          {selectedUser.is_active ? 'Active' : 'Inactive'}
-                                      </p>
+                                  <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                                      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-1">Account Status</p>
+                                      <div className="flex items-center">
+                                          <div className={`h-2 w-2 rounded-full mr-2 ${selectedUser.is_active ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                          <p className={`text-lg font-bold ${selectedUser.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                                              {selectedUser.is_active ? 'Active' : 'Inactive'}
+                                          </p>
+                                      </div>
                                   </div>
                               </div>
                               {selectedUser.revocation_reason && !selectedUser.is_active && (
-                                  <div className="p-4 bg-red-50 border border-red-100 rounded-lg">
-                                      <p className="text-xs text-red-500 uppercase font-bold">Revocation Reason</p>
-                                      <p className="text-sm text-red-700">{selectedUser.revocation_reason}</p>
+                                  <div className="p-5 bg-red-50 border border-red-100 rounded-2xl flex items-start">
+                                      <AlertTriangle className="h-5 w-5 text-red-500 mr-3 shrink-0 mt-0.5" />
+                                      <div>
+                                          <p className="text-[10px] text-red-500 uppercase font-bold tracking-widest mb-1">Revocation Reason</p>
+                                          <p className="text-sm text-red-700 font-medium">{selectedUser.revocation_reason}</p>
+                                      </div>
                                   </div>
                               )}
+                              <div className="flex items-center text-xs text-gray-400 italic">
+                                  <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                                  Member since {new Date(selectedUser.created_at).toLocaleDateString()}
+                              </div>
                           </div>
                       )}
 
                       {activeTab === 'promotion' && (
-                          <div className="space-y-4">
-                              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 flex items-start">
-                                  <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 shrink-0" />
-                                  <p className="text-xs text-yellow-700">
-                                      <strong>Promotion is permanent.</strong> This replaces the user's current role.
+                          <div className="space-y-6">
+                              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start">
+                                  <AlertTriangle className="h-5 w-5 text-amber-600 mr-3 shrink-0 mt-0.5" />
+                                  <p className="text-xs text-amber-700 leading-relaxed">
+                                      <strong>Promotion is permanent.</strong> This replaces the user's current primary role. Ensure you have verified the staff member's new responsibilities before confirming.
                                   </p>
                               </div>
                               <div>
-                                  <label className="block text-sm font-medium text-gray-700">New Permanent Role</label>
+                                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">New Permanent Role</label>
                                   <select 
-                                      className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                                      className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                                       value={targetRole}
                                       onChange={e => setTargetRole(e.target.value as UserRole)}
                                   >
@@ -536,11 +585,11 @@ export const Users: React.FC = () => {
                                       <option value="admin">System Administrator</option>
                                   </select>
                               </div>
-                              <div className="flex justify-end">
+                              <div className="flex justify-end pt-4">
                                   <button 
                                     onClick={handlePromote}
                                     disabled={isProcessing || targetRole === selectedUser.role}
-                                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:bg-gray-300"
+                                    className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-300 shadow-lg shadow-indigo-100 transition-all active:scale-95"
                                   >
                                       Confirm Promotion
                                   </button>
@@ -549,18 +598,18 @@ export const Users: React.FC = () => {
                       )}
 
                       {activeTab === 'delegation' && (
-                          <div className="space-y-4">
-                              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex items-start">
-                                  <Briefcase className="h-5 w-5 text-blue-600 mr-3 shrink-0" />
-                                  <p className="text-xs text-blue-700">
-                                      <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously.
+                          <div className="space-y-6">
+                              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 flex items-start">
+                                  <Briefcase className="h-5 w-5 text-indigo-600 mr-3 shrink-0 mt-0.5" />
+                                  <p className="text-xs text-indigo-700 leading-relaxed">
+                                      <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously. This is ideal for covering leave or temporary projects.
                                   </p>
                               </div>
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                   <div>
-                                      <label className="block text-sm font-medium text-gray-700">Delegate Role</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Delegate Role</label>
                                       <select 
-                                          className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                                          className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                                           value={delegationData.role}
                                           onChange={e => setDelegationData({...delegationData, role: e.target.value as UserRole})}
                                       >
@@ -571,10 +620,10 @@ export const Users: React.FC = () => {
                                       </select>
                                   </div>
                                   <div>
-                                      <label className="block text-sm font-medium text-gray-700">End Date (Optional)</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">End Date (Optional)</label>
                                       <input 
                                           type="date" 
-                                          className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                                          className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
                                           value={delegationData.end}
                                           onChange={e => setDelegationData({...delegationData, end: e.target.value})}
                                       />
@@ -584,7 +633,7 @@ export const Users: React.FC = () => {
                                   <button 
                                     onClick={handleSaveDelegation}
                                     disabled={isProcessing || !delegationData.role}
-                                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold"
+                                    className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 transition-all active:scale-95"
                                   >
                                       Save Delegation
                                   </button>
@@ -593,64 +642,61 @@ export const Users: React.FC = () => {
                       )}
 
                       {activeTab === 'security' && (
-                          <div className="space-y-6">
-                              <div className="p-4 border rounded-lg bg-white">
+                          <div className="space-y-8">
+                              <div className="p-6 border border-gray-200 rounded-2xl bg-white shadow-sm">
                                   <h4 className="font-bold text-gray-900 flex items-center mb-4">
-                                      <Key className="h-4 w-4 mr-2 text-indigo-600" />
+                                      <Key className="h-5 w-5 mr-2 text-indigo-600" />
                                       Reset User Password
                                   </h4>
-                                  {serverStatus && !serverStatus.admin_enabled && (
-                                      <p className="text-xs text-amber-600 mb-3">Password reset is disabled due to missing server configuration.</p>
-                                  )}
-                                  <form onSubmit={handleResetPassword} className="flex gap-2">
+                                  <form onSubmit={handleResetPassword} className="flex gap-3">
                                       <input 
                                         required
                                         type="password"
-                                        placeholder="New password..."
-                                        className="flex-1 border border-gray-300 rounded-md p-2 text-sm"
+                                        placeholder="Enter new password..."
+                                        className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
                                         value={newPassword}
                                         onChange={e => setNewPassword(e.target.value)}
                                       />
                                       <button 
                                         type="submit"
                                         disabled={isProcessing || !newPassword || (serverStatus && !serverStatus.admin_enabled)}
-                                        className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:bg-gray-400"
+                                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-400 transition-all active:scale-95"
                                       >
                                           Reset
                                       </button>
                                   </form>
                               </div>
 
-                              <div className="p-4 border rounded-lg bg-white">
+                              <div className="p-6 border border-red-100 rounded-2xl bg-red-50/30">
                                   <h4 className="font-bold text-gray-900 flex items-center mb-2">
-                                      <Ban className="h-4 w-4 mr-2 text-red-600" />
-                                      Revoke Access (Deactivate)
+                                      <Ban className="h-5 w-5 mr-2 text-red-600" />
+                                      Revoke Access
                                   </h4>
-                                  <p className="text-xs text-gray-500 mb-4">
-                                      User cannot log in, but all historical data is preserved.
+                                  <p className="text-xs text-gray-500 mb-5 leading-relaxed">
+                                      Deactivating a user prevents them from logging in immediately. All historical data, including loans and repayments recorded by this user, will be preserved for audit purposes.
                                   </p>
                                   <button 
                                     onClick={() => setShowRevokeModal(true)}
                                     disabled={!selectedUser.is_active}
-                                    className="w-full py-2 bg-red-50 text-red-700 border border-red-200 rounded-md text-sm font-bold hover:bg-red-100 disabled:opacity-50"
+                                    className="w-full py-3 bg-white text-red-600 border border-red-200 rounded-xl text-sm font-bold hover:bg-red-50 disabled:opacity-50 transition-all active:scale-[0.99]"
                                   >
-                                      {selectedUser.is_active ? 'Revoke Access' : 'Access Already Revoked'}
+                                      {selectedUser.is_active ? 'Revoke System Access' : 'Access Already Revoked'}
                                   </button>
                               </div>
 
                               {profile.role === 'ceo' && (
-                                  <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+                                  <div className="p-6 border border-red-200 rounded-2xl bg-red-50">
                                       <h4 className="font-bold text-red-800 flex items-center mb-2">
-                                          <Trash2 className="h-4 w-4 mr-2" />
+                                          <Trash2 className="h-5 w-5 mr-2" />
                                           Permanent Deletion
                                       </h4>
-                                      <p className="text-xs text-red-700 mb-4">
-                                          <strong>CEO ONLY:</strong> Permanently removes the user record.
+                                      <p className="text-xs text-red-700 mb-5 leading-relaxed">
+                                          <strong>CEO ONLY:</strong> This action permanently removes the user record from the database. This should only be used for accounts created in error.
                                       </p>
                                       <button 
                                         onClick={handlePermanentDelete}
                                         disabled={isProcessing}
-                                        className="w-full py-2 bg-red-600 text-white rounded-md text-sm font-bold hover:bg-red-700"
+                                        className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-[0.99]"
                                       >
                                           Permanently Delete Record
                                       </button>
@@ -665,55 +711,66 @@ export const Users: React.FC = () => {
 
       {/* REVOKE ACCESS MODAL */}
       {showRevokeModal && selectedUser && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black bg-opacity-75">
-              <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-                  <h3 className="text-lg font-bold text-red-600 flex items-center mb-4">
-                      <Ban className="h-5 w-5 mr-2" /> Revoke System Access
-                  </h3>
-                  
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-sm font-medium text-gray-700">Reason for Revocation</label>
-                          <select 
-                            className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-                            value={revocationReason}
-                            onChange={e => setRevocationReason(e.target.value)}
-                          >
-                              <option value="">-- Select Reason --</option>
-                              <option value="Resignation">Resignation</option>
-                              <option value="Termination">Termination</option>
-                              <option value="Suspension">Suspension</option>
-                              <option value="Role Transfer">Role Transfer</option>
-                              <option value="Other">Other</option>
-                          </select>
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+                  <div className="p-8">
+                      <div className="h-14 w-14 bg-red-100 rounded-2xl flex items-center justify-center mb-6">
+                          <Ban className="h-8 w-8 text-red-600" />
                       </div>
-
-                      {selectedUser.role === 'loan_officer' && (
-                          <div className="p-4 bg-orange-50 border border-orange-100 rounded-lg">
-                              <p className="text-xs text-orange-700 font-bold mb-2">Mandatory Portfolio Reassignment</p>
-                              <label className="block text-xs text-gray-600 mb-1">Select Successor Officer</label>
+                      <h3 className="text-xl font-bold text-gray-900 mb-2">Revoke System Access</h3>
+                      <p className="text-sm text-gray-500 mb-8 leading-relaxed">
+                          You are about to deactivate <strong>{selectedUser.full_name}</strong>. Please provide a reason and handle any active portfolio responsibilities.
+                      </p>
+                      
+                      <div className="space-y-6">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reason for Revocation</label>
                               <select 
-                                className="w-full border border-gray-300 rounded-md p-2 text-sm"
-                                value={successorId}
-                                onChange={e => setSuccessorId(e.target.value)}
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                                value={revocationReason}
+                                onChange={e => setRevocationReason(e.target.value)}
                               >
-                                  <option value="">-- Select Active Officer --</option>
-                                  {potentialSuccessors.map(u => (
-                                      <option key={u.id} value={u.id}>{u.full_name}</option>
-                                  ))}
+                                  <option value="">-- Select Reason --</option>
+                                  <option value="Resignation">Resignation</option>
+                                  <option value="Termination">Termination</option>
+                                  <option value="Suspension">Suspension</option>
+                                  <option value="Role Transfer">Role Transfer</option>
+                                  <option value="Other">Other</option>
                               </select>
                           </div>
-                      )}
 
-                      <div className="flex gap-3 pt-4">
-                          <button onClick={() => setShowRevokeModal(false)} className="flex-1 px-4 py-2 border rounded-md text-sm font-medium">Cancel</button>
-                          <button 
-                            onClick={handleRevokeAccess}
-                            disabled={isProcessing || !revocationReason}
-                            className="flex-1 bg-red-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:opacity-50"
-                          >
-                              {isProcessing ? 'Processing...' : 'Confirm Revocation'}
-                          </button>
+                          {selectedUser.role === 'loan_officer' && (
+                              <div className="p-5 bg-orange-50 border border-orange-100 rounded-2xl">
+                                  <div className="flex items-center mb-3">
+                                      <RefreshCw className="h-4 w-4 text-orange-600 mr-2" />
+                                      <p className="text-xs text-orange-700 font-bold uppercase tracking-wider">Portfolio Reassignment</p>
+                                  </div>
+                                  <p className="text-[11px] text-orange-600 mb-4 leading-relaxed">
+                                      This officer has active loans. Select a successor to take over their clients and conversations.
+                                  </p>
+                                  <select 
+                                    className="block w-full border border-orange-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 bg-white"
+                                    value={successorId}
+                                    onChange={e => setSuccessorId(e.target.value)}
+                                  >
+                                      <option value="">-- Select Successor Officer --</option>
+                                      {potentialSuccessors.map(u => (
+                                          <option key={u.id} value={u.id}>{u.full_name}</option>
+                                      ))}
+                                  </select>
+                              </div>
+                          )}
+
+                          <div className="flex gap-3 pt-4">
+                              <button onClick={() => setShowRevokeModal(false)} className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-all">Cancel</button>
+                              <button 
+                                onClick={handleRevokeAccess}
+                                disabled={isProcessing || !revocationReason || (selectedUser.role === 'loan_officer' && !successorId)}
+                                className="flex-1 bg-red-600 text-white px-4 py-3 rounded-xl text-sm font-bold disabled:opacity-50 shadow-lg shadow-red-100 transition-all active:scale-95"
+                              >
+                                  {isProcessing ? 'Processing...' : 'Confirm Revocation'}
+                              </button>
+                          </div>
                       </div>
                   </div>
               </div>
