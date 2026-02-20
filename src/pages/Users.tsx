@@ -30,6 +30,13 @@ export const Users: React.FC = () => {
   // Promotion State
   const [targetRole, setTargetRole] = useState<UserRole | ''>('');
 
+  // Delegation State
+  const [delegationData, setDelegationData] = useState({
+      role: '' as UserRole | '',
+      start: new Date().toISOString().split('T')[0],
+      end: ''
+  });
+
   // Create Form States
   const [newUser, setNewUser] = useState({
       full_name: '',
@@ -83,7 +90,6 @@ export const Users: React.FC = () => {
           return;
       }
 
-      // Check if reassignment is needed
       if (selectedUser.role === 'loan_officer') {
           const { count } = await supabase
             .from('loans')
@@ -100,7 +106,6 @@ export const Users: React.FC = () => {
       setIsProcessing(true);
       try {
           if (successorId) {
-              // Atomic transfer + deactivation
               const { error } = await supabase.rpc('reassign_officer_portfolio', {
                   old_officer_id: selectedUser.id,
                   new_officer_id: successorId,
@@ -114,7 +119,6 @@ export const Users: React.FC = () => {
                   transferred_to: successorName 
               }, selectedUser.id);
           } else {
-              // Simple deactivation
               const { error } = await supabase
                 .from('users')
                 .update({ 
@@ -222,9 +226,64 @@ export const Users: React.FC = () => {
       }
   };
 
+  // --- DELEGATION LOGIC ---
+
+  const handleSaveDelegation = async () => {
+      if (!selectedUser || !delegationData.role) return;
+      
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({
+                delegated_role: delegationData.role,
+                delegation_start: delegationData.start,
+                delegation_end: delegationData.end || null
+            })
+            .eq('id', selectedUser.id);
+          
+          if (error) throw error;
+          
+          await logAudit('Role Delegated', { role: delegationData.role, end: delegationData.end }, selectedUser.id);
+          toast.success(`Duties delegated to ${selectedUser.full_name}.`);
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e: any) {
+          toast.error("Delegation failed: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleRevokeDelegation = async () => {
+      if (!selectedUser) return;
+      setIsProcessing(true);
+      try {
+          await supabase.from('users').update({
+              delegated_role: null,
+              delegation_start: null,
+              delegation_end: null
+          }).eq('id', selectedUser.id);
+          
+          await logAudit('Delegation Revoked', {}, selectedUser.id);
+          toast.success("Delegation revoked.");
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e) {
+          toast.error("Failed to revoke.");
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   const openEditModal = (user: UserProfile) => {
       setSelectedUser(user);
       setTargetRole(user.role);
+      setDelegationData({
+          role: user.delegated_role || '',
+          start: user.delegation_start ? user.delegation_start.split('T')[0] : new Date().toISOString().split('T')[0],
+          end: user.delegation_end ? user.delegation_end.split('T')[0] : ''
+      });
       setActiveTab('profile');
       setShowEditModal(true);
   };
@@ -271,7 +330,12 @@ export const Users: React.FC = () => {
                   </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 uppercase">{user.role.replace('_', ' ')}</span>
+                  <div className="flex flex-col">
+                    <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 uppercase w-fit">{user.role.replace('_', ' ')}</span>
+                    {user.delegated_role && (
+                        <span className="text-[10px] text-blue-600 font-bold mt-1">+ {user.delegated_role.replace('_', ' ')}</span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
@@ -299,7 +363,8 @@ export const Users: React.FC = () => {
                   <div className="flex border-b">
                       <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'profile' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Profile</button>
                       <button onClick={() => setActiveTab('promotion')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'promotion' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Promotion</button>
-                      <button onClick={() => setActiveTab('security')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'security' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Security & Lifecycle</button>
+                      <button onClick={() => setActiveTab('delegation')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'delegation' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Delegation</button>
+                      <button onClick={() => setActiveTab('security')} className={`flex-1 py-3 text-sm font-medium ${activeTab === 'security' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500'}`}>Security</button>
                   </div>
 
                   <div className="p-6">
@@ -370,6 +435,53 @@ export const Users: React.FC = () => {
                                     className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:bg-gray-300"
                                   >
                                       Confirm Promotion
+                                  </button>
+                              </div>
+                          </div>
+                      )}
+
+                      {activeTab === 'delegation' && (
+                          <div className="space-y-4">
+                              <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex items-start">
+                                  <Briefcase className="h-5 w-5 text-blue-600 mr-3 shrink-0" />
+                                  <p className="text-xs text-blue-700">
+                                      <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously until the end date.
+                                  </p>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div>
+                                      <label className="block text-sm font-medium text-gray-700">Delegate Role</label>
+                                      <select 
+                                          className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                                          value={delegationData.role}
+                                          onChange={e => setDelegationData({...delegationData, role: e.target.value as UserRole})}
+                                      >
+                                          <option value="">-- Select Role --</option>
+                                          <option value="hr">HR Manager</option>
+                                          <option value="accountant">Accountant</option>
+                                          <option value="loan_officer">Loan Officer</option>
+                                      </select>
+                                  </div>
+                                  <div>
+                                      <label className="block text-sm font-medium text-gray-700">End Date (Optional)</label>
+                                      <input 
+                                          type="date" 
+                                          className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                                          value={delegationData.end}
+                                          onChange={e => setDelegationData({...delegationData, end: e.target.value})}
+                                      />
+                                  </div>
+                              </div>
+                              <div className="flex justify-between pt-4">
+                                  {selectedUser.delegated_role && (
+                                      <button onClick={handleRevokeDelegation} className="text-red-600 text-sm font-bold hover:underline">Revoke Current Delegation</button>
+                                  )}
+                                  <button 
+                                    onClick={handleSaveDelegation}
+                                    disabled={isProcessing || !delegationData.role}
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold ml-auto"
+                                  >
+                                      Save Delegation
                                   </button>
                               </div>
                           </div>
