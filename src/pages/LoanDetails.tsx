@@ -5,10 +5,10 @@ import { useAuth } from '@/context/AuthContext';
 import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
-import { analyzeFinancialData } from '@/services/aiService';
+import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -43,6 +43,7 @@ export const LoanDetails: React.FC = () => {
   const [showAIModal, setShowAIModal] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
   
   // Form States
   const [repayAmount, setRepayAmount] = useState<number>(0);
@@ -79,6 +80,17 @@ export const LoanDetails: React.FC = () => {
       setOfficers(data || []);
   };
 
+  const logAudit = async (action: string, details: any) => {
+      if (!profile || !id) return;
+      await supabase.from('audit_logs').insert({
+          user_id: profile.id,
+          action,
+          entity_type: 'loan',
+          entity_id: id,
+          details
+      });
+  };
+
   const handleReassign = async () => {
       if (!loan || !selectedOfficer) return;
       setProcessingAction(true);
@@ -92,6 +104,7 @@ export const LoanDetails: React.FC = () => {
           
           const newOfficerName = officers.find(o => o.id === selectedOfficer)?.full_name || 'New Officer';
           await addNote(`Loan reassigned to ${newOfficerName} by ${profile?.full_name}.`, true);
+          await logAudit('Loan Reassigned', { to_officer: newOfficerName });
           
           await createNotification(
               selectedOfficer,
@@ -268,6 +281,11 @@ export const LoanDetails: React.FC = () => {
         
         setAiAnalysis(insights.join('\n\n'));
 
+        if (loan?.status === 'pending') {
+            const risk = await assessLoanRisk(loan);
+            setRiskAssessment(risk);
+        }
+
     } catch (e: any) {
         console.error("AI Error:", e);
         setAiAnalysis(`Failed to generate analysis. Error: ${e.message || 'Unknown error'}`);
@@ -360,6 +378,7 @@ export const LoanDetails: React.FC = () => {
         
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
+        await logAudit('Loan Approved', { amount: loan.principal_amount, borrower: loan.borrowers?.full_name });
 
         await createNotification(
             loan.officer_id,
@@ -413,6 +432,7 @@ export const LoanDetails: React.FC = () => {
         if (error) throw error;
         
         await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
+        await logAudit('Loan Rejected', { reason: decisionReason });
 
         await createNotification(
             loan.officer_id,
@@ -463,6 +483,7 @@ export const LoanDetails: React.FC = () => {
             
           if (error) throw error;
           await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
+          await logAudit('Loan Reassessment Requested', { instructions: decisionReason });
 
           await createNotification(
               loan.officer_id,
@@ -514,6 +535,7 @@ export const LoanDetails: React.FC = () => {
         if (error) throw error;
         
         await addNote(`MARKED AS BAD DEBT (Defaulted) by ${profile?.full_name}. Justification: ${decisionReason}`, true);
+        await logAudit('Loan Defaulted', { reason: decisionReason });
         
         toast.success('Loan marked as defaulted');
         setShowDefaultModal(false);
@@ -541,6 +563,7 @@ export const LoanDetails: React.FC = () => {
         if (error) throw error;
         
         await addNote(`Late Fee of ${formatCurrency(penaltyAmount)} applied.`, true);
+        await logAudit('Penalty Applied', { amount: penaltyAmount });
 
         toast.success('Late fee applied');
         setShowPenaltyModal(false);
@@ -619,9 +642,11 @@ export const LoanDetails: React.FC = () => {
 
       if (isCompleted) {
           await addNote('Loan fully repaid and marked as Completed.', true);
+          await logAudit('Loan Completed', { total_paid: repayAmount });
           toast.success('Loan fully repaid!');
       } else {
           await addNote(`Repayment of ${formatCurrency(Number(repayAmount))} recorded.`, true);
+          await logAudit('Repayment Recorded', { amount: repayAmount });
           toast.success('Repayment recorded');
       }
 
@@ -671,6 +696,7 @@ export const LoanDetails: React.FC = () => {
 
           const locationText = visitLocation ? ' (with Geotag)' : '';
           await addNote(`Official Client Visitation recorded on ${visitDate}${locationText}.`, true);
+          await logAudit('Field Visit Recorded', { date: visitDate, geotagged: !!visitLocation });
           
           toast.success('Visitation recorded');
           setShowVisitModal(false);
@@ -694,6 +720,7 @@ export const LoanDetails: React.FC = () => {
       try {
           const { error } = await supabase.from('loans').delete().eq('id', loan.id);
           if (error) throw error;
+          await logAudit('Loan Application Deleted', { borrower: loan.borrowers?.full_name });
           toast.success('Application deleted');
           navigate('/loans');
       } catch (error) {
@@ -1178,8 +1205,21 @@ export const LoanDetails: React.FC = () => {
                                 <p className="text-sm text-gray-500 mt-2">Powered by Gemini AI</p>
                             </div>
                         ) : (
-                            <div className="prose prose-indigo max-w-none text-sm text-gray-800 markdown-body">
-                                <Markdown>{aiAnalysis}</Markdown>
+                            <div className="space-y-6">
+                                {riskAssessment && (
+                                    <div className="bg-white p-4 rounded-xl border-2 border-indigo-100 shadow-sm">
+                                        <h4 className="text-indigo-900 font-bold flex items-center mb-2">
+                                            <ShieldCheck className="h-5 w-5 mr-2 text-indigo-600" />
+                                            AI Risk Recommendation
+                                        </h4>
+                                        <div className="prose prose-sm max-w-none text-gray-700">
+                                            <Markdown>{riskAssessment}</Markdown>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="prose prose-indigo max-w-none text-sm text-gray-800 markdown-body">
+                                    <Markdown>{aiAnalysis}</Markdown>
+                                </div>
                             </div>
                         )}
                     </div>
