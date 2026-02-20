@@ -6,7 +6,7 @@ import {
     Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, 
     AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, 
     Landmark, RefreshCw, Calendar, TrendingUp, Ban, Server, 
-    AlertCircle, Copy, CheckCircle2, UserCog, Eraser
+    AlertCircle, Copy, CheckCircle2, UserCog, Eraser, Archive, Eye, EyeOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ export const Users: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [serverStatus, setServerStatus] = useState<{admin_enabled: boolean} | null>(null);
   
   // Modal States
@@ -207,10 +208,39 @@ export const Users: React.FC = () => {
       }
   };
 
+  const handleArchiveUser = async () => {
+      if (!selectedUser || profile?.role !== 'ceo') return;
+      
+      if (!window.confirm("Archive User: This will deactivate the user and hide them from the active list. Historical records will be preserved. Continue?")) return;
+
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({ 
+                is_active: false, 
+                deletion_status: 'approved',
+                revocation_reason: 'Archived by CEO'
+            })
+            .eq('id', selectedUser.id);
+          
+          if (error) throw error;
+          
+          await logAudit('User Archived', { email: selectedUser.email }, selectedUser.id);
+          toast.success("User archived successfully.");
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e: any) {
+          toast.error("Archiving failed: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   const handlePermanentDelete = async () => {
       if (!selectedUser || profile?.role !== 'ceo') return;
       
-      if (!window.confirm("CRITICAL ACTION: This will permanently delete the user record. Continue?")) return;
+      if (!window.confirm("CRITICAL ACTION: This will permanently delete the user record. This only works for users with NO historical data. Continue?")) return;
 
       setIsProcessing(true);
       try {
@@ -218,7 +248,7 @@ export const Users: React.FC = () => {
           
           if (error) {
               if (error.code === '23503') {
-                  toast.error("Cannot hard delete: User is linked to historical records. Use 'Revoke Access' instead.");
+                  toast.error("Cannot hard delete: User is linked to historical records. Use 'Archive' instead to hide them.");
                   return;
               }
               throw error;
@@ -350,10 +380,15 @@ export const Users: React.FC = () => {
       toast.success('Copied to clipboard');
   };
 
-  const filteredUsers = users.filter(u => 
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    u.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         u.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const isArchived = u.deletion_status === 'approved';
+    
+    if (showArchived) return matchesSearch;
+    return matchesSearch && !isArchived;
+  });
 
   const potentialSuccessors = users.filter(u => u.role === 'loan_officer' && u.is_active && u.id !== selectedUser?.id);
 
@@ -365,6 +400,17 @@ export const Users: React.FC = () => {
             <p className="text-sm text-gray-500">Manage staff access, roles, and delegations.</p>
         </div>
         <div className="flex items-center space-x-3">
+            <button 
+                onClick={() => setShowArchived(!showArchived)}
+                className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                    showArchived 
+                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200' 
+                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                }`}
+            >
+                {showArchived ? <EyeOff className="h-3.5 w-3.5 mr-1.5" /> : <Eye className="h-3.5 w-3.5 mr-1.5" />}
+                {showArchived ? 'Hide Archived' : 'Show Archived'}
+            </button>
             {serverStatus && (
                 <div className={`flex items-center px-3 py-1.5 rounded-full text-xs font-bold border shadow-sm ${
                     serverStatus.admin_enabled 
@@ -428,14 +474,19 @@ export const Users: React.FC = () => {
                     <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No users found matching your search.</td></tr>
                 ) : (
                     filteredUsers.map(user => (
-                    <tr key={user.id} className="hover:bg-gray-50 transition-colors group">
+                    <tr key={user.id} className={`hover:bg-gray-50 transition-colors group ${user.deletion_status === 'approved' ? 'opacity-60 grayscale-[0.5]' : ''}`}>
                         <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                            <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
+                            <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold text-sm ${user.deletion_status === 'approved' ? 'bg-gray-200 text-gray-500' : 'bg-indigo-100 text-indigo-700'}`}>
                             {user.full_name?.charAt(0)}
                             </div>
                             <div className="ml-4">
-                            <div className="text-sm font-bold text-gray-900">{user.full_name}</div>
+                            <div className="text-sm font-bold text-gray-900 flex items-center">
+                                {user.full_name}
+                                {user.deletion_status === 'approved' && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[8px] font-bold uppercase rounded border border-gray-200">Archived</span>
+                                )}
+                            </div>
                             <div className="text-xs text-gray-500 flex items-center">
                                 {user.email}
                                 <button onClick={() => copyToClipboard(user.email)} className="ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-indigo-600">
@@ -726,7 +777,7 @@ export const Users: React.FC = () => {
                                       <button 
                                         type="submit"
                                         disabled={isProcessing || !newPassword || (serverStatus && !serverStatus.admin_enabled)}
-                                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-400 transition-all active:scale-95"
+                                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-300 shadow-lg shadow-indigo-100 transition-all active:scale-95"
                                       >
                                           Reset
                                       </button>
@@ -751,21 +802,40 @@ export const Users: React.FC = () => {
                               </div>
 
                               {profile.role === 'ceo' && (
-                                  <div className="p-6 border border-red-200 rounded-2xl bg-red-50">
-                                      <h4 className="font-bold text-red-800 flex items-center mb-2">
-                                          <Trash2 className="h-5 w-5 mr-2" />
-                                          Permanent Deletion
-                                      </h4>
-                                      <p className="text-xs text-red-700 mb-5 leading-relaxed">
-                                          <strong>CEO ONLY:</strong> This action permanently removes the user record from the database. This should only be used for accounts created in error.
-                                      </p>
-                                      <button 
-                                        onClick={handlePermanentDelete}
-                                        disabled={isProcessing}
-                                        className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-[0.99]"
-                                      >
-                                          Permanently Delete Record
-                                      </button>
+                                  <div className="p-6 border border-red-200 rounded-2xl bg-red-50 space-y-4">
+                                      <div>
+                                          <h4 className="font-bold text-red-800 flex items-center mb-2">
+                                              <Archive className="h-5 w-5 mr-2" />
+                                              Archive User (Soft Delete)
+                                          </h4>
+                                          <p className="text-xs text-red-700 mb-3 leading-relaxed">
+                                              Use this if the user has historical records. It will hide them from the active list while keeping data integrity.
+                                          </p>
+                                          <button 
+                                            onClick={handleArchiveUser}
+                                            disabled={isProcessing || selectedUser.deletion_status === 'approved'}
+                                            className="w-full py-3 bg-white text-red-700 border border-red-300 rounded-xl text-sm font-bold hover:bg-red-50 transition-all active:scale-[0.99]"
+                                          >
+                                              {selectedUser.deletion_status === 'approved' ? 'User Already Archived' : 'Archive User Record'}
+                                          </button>
+                                      </div>
+
+                                      <div className="pt-4 border-t border-red-200">
+                                          <h4 className="font-bold text-red-800 flex items-center mb-2">
+                                              <Trash2 className="h-5 w-5 mr-2" />
+                                              Permanent Deletion
+                                          </h4>
+                                          <p className="text-xs text-red-700 mb-3 leading-relaxed">
+                                              <strong>CEO ONLY:</strong> This action permanently removes the user record. This only works for accounts with <strong>NO</strong> historical data.
+                                          </p>
+                                          <button 
+                                            onClick={handlePermanentDelete}
+                                            disabled={isProcessing}
+                                            className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-[0.99]"
+                                          >
+                                              Permanently Delete Record
+                                          </button>
+                                      </div>
                                   </div>
                               )}
                           </div>
