@@ -21,6 +21,18 @@ export const Loans: React.FC = () => {
 
   useEffect(() => {
     fetchLoans();
+
+    // Realtime subscription for the loan list
+    const channel = supabase
+      .channel('loans-list-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
+          fetchLoans();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, filter, page]);
 
@@ -30,7 +42,6 @@ export const Loans: React.FC = () => {
   };
 
   const fetchLoans = async () => {
-    setLoading(true);
     try {
       let query = supabase
         .from('loans')

@@ -55,10 +55,21 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    // Run cleanup for old applications if admin/ceo
+    
+    // Realtime subscription to keep dashboard live
+    const channel = supabase
+      .channel('dashboard-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'repayments' }, () => fetchDashboardData())
+      .subscribe();
+
     if (isExec) {
         runCleanup();
     }
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
@@ -72,7 +83,8 @@ export const Dashboard: React.FC = () => {
 
   const fetchDashboardData = async () => {
     try {
-      setLoading(true);
+      // Only show loading spinner on first load to avoid flickering on realtime updates
+      if (stats.totalPortfolio === 0) setLoading(true);
 
       // 1. Fetch Main Stats from RPC
       const { data: rpcStats, error: statsError } = await supabase.rpc('get_dashboard_stats');
@@ -98,7 +110,7 @@ export const Dashboard: React.FC = () => {
         const completed = rpcStats.completed_count || 0;
         const active = rpcStats.active_count || 0;
         const defaulted = rpcStats.defaulted_count || 0;
-        const totalLoans = active + completed + defaulted; // Approximation for recovery rate calc
+        const totalLoans = active + completed + defaulted; 
         
         const recoveryRate = totalLoans > 0 
           ? (completed / totalLoans) * 100 
@@ -123,11 +135,9 @@ export const Dashboard: React.FC = () => {
         setChartData([
           { name: 'Active', value: active },
           { name: 'Completed', value: completed },
-          { name: 'At Risk (>30d)', value: rpcStats.par_count || 0 }, // Using PAR as the risk metric for chart
+          { name: 'At Risk (>30d)', value: rpcStats.par_count || 0 },
         ]);
 
-        // Revenue Data Map (RPC returns 'YYYY-MM', 'income')
-        // We need to format it for Recharts
         const formattedRevenue = (revData || []).map((d: any) => ({
             name: new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
             income: Number(d.income)
@@ -160,7 +170,7 @@ export const Dashboard: React.FC = () => {
     setIsAnalyzing(false);
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, subtitle, trend }: any) => (
+  const StatCard = ({ title, value, icon: Icon, color, subtitle }: any) => (
     <div className="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100 p-5 flex items-start justify-between">
         <div>
             <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
@@ -195,8 +205,8 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
         <div className="mt-4 md:mt-0 flex items-center space-x-3">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 border border-gray-200">
-            <Activity className="w-3 h-3 mr-1" /> Live Data
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100 animate-pulse">
+            <Activity className="w-3 h-3 mr-1" /> Live Updates Active
           </span>
           <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
             {profile?.role?.replace('_', ' ').toUpperCase()}
@@ -437,7 +447,6 @@ export const Dashboard: React.FC = () => {
                                       </td>
                                       <td className="px-6 py-4 whitespace-nowrap text-right">
                                           <div className="flex items-center justify-end">
-                                              {/* Simple mock score based on portfolio vs risk */}
                                               <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
                                                   <div 
                                                     className={`h-1.5 rounded-full ${officer.atRisk > 2 ? 'bg-red-500' : 'bg-green-500'}`} 
