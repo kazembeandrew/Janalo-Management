@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'ceo' | 'loan_officer';
+export type UserRole = 'admin' | 'ceo' | 'loan_officer' | 'hr' | 'accountant';
 
 export type InterestType = 'flat' | 'reducing';
 
@@ -10,7 +10,7 @@ export interface UserProfile {
   full_name: string;
   role: UserRole;
   is_active: boolean;
-  deletion_status?: 'pending' | 'approved' | 'none';
+  deletion_status?: 'pending' | 'approved' | 'none' | 'pending_approval';
   created_at: string;
 }
 

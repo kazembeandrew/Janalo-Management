@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { UserProfile, UserRole } from '@/types';
-import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus } from 'lucide-react';
+import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -25,7 +25,7 @@ export const Users: React.FC = () => {
       is_active: true
   });
   const [resetPassword, setResetPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'delegation'>('profile');
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -64,6 +64,17 @@ export const Users: React.FC = () => {
     }
   };
 
+  const logAudit = async (action: string, details: any, targetUserId: string) => {
+      if (!profile) return;
+      await supabase.from('audit_logs').insert({
+          user_id: profile.id,
+          action,
+          entity_type: 'user',
+          entity_id: targetUserId,
+          details
+      });
+  };
+
   // --- CREATE USER LOGIC (Admin Only) ---
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -77,7 +88,6 @@ export const Users: React.FC = () => {
       setIsProcessing(true);
 
       try {
-          // Use Express API to create user
           const response = await fetch('/api/admin/create-user', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -100,7 +110,6 @@ export const Users: React.FC = () => {
           setShowCreateModal(false);
           setNewUser({ full_name: '', email: '', password: '', role: 'loan_officer' });
           
-          // Refresh list
           await fetchUsers();
           
       } catch (error: any) {
@@ -127,6 +136,7 @@ export const Users: React.FC = () => {
           
           if (error) throw error;
           
+          await logAudit('User Registration Approved', { email: selectedUser.email }, selectedUser.id);
           toast.success("User registration approved and account activated.");
           setShowEditModal(false);
           fetchUsers();
@@ -143,7 +153,6 @@ export const Users: React.FC = () => {
       
       setIsProcessing(true);
       try {
-          // For rejection, we just delete the user record
           const { error } = await supabase.from('users').delete().eq('id', selectedUser.id);
           if (error) throw error;
           
@@ -152,6 +161,41 @@ export const Users: React.FC = () => {
           fetchUsers();
       } catch (e: any) {
           toast.error("Failed to reject registration: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  // --- DELEGATION LOGIC ---
+
+  const handleDelegateRole = async (targetRole: UserRole) => {
+      if (!selectedUser || !profile) return;
+      
+      // Validation
+      if (targetRole === 'hr' && profile.role !== 'admin') {
+          toast.error("Only Admins can delegate HR duties.");
+          return;
+      }
+      if (targetRole === 'accountant' && profile.role !== 'ceo') {
+          toast.error("Only the CEO can delegate Accountant duties.");
+          return;
+      }
+
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({ role: targetRole })
+            .eq('id', selectedUser.id);
+
+          if (error) throw error;
+
+          await logAudit('Role Delegated', { from_role: selectedUser.role, to_role: targetRole }, selectedUser.id);
+          toast.success(`Duties successfully delegated to ${selectedUser.full_name}.`);
+          setShowEditModal(false);
+          fetchUsers();
+      } catch (e: any) {
+          toast.error("Delegation failed: " + e.message);
       } finally {
           setIsProcessing(false);
       }
@@ -173,9 +217,15 @@ export const Users: React.FC = () => {
 
   const handleUpdateUser = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!selectedUser) return;
+      if (!selectedUser || !profile) return;
+
+      // CEO Approval check for role changes to CEO/Admin
+      if ((editFormData.role === 'ceo' || editFormData.role === 'admin') && profile.role !== 'ceo') {
+          toast.error("Only the CEO can assign Admin or CEO roles.");
+          return;
+      }
+
       setIsProcessing(true);
-      
       try {
           const { error } = await supabase
             .from('users')
@@ -188,6 +238,7 @@ export const Users: React.FC = () => {
 
           if (error) throw error;
 
+          await logAudit('User Profile Updated', { changes: editFormData }, selectedUser.id);
           toast.success("User profile updated.");
           setShowEditModal(false);
           setSelectedUser(null);
@@ -225,6 +276,7 @@ export const Users: React.FC = () => {
               throw new Error(data.error || 'Unknown error occurred');
           }
           
+          await logAudit('Password Reset by Admin', {}, selectedUser.id);
           toast.success(`Password for ${selectedUser.full_name} has been updated.`);
           setResetPassword('');
       } catch (error: any) {
@@ -242,6 +294,7 @@ export const Users: React.FC = () => {
       try {
           const { error } = await supabase.from('users').update({ is_active: false }).eq('id', selectedUser.id);
           if (error) throw error;
+          await logAudit('Access Revoked', {}, selectedUser.id);
           toast.success("User access revoked.");
           setShowEditModal(false);
           fetchUsers();
@@ -319,7 +372,6 @@ export const Users: React.FC = () => {
     u.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
   
-  // Sorting: Pending Registrations > Pending Deletions > Others
   const sortedUsers = [...filteredUsers].sort((a, b) => {
       if (a.deletion_status === 'pending_approval' && b.deletion_status !== 'pending_approval') return -1;
       if (a.deletion_status !== 'pending_approval' && b.deletion_status === 'pending_approval') return 1;
@@ -327,6 +379,10 @@ export const Users: React.FC = () => {
       if (a.deletion_status !== 'pending' && b.deletion_status === 'pending') return 1;
       return 0;
   });
+
+  // Delegation Availability Checks
+  const hrExists = users.some(u => u.role === 'hr' && u.is_active);
+  const accountantExists = users.some(u => u.role === 'accountant' && u.is_active);
 
   if (!profile || (profile.role !== 'admin' && profile.role !== 'ceo')) return null;
 
@@ -407,10 +463,14 @@ export const Users: React.FC = () => {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                         user.role === 'admin' ? 'bg-purple-100 text-purple-800' :
                         user.role === 'ceo' ? 'bg-blue-100 text-blue-800' :
+                        user.role === 'hr' ? 'bg-orange-100 text-orange-800' :
+                        user.role === 'accountant' ? 'bg-emerald-100 text-emerald-800' :
                         'bg-gray-100 text-gray-800'
                       }`}>
                         {user.role === 'admin' && <Shield className="w-3 h-3 mr-1" />}
                         {user.role === 'ceo' && <Lock className="w-3 h-3 mr-1" />}
+                        {user.role === 'hr' && <Briefcase className="w-3 h-3 mr-1" />}
+                        {user.role === 'accountant' && <Landmark className="w-3 h-3 mr-1" />}
                         {user.role === 'loan_officer' && <User className="w-3 h-3 mr-1" />}
                         {user.role.replace('_', ' ').toUpperCase()}
                       </span>
@@ -500,6 +560,8 @@ export const Users: React.FC = () => {
                                     onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
                                 >
                                     <option value="loan_officer">Loan Officer</option>
+                                    <option value="hr">HR Manager</option>
+                                    <option value="accountant">Accountant</option>
                                     <option value="ceo">CEO / Executive</option>
                                     <option value="admin">System Administrator</option>
                                 </select>
@@ -567,6 +629,7 @@ export const Users: React.FC = () => {
                             <div className="flex border-b border-gray-200 mb-6">
                                 <button onClick={() => setActiveTab('profile')} className={`flex-1 py-3 px-4 text-center text-sm font-medium ${activeTab === 'profile' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Profile & Access</button>
                                 <button onClick={() => setActiveTab('security')} className={`flex-1 py-3 px-4 text-center text-sm font-medium ${activeTab === 'security' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Security</button>
+                                <button onClick={() => setActiveTab('delegation')} className={`flex-1 py-3 px-4 text-center text-sm font-medium ${activeTab === 'delegation' ? 'border-b-2 border-indigo-500 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Delegation</button>
                             </div>
 
                             {activeTab === 'profile' && (
@@ -579,6 +642,8 @@ export const Users: React.FC = () => {
                                         <label className="block text-sm font-medium text-gray-700">System Role</label>
                                         <select className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-50" value={editFormData.role} onChange={e => setEditFormData({...editFormData, role: e.target.value as UserRole})} disabled={profile.role === 'ceo'}>
                                             <option value="loan_officer">Loan Officer</option>
+                                            <option value="hr">HR Manager</option>
+                                            <option value="accountant">Accountant</option>
                                             <option value="ceo">CEO / Executive</option>
                                             <option value="admin">System Administrator</option>
                                         </select>
@@ -602,7 +667,7 @@ export const Users: React.FC = () => {
                                     <div>
                                         <h4 className="text-sm font-medium text-gray-900 mb-2">Set New Password</h4>
                                         <div className="flex gap-2">
-                                            <input type="password" className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100" placeholder="Min 6 chars" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} disabled={profile.role === 'ceo'} />
+                                            <input type="password" university-password-input className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 sm:text-sm disabled:bg-gray-100" placeholder="Min 6 chars" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} disabled={profile.role === 'ceo'} />
                                             {profile.role === 'admin' && <button type="button" onClick={handleManualPasswordReset} disabled={isProcessing || !resetPassword} className="inline-flex items-center px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"><Save className="h-4 w-4 mr-2" />Update</button>}
                                         </div>
                                     </div>
@@ -618,6 +683,63 @@ export const Users: React.FC = () => {
                                                 </>
                                             )}
                                         </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'delegation' && (
+                                <div className="space-y-6">
+                                    <div className="bg-blue-50 p-4 rounded-md border border-blue-100">
+                                        <h4 className="text-blue-800 font-bold flex items-center mb-2">
+                                            <Briefcase className="h-5 w-5 mr-2" /> Temporary Duty Delegation
+                                        </h4>
+                                        <p className="text-sm text-blue-700">
+                                            Assign temporary responsibilities to this user if key positions are vacant.
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {/* HR Delegation (Admin Only) */}
+                                        <div className="p-4 border rounded-lg bg-white">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <h5 className="font-bold text-gray-900">HR Duties</h5>
+                                                    <p className="text-xs text-gray-500">Manage staff records and payroll.</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleDelegateRole('hr')}
+                                                    disabled={isProcessing || hrExists || profile.role !== 'admin' || selectedUser.role === 'hr'}
+                                                    className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-bold disabled:bg-gray-300"
+                                                >
+                                                    {selectedUser.role === 'hr' ? 'Already HR' : hrExists ? 'HR Exists' : 'Delegate HR'}
+                                                </button>
+                                            </div>
+                                            {hrExists && <p className="mt-2 text-[10px] text-orange-600 italic">An active HR account already exists. Delegation disabled.</p>}
+                                        </div>
+
+                                        {/* Accountant Delegation (CEO Only) */}
+                                        <div className="p-4 border rounded-lg bg-white">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <h5 className="font-bold text-gray-900">Accountant Duties</h5>
+                                                    <p className="text-xs text-gray-500">Manage financial reporting and expenses.</p>
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleDelegateRole('accountant')}
+                                                    disabled={isProcessing || accountantExists || profile.role !== 'ceo' || selectedUser.role === 'accountant'}
+                                                    className="px-3 py-1.5 bg-emerald-600 text-white rounded text-xs font-bold disabled:bg-gray-300"
+                                                >
+                                                    {selectedUser.role === 'accountant' ? 'Already Accountant' : accountantExists ? 'Accountant Exists' : 'Delegate Accountant'}
+                                                </button>
+                                            </div>
+                                            {accountantExists && <p className="mt-2 text-[10px] text-orange-600 italic">An active Accountant account already exists. Delegation disabled.</p>}
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="p-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                        <p className="text-[10px] text-gray-500 text-center">
+                                            All delegations are logged for accountability. CEO-level responsibilities cannot be delegated without full role reassignment.
+                                        </p>
                                     </div>
                                 </div>
                             )}
