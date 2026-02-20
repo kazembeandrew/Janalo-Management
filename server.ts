@@ -14,11 +14,21 @@ app.use(express.json());
 const DEFAULT_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
 const DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ";
 
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || DEFAULT_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+// Try to find the service role key in various common env var names
+const SERVICE_ROLE_KEY = 
+    process.env.SUPABASE_SERVICE_ROLE_KEY || 
+    process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || 
+    process.env.SERVICE_ROLE_KEY || 
+    "";
 
-// Initialize Supabase Client
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || DEFAULT_URL;
+
+// Initialize Supabase Client - Use Service Role if available, otherwise fallback to Anon (Admin actions will fail)
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY || DEFAULT_ANON_KEY);
+
+if (!SERVICE_ROLE_KEY) {
+    console.warn("⚠️ [SERVER] SUPABASE_SERVICE_ROLE_KEY is not detected. Admin actions (User Creation/Password Reset) will fail until this secret is added to your environment.");
+}
 
 // --- ADMIN API ROUTES ---
 
@@ -27,10 +37,6 @@ app.post("/api/admin/create-user", async (req, res) => {
   const { email, password, full_name, role } = req.body;
 
   try {
-    if (!SERVICE_ROLE_KEY) {
-      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled.");
-    }
-
     // 1. Create user in Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -39,16 +45,21 @@ app.post("/api/admin/create-user", async (req, res) => {
       user_metadata: { full_name, role }
     });
 
-    if (authError) throw authError;
+    if (authError) {
+        // If it's a 401/403, it's likely the missing service role key
+        if (authError.status === 401 || authError.status === 403) {
+            throw new Error("Unauthorized: The server requires a valid SUPABASE_SERVICE_ROLE_KEY to perform admin actions.");
+        }
+        throw authError;
+    }
 
     // 2. Immediately set to inactive and mark as pending approval in the public users table
-    // The trigger 'handle_new_user' creates the row, so we update it.
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({ 
         is_active: false, 
         deletion_status: 'pending_approval',
-        role: role // Ensure role from form is applied
+        role: role 
       })
       .eq('id', authData.user.id);
 
@@ -66,15 +77,16 @@ app.post("/api/admin/reset-password", async (req, res) => {
   const { userId, newPassword } = req.body;
 
   try {
-    if (!SERVICE_ROLE_KEY) {
-      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled.");
-    }
-
     const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: newPassword
     });
 
-    if (error) throw error;
+    if (error) {
+        if (error.status === 401 || error.status === 403) {
+            throw new Error("Unauthorized: The server requires a valid SUPABASE_SERVICE_ROLE_KEY to perform admin actions.");
+        }
+        throw error;
+    }
     res.json({ success: true });
   } catch (error: any) {
     console.error("Error resetting password:", error);
@@ -82,7 +94,7 @@ app.post("/api/admin/reset-password", async (req, res) => {
   }
 });
 
-// Send Email
+// Send Email (Simulation)
 app.post("/api/admin/send-email", async (req, res) => {
   const { to, subject, html } = req.body;
 
@@ -97,7 +109,11 @@ app.post("/api/admin/send-email", async (req, res) => {
 
 // Health check
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
+  res.json({ 
+      status: "ok", 
+      admin_enabled: !!SERVICE_ROLE_KEY,
+      supabase_url: SUPABASE_URL 
+  });
 });
 
 async function startServer() {
