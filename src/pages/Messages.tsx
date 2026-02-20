@@ -145,13 +145,9 @@ export const Messages: React.FC = () => {
       });
 
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending message:', error);
       setNewMessage(tempMsg);
-      // If it's the recursion error, inform the user
-      if (error.code === '42P17') {
-          alert("Security policy error detected. Please ensure the SQL fix has been applied to the database.");
-      }
     }
   };
 
