@@ -14,6 +14,7 @@ import { Reports } from '@/pages/Reports';
 import { Expenses } from '@/pages/Expenses';
 import { Messages } from '@/pages/Messages';
 import { Users } from '@/pages/Users';
+import { AuditLogs } from '@/pages/AuditLogs';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -117,6 +118,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Users />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit-logs"
+            element={
+              <ProtectedRoute>
+                <AuditLogs />
               </ProtectedRoute>
             }
           />

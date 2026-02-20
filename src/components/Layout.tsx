@@ -14,7 +14,8 @@ import {
   FileText,
   Receipt,
   MessageSquare,
-  Shield
+  Shield,
+  History
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -65,6 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo'] },
+    { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin', 'ceo'] },
   ];
 
   const handleSignOut = async () => {

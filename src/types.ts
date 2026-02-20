@@ -1,4 +1,3 @@
-
 export type UserRole = 'admin' | 'ceo' | 'loan_officer';
 
 export type InterestType = 'flat' | 'reducing';
@@ -11,8 +10,21 @@ export interface UserProfile {
   full_name: string;
   role: UserRole;
   is_active: boolean;
-  deletion_status?: 'pending' | 'approved' | 'none'; // Workflow for deletion
+  deletion_status?: 'pending' | 'approved' | 'none';
   created_at: string;
+}
+
+export interface AuditLog {
+  id: string;
+  user_id: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  details: any;
+  created_at: string;
+  users?: {
+    full_name: string;
+  };
 }
 
 export interface Borrower {
@@ -42,7 +54,6 @@ export interface Loan {
   status: LoanStatus;
   created_at: string;
   updated_at: string;
-  // Supabase join field
   borrowers?: {
     full_name: string;
     address?: string;
