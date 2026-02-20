@@ -3,15 +3,17 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/utils/finance';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line
+  PieChart, Pie, Cell, LineChart, Line, ComposedChart
 } from 'recharts';
-import { Download, Printer, Sparkles, RefreshCw } from 'lucide-react';
+import { Download, Printer, Sparkles, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 
 export const Reports: React.FC = () => {
   const [statusData, setStatusData] = useState<any[]>([]);
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
+  const [expenseData, setExpenseData] = useState<any[]>([]);
+  const [profitData, setProfitData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -35,6 +37,26 @@ export const Reports: React.FC = () => {
         const { data: revenue } = await supabase.rpc('get_monthly_revenue');
         setRevenueData(revenue || []);
 
+        // 4. Expenses (Grouped by month)
+        const { data: expenses } = await supabase
+            .from('expenses')
+            .select('amount, date');
+        
+        const groupedExpenses: any = {};
+        expenses?.forEach(e => {
+            const month = e.date.substring(0, 7);
+            groupedExpenses[month] = (groupedExpenses[month] || 0) + Number(e.amount);
+        });
+
+        // 5. Merge for Profitability
+        const combined = (revenue || []).map((r: any) => ({
+            month: r.month,
+            income: Number(r.income),
+            expense: groupedExpenses[r.month] || 0,
+            profit: Number(r.income) - (groupedExpenses[r.month] || 0)
+        }));
+        setProfitData(combined);
+
     } catch (error) {
         console.error(error);
     } finally {
@@ -47,15 +69,19 @@ export const Reports: React.FC = () => {
     const insights = await analyzeFinancialData({
       statusData,
       timelineData,
-      revenueData
+      profitData
     });
     setAiInsights(insights);
     setIsAnalyzing(false);
   };
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+  const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
   if (loading) return <div className="p-8 text-center">Generating reports...</div>;
+
+  const totalIncome = profitData.reduce((sum, d) => sum + d.income, 0);
+  const totalExpenses = profitData.reduce((sum, d) => sum + d.expense, 0);
+  const netProfit = totalIncome - totalExpenses;
 
   return (
     <div className="space-y-8">
@@ -87,6 +113,24 @@ export const Reports: React.FC = () => {
         </div>
       </div>
 
+      {/* CFO Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 print:grid-cols-3">
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <p className="text-sm font-medium text-gray-500">Total Interest Income</p>
+              <h3 className="text-2xl font-bold text-green-600">{formatCurrency(totalIncome)}</h3>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <p className="text-sm font-medium text-gray-500">Total Operational Expenses</p>
+              <h3 className="text-2xl font-bold text-red-600">{formatCurrency(totalExpenses)}</h3>
+          </div>
+          <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+              <p className="text-sm font-medium text-gray-500">Net Operational Profit</p>
+              <h3 className={`text-2xl font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-600'}`}>
+                  {formatCurrency(netProfit)}
+              </h3>
+          </div>
+      </div>
+
       {/* AI Insights Section */}
       {aiInsights.length > 0 && (
           <div className="bg-indigo-900 rounded-xl p-6 text-white shadow-lg border border-indigo-500/30 print:hidden">
@@ -105,14 +149,27 @@ export const Reports: React.FC = () => {
           </div>
       )}
 
-      {/* Print Header */}
-      <div className="hidden print:block text-center mb-8">
-          <h1 className="text-3xl font-bold">Janalo Management Report</h1>
-          <p className="text-gray-500">Generated on {new Date().toLocaleDateString()}</p>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
+          {/* Profitability Chart */}
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 lg:col-span-2 break-inside-avoid">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Profitability Analysis (Income vs Expenses)</h3>
+              <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={profitData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                          <Legend />
+                          <Bar dataKey="income" fill="#10B981" name="Interest Income" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="expense" fill="#EF4444" name="Expenses" radius={[4, 4, 0, 0]} />
+                          <Line type="monotone" dataKey="profit" stroke="#4F46E5" strokeWidth={3} name="Net Profit" />
+                      </ComposedChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
+
           {/* Portfolio Status */}
           <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Portfolio Distribution (Value)</h3>
@@ -150,52 +207,10 @@ export const Reports: React.FC = () => {
                           <XAxis dataKey="month" />
                           <YAxis />
                           <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                          <Bar dataKey="amount" fill="#4F46E5" name="Disbursed Amount" />
+                          <Bar dataKey="amount" fill="#4F46E5" name="Disbursed Amount" radius={[4, 4, 0, 0]} />
                       </BarChart>
                   </ResponsiveContainer>
               </div>
-          </div>
-
-          {/* Revenue Trend */}
-          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 lg:col-span-2 break-inside-avoid">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Revenue Growth (Interest & Fees)</h3>
-              <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={revenueData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                          <Legend />
-                          <Line type="monotone" dataKey="income" stroke="#10B981" strokeWidth={3} name="Income Collected" />
-                      </LineChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
-
-          {/* Data Table */}
-          <div className="bg-white rounded-lg shadow border border-gray-200 lg:col-span-2 overflow-hidden break-inside-avoid">
-              <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-                  <h3 className="text-lg font-bold text-gray-900">Detailed Status Breakdown</h3>
-              </div>
-              <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                      <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Count</th>
-                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total Value</th>
-                      </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                      {statusData.map((item, index) => (
-                          <tr key={index}>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">{item.status}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">{item.count}</td>
-                              <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-900 font-bold">{formatCurrency(item.total_value)}</td>
-                          </tr>
-                      ))}
-                  </tbody>
-              </table>
           </div>
       </div>
     </div>

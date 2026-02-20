@@ -17,7 +17,8 @@ import {
   Shield,
   History,
   Calendar,
-  Award
+  Award,
+  Calculator
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -65,6 +66,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
     { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer'] },
+    { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.inbox },
     { name: 'Performance', href: '/performance', icon: Award, roles: ['admin', 'ceo'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo'] },
