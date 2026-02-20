@@ -636,35 +636,46 @@ export const LoanDetails: React.FC = () => {
     e.preventDefault();
     if (!loan || !profile) return;
 
-    let amount = Number(repayAmount);
+    const amountToProcess = Number(repayAmount);
+    if (isNaN(amountToProcess) || amountToProcess <= 0) {
+        toast.error("Please enter a valid repayment amount.");
+        return;
+    }
+
+    setProcessingAction(true);
+
+    let remaining = amountToProcess;
     let penPaid = 0;
     let intPaid = 0;
     let prinPaid = 0;
 
     const currentPenalty = loan.penalty_outstanding || 0;
     
+    // 1. Pay Penalty First
     if (currentPenalty > 0) {
-        if (amount >= currentPenalty) {
+        if (remaining >= currentPenalty) {
             penPaid = currentPenalty;
-            amount -= penPaid;
+            remaining -= penPaid;
         } else {
-            penPaid = amount;
-            amount = 0;
+            penPaid = remaining;
+            remaining = 0;
         }
     }
 
-    if (amount > 0 && loan.interest_outstanding > 0) {
-        if (amount >= loan.interest_outstanding) {
+    // 2. Pay Interest Second
+    if (remaining > 0 && loan.interest_outstanding > 0) {
+        if (remaining >= loan.interest_outstanding) {
             intPaid = loan.interest_outstanding;
-            amount -= intPaid;
+            remaining -= intPaid;
         } else {
-            intPaid = amount;
-            amount = 0;
+            intPaid = remaining;
+            remaining = 0;
         }
     }
     
-    if (amount > 0) {
-        prinPaid = amount;
+    // 3. Pay Principal Last
+    if (remaining > 0) {
+        prinPaid = remaining;
     }
 
     const newPenOutstanding = Math.max(0, currentPenalty - penPaid);
@@ -674,9 +685,10 @@ export const LoanDetails: React.FC = () => {
     const isCompleted = newPrinOutstanding <= 0.01 && newIntOutstanding <= 0.01 && newPenOutstanding <= 0.01;
 
     try {
+      // 1. Insert Repayment Record
       const { data: rData, error: rError } = await supabase.from('repayments').insert([{
         loan_id: loan.id,
-        amount_paid: Number(repayAmount),
+        amount_paid: amountToProcess,
         principal_paid: prinPaid,
         interest_paid: intPaid,
         penalty_paid: penPaid,
@@ -684,8 +696,12 @@ export const LoanDetails: React.FC = () => {
         recorded_by: profile.id
       }]).select().single();
 
-      if (rError) throw rError;
+      if (rError) {
+          console.error("[Repayment] Insert Error:", rError);
+          throw new Error(rError.message);
+      }
 
+      // 2. Update Loan Balances
       const { error: lError } = await supabase
         .from('loans')
         .update({
@@ -696,15 +712,19 @@ export const LoanDetails: React.FC = () => {
         })
         .eq('id', loan.id);
       
-      if (lError) throw lError;
+      if (lError) {
+          console.error("[Repayment] Loan Update Error:", lError);
+          throw new Error(lError.message);
+      }
 
+      // 3. Log Activity
       if (isCompleted) {
           await addNote('Loan fully repaid and marked as Completed.', true);
-          await logAudit('Loan Completed', { total_paid: repayAmount });
+          await logAudit('Loan Completed', { total_paid: amountToProcess });
           toast.success('Loan fully repaid!');
       } else {
-          await addNote(`Repayment of ${formatCurrency(Number(repayAmount))} recorded.`, true);
-          await logAudit('Repayment Recorded', { amount: repayAmount });
+          await addNote(`Repayment of ${formatCurrency(amountToProcess)} recorded.`, true);
+          await logAudit('Repayment Recorded', { amount: amountToProcess });
           toast.success('Repayment recorded');
       }
 
@@ -712,16 +732,20 @@ export const LoanDetails: React.FC = () => {
       setRepayAmount(0);
       fetchData();
       
-      // Offer receipt download
+      // 4. Offer receipt download
       if (rData) {
-          if (window.confirm("Repayment recorded. Would you like to download the receipt?")) {
-              generateReceiptPDF(loan, rData, profile.full_name);
-          }
+          setTimeout(() => {
+              if (window.confirm("Repayment recorded. Would you like to download the receipt?")) {
+                  generateReceiptPDF(loan, rData, profile.full_name);
+              }
+          }, 500);
       }
 
-    } catch (error) {
-      console.error("Repayment failed", error);
-      toast.error("Failed to record repayment");
+    } catch (error: any) {
+      console.error("Repayment failed:", error);
+      toast.error(`Failed to record repayment: ${error.message || 'Unknown error'}`);
+    } finally {
+      setProcessingAction(false);
     }
   };
 
@@ -1642,9 +1666,10 @@ export const LoanDetails: React.FC = () => {
                             </button>
                             <button
                                 type="submit"
-                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+                                disabled={processingAction}
+                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
                             >
-                                Confirm Payment
+                                {processingAction ? 'Processing...' : 'Confirm Payment'}
                             </button>
                         </div>
                     </form>
