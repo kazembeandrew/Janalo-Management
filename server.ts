@@ -10,11 +10,14 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// Default credentials for the project
+const DEFAULT_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || DEFAULT_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+
 // Initialize Supabase Admin Client
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+// Note: Admin features like creating users require the SUPABASE_SERVICE_ROLE_KEY env var
+const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 // --- ADMIN API ROUTES ---
 
@@ -23,6 +26,10 @@ app.post("/api/admin/create-user", async (req, res) => {
   const { email, password, full_name, role } = req.body;
 
   try {
+    if (!SERVICE_ROLE_KEY) {
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server.");
+    }
+
     // 1. Create user in Auth
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
@@ -32,9 +39,6 @@ app.post("/api/admin/create-user", async (req, res) => {
     });
 
     if (authError) throw authError;
-
-    // 2. The trigger handle_new_user should automatically create the public.users row.
-    // But we can verify or update it if needed.
     
     res.json({ success: true, user: authData.user });
   } catch (error: any) {
@@ -48,6 +52,10 @@ app.post("/api/admin/reset-password", async (req, res) => {
   const { userId, newPassword } = req.body;
 
   try {
+    if (!SERVICE_ROLE_KEY) {
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server.");
+    }
+
     const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: newPassword
     });
@@ -66,18 +74,6 @@ app.post("/api/admin/send-email", async (req, res) => {
 
   try {
     console.log(`[EMAIL SIMULATION] To: ${to}, Subject: ${subject}`);
-    // If you have a real email service like Resend, you'd call it here:
-    /*
-    if (process.env.RESEND_API_KEY) {
-       const { data, error } = await resend.emails.send({
-         from: 'Janalo <notifications@janalo.com>',
-         to: [to],
-         subject: subject,
-         html: html,
-       });
-       if (error) throw error;
-    }
-    */
     res.json({ success: true });
   } catch (error: any) {
     console.error("Error sending email:", error);
