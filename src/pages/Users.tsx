@@ -267,15 +267,22 @@ export const Users: React.FC = () => {
 
   const handlePromote = async () => {
       if (!selectedUser || !targetRole) return;
+      if (serverStatus && !serverStatus.admin_enabled) {
+          toast.error("Server is not configured for role synchronization.");
+          return;
+      }
 
       setIsProcessing(true);
       try {
-          const { error } = await supabase
-            .from('users')
-            .update({ role: targetRole })
-            .eq('id', selectedUser.id);
-          
-          if (error) throw error;
+          // Use the server-side endpoint to sync with Auth metadata
+          const response = await fetch('/api/admin/update-user-role', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: selectedUser.id, newRole: targetRole })
+          });
+
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Failed to promote user');
           
           await logAudit('User Promoted', { from: selectedUser.role, to: targetRole }, selectedUser.id);
           toast.success(`${selectedUser.full_name} promoted to ${targetRole.replace('_', ' ')}.`);
@@ -777,7 +784,7 @@ export const Users: React.FC = () => {
                                       <button 
                                         type="submit"
                                         disabled={isProcessing || !newPassword || (serverStatus && !serverStatus.admin_enabled)}
-                                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-300 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+                                        className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm disabled:bg-gray-400 transition-all active:scale-95"
                                       >
                                           Reset
                                       </button>

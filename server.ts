@@ -75,6 +75,37 @@ app.post("/api/admin/create-user", async (req, res) => {
   }
 });
 
+// Update User Role (Promotion)
+app.post("/api/admin/update-user-role", async (req, res) => {
+  const { userId, newRole } = req.body;
+
+  if (!SERVICE_ROLE_KEY) {
+      return res.status(500).json({ error: "SUPABASE_SERVICE_ROLE_KEY is not configured." });
+  }
+
+  try {
+    // 1. Update Auth Metadata
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: { role: newRole }
+    });
+
+    if (authError) throw authError;
+
+    // 2. Update Public Profile
+    const { error: profileError } = await supabaseAdmin
+      .from('users')
+      .update({ role: newRole })
+      .eq('id', userId);
+
+    if (profileError) throw profileError;
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error("Error updating user role:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Reset Password
 app.post("/api/admin/reset-password", async (req, res) => {
   const { userId, newPassword } = req.body;
