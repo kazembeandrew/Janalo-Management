@@ -6,6 +6,7 @@ import { Layout } from '@/components/Layout';
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
 import { Borrowers } from '@/pages/Borrowers';
+import { BorrowerDetails } from '@/pages/BorrowerDetails';
 import { Loans } from '@/pages/Loans';
 import { CreateLoan } from '@/pages/CreateLoan';
 import { EditLoan } from '@/pages/EditLoan';
@@ -58,6 +59,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Borrowers />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/borrowers/:id"
+            element={
+              <ProtectedRoute>
+                <BorrowerDetails />
               </ProtectedRoute>
             }
           />

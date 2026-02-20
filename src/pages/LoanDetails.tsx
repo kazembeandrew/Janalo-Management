@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InterestType } from '@/types';
@@ -160,7 +160,7 @@ export const LoanDetails: React.FC = () => {
         .from('loans')
         .select(`
             *, 
-            borrowers(full_name, address, phone),
+            borrowers(id, full_name, address, phone),
             users!officer_id (email, full_name)
         `)
         .eq('id', id)
@@ -522,6 +522,29 @@ export const LoanDetails: React.FC = () => {
       } catch (e: any) {
           console.error("Reassess error", e);
           toast.error("Failed to update status");
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
+  const handleResubmit = async () => {
+      if (!loan) return;
+      setProcessingAction(true);
+      try {
+          const { error } = await supabase
+            .from('loans')
+            .update({ status: 'pending' })
+            .eq('id', loan.id);
+          
+          if (error) throw error;
+          await addNote(`Application resubmitted for approval by ${profile?.full_name}.`, true);
+          await logAudit('Loan Resubmitted', { borrower: loan.borrowers?.full_name });
+          
+          toast.success("Application resubmitted successfully.");
+          fetchData();
+      } catch (e) {
+          console.error(e);
+          toast.error("Failed to resubmit application.");
       } finally {
           setProcessingAction(false);
       }
@@ -901,6 +924,16 @@ export const LoanDetails: React.FC = () => {
                     </button>
                 </div>
             )}
+
+            {isReassess && isOwner && (
+                <button 
+                    onClick={handleResubmit}
+                    disabled={processingAction}
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
+                >
+                    <Send className="h-4 w-4 mr-1" /> Resubmit for Approval
+                </button>
+            )}
             
             {isExecutive && (
                 <button 
@@ -1001,7 +1034,10 @@ export const LoanDetails: React.FC = () => {
         <div className="px-6 py-5 border-b border-gray-200">
             <div className="flex justify-between items-start">
                 <div>
-                    <h2 className="text-xl font-bold text-gray-900">{loan.borrowers?.full_name}</h2>
+                    <Link to={`/borrowers/${loan.borrower_id}`} className="text-xl font-bold text-gray-900 hover:text-indigo-600 flex items-center">
+                        {loan.borrowers?.full_name}
+                        <ExternalLink className="h-4 w-4 ml-2 opacity-50" />
+                    </Link>
                     <div className="mt-1 text-sm text-gray-500 space-y-1">
                         <p>Loan ID: {loan.id.slice(0, 8)}</p>
                         <div className="flex items-center space-x-2">

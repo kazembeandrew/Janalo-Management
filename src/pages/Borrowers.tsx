@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 9;
 
@@ -246,7 +247,9 @@ export const Borrowers: React.FC = () => {
                     </div>
                 </div>
                 <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex justify-between items-center">
-                    <span className="text-xs text-gray-400">ID: {borrower.id.slice(0, 8)}</span>
+                    <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-900 text-xs font-bold flex items-center">
+                        <ExternalLink className="h-3 w-3 mr-1" /> View Profile
+                    </Link>
                     <div className="flex space-x-3">
                         {isExec && (
                             <button 
