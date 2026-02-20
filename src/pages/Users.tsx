@@ -6,7 +6,7 @@ import {
     Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, 
     AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, 
     Landmark, RefreshCw, Calendar, TrendingUp, Ban, Server, 
-    AlertCircle, Copy, CheckCircle2, UserCog
+    AlertCircle, Copy, CheckCircle2, UserCog, Eraser
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
@@ -300,6 +300,34 @@ export const Users: React.FC = () => {
           await fetchUsers();
       } catch (e: any) {
           toast.error("Delegation failed: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleClearDelegation = async () => {
+      if (!selectedUser) return;
+      
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase
+            .from('users')
+            .update({
+                delegated_role: null,
+                delegation_start: null,
+                delegation_end: null
+            })
+            .eq('id', selectedUser.id);
+          
+          if (error) throw error;
+          
+          await logAudit('Delegation Cleared', { previous_role: selectedUser.delegated_role }, selectedUser.id);
+          toast.success(`Delegation cleared for ${selectedUser.full_name}.`);
+          
+          setShowEditModal(false);
+          await fetchUsers();
+      } catch (e: any) {
+          toast.error("Failed to clear delegation: " + e.message);
       } finally {
           setIsProcessing(false);
       }
@@ -625,15 +653,33 @@ export const Users: React.FC = () => {
                                       <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously. This is ideal for covering leave or temporary projects.
                                   </p>
                               </div>
+                              
+                              {selectedUser.delegated_role && (
+                                  <div className="p-4 bg-white border border-indigo-100 rounded-2xl flex items-center justify-between shadow-sm">
+                                      <div>
+                                          <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Current Delegation</p>
+                                          <p className="text-sm font-bold text-indigo-900">{selectedUser.delegated_role.replace('_', ' ')}</p>
+                                      </div>
+                                      <button 
+                                        onClick={handleClearDelegation}
+                                        disabled={isProcessing}
+                                        className="flex items-center px-3 py-1.5 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition-colors"
+                                      >
+                                          <Eraser className="h-3.5 w-3.5 mr-1.5" />
+                                          Clear Delegation
+                                      </button>
+                                  </div>
+                              )}
+
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                   <div>
-                                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Delegate Role</label>
+                                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Delegate New Role</label>
                                       <select 
                                           className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                                           value={delegationData.role}
                                           onChange={e => setDelegationData({...delegationData, role: e.target.value as UserRole})}
                                       >
-                                          <option value="">-- Clear Delegation --</option>
+                                          <option value="">-- Select Role --</option>
                                           <option value="hr">HR Manager</option>
                                           <option value="accountant">Accountant</option>
                                           <option value="loan_officer">Loan Officer</option>
@@ -652,10 +698,10 @@ export const Users: React.FC = () => {
                               <div className="flex justify-end pt-4">
                                   <button 
                                     onClick={handleSaveDelegation}
-                                    disabled={isProcessing}
+                                    disabled={isProcessing || !delegationData.role}
                                     className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 transition-all active:scale-95"
                                   >
-                                      {delegationData.role ? 'Save Delegation' : 'Clear Delegation'}
+                                      Save New Delegation
                                   </button>
                               </div>
                           </div>
