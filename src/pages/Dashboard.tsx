@@ -1,508 +1,146 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { formatCurrency } from '@/utils/finance';
-import { 
-  DollarSign, 
-  Users, 
-  TrendingUp, 
-  AlertTriangle, 
-  Activity,
-  PieChart as PieChartIcon,
-  Target,
-  Shield,
-  Sparkles,
-  RefreshCw,
-  ArrowUpRight,
-  ArrowDownRight,
-  Wallet
-} from 'lucide-react';
+import { Activity, Sparkles, RefreshCw } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
-import { 
-  PieChart, 
-  Pie, 
-  Cell, 
-  Tooltip, 
-  ResponsiveContainer,
-  Legend,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid
-} from 'recharts';
+import { AccountantView } from '@/components/dashboard/AccountantView';
+import { HRView } from '@/components/dashboard/HRView';
+import { StatCard } from '@/components/dashboard/StatCard';
+import { DollarSign, Users, AlertTriangle, Target } from 'lucide-react';
+import { formatCurrency } from '@/utils/finance';
 
 export const Dashboard: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const [stats, setStats] = useState({
     totalPortfolio: 0,
     totalPrincipalOutstanding: 0,
     totalInterestOutstanding: 0,
     activeLoans: 0,
     totalClients: 0,
-    parCount: 0, // Portfolio At Risk (> 30 Days)
+    parCount: 0,
     interestEarned: 0,
     totalDisbursed: 0,
     recoveryRate: 0,
     completedLoans: 0
   });
-  const [chartData, setChartData] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
+  const [profitData, setProfitData] = useState<any[]>([]);
   const [officerStats, setOfficerStats] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const isExec = profile?.role === 'admin' || profile?.role === 'ceo';
-  const titlePrefix = isExec ? 'Total' : 'My';
+  const isHR = effectiveRoles.includes('hr');
+  const isAccountant = effectiveRoles.includes('accountant');
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
 
   useEffect(() => {
     fetchDashboardData();
-    
-    // Realtime subscription to keep dashboard live
-    const channel = supabase
-      .channel('dashboard-updates')
+    const channel = supabase.channel('dashboard-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'repayments' }, () => fetchDashboardData())
       .subscribe();
-
-    if (isExec) {
-        runCleanup();
-    }
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { supabase.removeChannel(channel); };
   }, [profile]);
-
-  const runCleanup = async () => {
-      try {
-          await supabase.rpc('cleanup_old_applications');
-      } catch (e) {
-          console.error("Cleanup failed", e);
-      }
-  };
 
   const fetchDashboardData = async () => {
     try {
-      // Only show loading spinner on first load to avoid flickering on realtime updates
-      if (stats.totalPortfolio === 0) setLoading(true);
+      setLoading(true);
+      const { data: rpcStats } = await supabase.rpc('get_dashboard_stats');
+      const { data: revData } = await supabase.rpc('get_monthly_revenue');
+      const { data: offStats } = await supabase.rpc('get_officer_performance');
+      const { data: expenses } = await supabase.from('expenses').select('amount, date');
 
-      // 1. Fetch Main Stats from RPC
-      const { data: rpcStats, error: statsError } = await supabase.rpc('get_dashboard_stats');
-      if (statsError) throw statsError;
-
-      // 2. Fetch Revenue Data from RPC
-      const { data: revData, error: revError } = await supabase.rpc('get_monthly_revenue');
-      if (revError) throw revError;
-
-      // 3. Fetch Officer Stats if Exec
-      let offStats: any[] = [];
-      if (isExec) {
-          const { data, error } = await supabase.rpc('get_officer_performance');
-          if (error) console.error("Officer stats error", error);
-          else offStats = data || [];
-      }
-
-      // Process Stats
       if (rpcStats) {
-        const totalPrincipal = rpcStats.principal_outstanding || 0;
-        const totalInterest = rpcStats.interest_outstanding || 0;
-        const totalPortfolio = totalPrincipal + totalInterest;
-        const completed = rpcStats.completed_count || 0;
         const active = rpcStats.active_count || 0;
-        const defaulted = rpcStats.defaulted_count || 0;
-        const totalLoans = active + completed + defaulted; 
+        const completed = rpcStats.completed_count || 0;
+        const totalLoans = active + completed + (rpcStats.defaulted_count || 0);
         
-        const recoveryRate = totalLoans > 0 
-          ? (completed / totalLoans) * 100 
-          : 0;
-
-        const currentStats = {
-          totalPortfolio,
-          totalPrincipalOutstanding: totalPrincipal,
-          totalInterestOutstanding: totalInterest,
+        setStats({
+          totalPortfolio: (rpcStats.principal_outstanding || 0) + (rpcStats.interest_outstanding || 0),
+          totalPrincipalOutstanding: rpcStats.principal_outstanding || 0,
+          totalInterestOutstanding: rpcStats.interest_outstanding || 0,
           activeLoans: active,
           totalClients: rpcStats.total_clients || 0,
           parCount: rpcStats.par_count || 0,
           interestEarned: rpcStats.earned_interest || 0,
           totalDisbursed: rpcStats.total_disbursed || 0,
-          recoveryRate,
+          recoveryRate: totalLoans > 0 ? (completed / totalLoans) * 100 : 0,
           completedLoans: completed
-        };
-
-        setStats(currentStats);
-
-        // Chart Data
-        setChartData([
-          { name: 'Active', value: active },
-          { name: 'Completed', value: completed },
-          { name: 'At Risk (>30d)', value: rpcStats.par_count || 0 },
-        ]);
-
-        const formattedRevenue = (revData || []).map((d: any) => ({
-            name: new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
-            income: Number(d.income)
-        }));
-        setRevenueData(formattedRevenue);
-        setOfficerStats(offStats.map((o: any) => ({
-            id: o.officer_id,
-            name: o.officer_name,
-            activeCount: o.active_count,
-            portfolioValue: o.portfolio_value,
-            atRisk: o.at_risk_count
-        })));
+        });
       }
 
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
+      setRevenueData((revData || []).map((d: any) => ({
+          name: new Date(d.month + '-01').toLocaleDateString('en-US', { month: 'short' }),
+          income: Number(d.income)
+      })));
+
+      setOfficerStats((offStats || []).map((o: any) => ({
+          id: o.officer_id, name: o.officer_name, activeCount: o.active_count, portfolioValue: o.portfolio_value, atRisk: o.at_risk_count
+      })));
+
+      const groupedExp: any = {};
+      expenses?.forEach(e => { const m = e.date.substring(0, 7); groupedExp[m] = (groupedExp[m] || 0) + Number(e.amount); });
+      setProfitData((revData || []).map((r: any) => ({
+          month: r.month, income: Number(r.income), expense: groupedExp[r.month] || 0, profit: Number(r.income) - (groupedExp[r.month] || 0)
+      })));
+
+    } finally { setLoading(false); }
   };
 
   const generateAIInsights = async () => {
     setIsAnalyzing(true);
-    const insights = await analyzeFinancialData({
-      stats,
-      revenue: revenueData,
-      officers: officerStats
-    });
+    const insights = await analyzeFinancialData({ stats, revenue: revenueData, officers: officerStats });
     setAiInsights(insights);
     setIsAnalyzing(false);
   };
 
-  const StatCard = ({ title, value, icon: Icon, color, subtitle }: any) => (
-    <div className="bg-white overflow-hidden rounded-xl shadow-sm border border-gray-100 p-5 flex items-start justify-between">
-        <div>
-            <p className="text-sm font-medium text-gray-500 mb-1">{title}</p>
-            <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
-            {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
-        </div>
-        <div className={`p-3 rounded-lg ${color} bg-opacity-10`}>
-            <Icon className={`h-6 w-6 ${color.replace('bg-', 'text-')}`} />
-        </div>
-    </div>
-  );
-
-  const COLORS = ['#4F46E5', '#10B981', '#EF4444'];
-
-  if (loading) return (
-    <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-    </div>
-  );
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>;
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isExec ? 'Executive Dashboard' : 'My Dashboard'}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {isExec 
-              ? 'Overview of financial performance and operational metrics.' 
-              : `Welcome back, ${profile?.full_name}. Here is your portfolio summary.`}
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
+          <p className="text-sm text-gray-500 mt-1">Welcome back, {profile?.full_name}. Here is your department summary.</p>
         </div>
         <div className="mt-4 md:mt-0 flex items-center space-x-3">
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100 animate-pulse">
-            <Activity className="w-3 h-3 mr-1" /> Live Updates Active
-          </span>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">
-            {profile?.role?.replace('_', ' ').toUpperCase()}
-          </span>
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100 animate-pulse"><Activity className="w-3 h-3 mr-1" /> Live Updates</span>
         </div>
       </div>
 
-      {/* Top Stats Row */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard 
-          title="Portfolio Value" 
-          value={formatCurrency(stats.totalPortfolio)} 
-          subtitle="Outstanding Principal + Interest"
-          icon={DollarSign}
-          color="bg-indigo-600"
-        />
-        <StatCard 
-          title={`${titlePrefix} Active Loans`}
-          value={stats.activeLoans} 
-          subtitle={`${stats.totalClients} Unique Clients`}
-          icon={Activity}
-          color="bg-blue-500"
-        />
-        <StatCard 
-          title="Portfolio At Risk" 
-          value={stats.parCount} 
-          subtitle=">30 Days Overdue"
-          icon={AlertTriangle}
-          color="bg-red-500"
-        />
-        <StatCard 
-          title="Recovery Rate" 
-          value={`${stats.recoveryRate.toFixed(1)}%`} 
-          subtitle={`${stats.completedLoans} Loans Completed`}
-          icon={Target}
-          color="bg-emerald-500"
-        />
-      </div>
-
-      {/* Fund Management / Cash Flow Summary */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-              <h3 className="font-bold text-gray-900 flex items-center">
-                  <Wallet className="h-5 w-5 mr-2 text-indigo-600" />
-                  Fund Management Summary
-              </h3>
-              <span className="text-xs text-gray-500 italic">Real-time capital tracking</span>
+      {isAccountant && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} />}
+      {isHR && <HRView stats={stats} officerStats={officerStats} />}
+      
+      {isExec && !isAccountant && !isHR && (
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard title="Portfolio Value" value={formatCurrency(stats.totalPortfolio)} icon={DollarSign} color="bg-indigo-600" />
+              <StatCard title="Active Loans" value={stats.activeLoans} icon={Activity} color="bg-blue-500" />
+              <StatCard title="Portfolio At Risk" value={stats.parCount} icon={AlertTriangle} color="bg-red-500" />
+              <StatCard title="Recovery Rate" value={`${stats.recoveryRate.toFixed(1)}%`} icon={Target} color="bg-emerald-500" />
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
-              <div className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-500">Total Disbursed</span>
-                      <ArrowUpRight className="h-4 w-4 text-red-500" />
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalDisbursed)}</p>
-                  <p className="text-xs text-gray-400 mt-1">Total capital deployed to clients</p>
-              </div>
-              <div className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-500">Interest Income</span>
-                      <ArrowDownRight className="h-4 w-4 text-green-500" />
-                  </div>
-                  <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.interestEarned)}</p>
-                  <p className="text-xs text-gray-400 mt-1">Realized profit from completed loans</p>
-              </div>
-              <div className="p-6">
-                  <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-gray-500">Active Principal</span>
-                      <Activity className="h-4 w-4 text-indigo-500" />
-                  </div>
-                  <p className="text-2xl font-bold text-indigo-900">{formatCurrency(stats.totalPrincipalOutstanding)}</p>
-                  <p className="text-xs text-gray-400 mt-1">Capital currently in the field</p>
-              </div>
-          </div>
-      </div>
+      )}
 
-      {/* AI Insights Section */}
       <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
-        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <Sparkles className="w-32 h-32 text-white" />
-        </div>
-        
         <div className="relative z-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 <div className="flex items-center">
-                    <div className="p-2 bg-indigo-500/20 rounded-lg mr-3">
-                        <Sparkles className="h-5 w-5 text-indigo-300" />
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-bold">AI Financial Insights</h3>
-                        <p className="text-sm text-indigo-200/70 italic">Powered by Gemini 2.0 Flash</p>
-                    </div>
+                    <div className="p-2 bg-indigo-500/20 rounded-lg mr-3"><Sparkles className="h-5 w-5 text-indigo-300" /></div>
+                    <div><h3 className="text-lg font-bold">AI Financial Insights</h3><p className="text-sm text-indigo-200/70 italic">Powered by Gemini 2.0 Flash</p></div>
                 </div>
-                <button 
-                    onClick={generateAIInsights}
-                    disabled={isAnalyzing}
-                    className="inline-flex items-center px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20"
-                >
-                    {isAnalyzing ? (
-                        <>
-                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                            Analyzing Portfolio...
-                        </>
-                    ) : (
-                        <>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            Generate Insights
-                        </>
-                    )}
+                <button onClick={generateAIInsights} disabled={isAnalyzing} className="inline-flex items-center px-4 py-2 bg-indigo-500 hover:bg-indigo-400 disabled:bg-indigo-800 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-indigo-500/20">
+                    {isAnalyzing ? <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Analyzing...</> : <><Sparkles className="h-4 w-4 mr-2" /> Generate Insights</>}
                 </button>
             </div>
-
             {aiInsights.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {aiInsights.map((insight, idx) => (
-                        <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-start">
-                            <div className="h-2 w-2 rounded-full bg-indigo-400 mt-2 mr-3 shrink-0" />
-                            <p className="text-sm leading-relaxed text-indigo-50">{insight}</p>
-                        </div>
+                        <div key={idx} className="bg-white/5 border border-white/10 p-4 rounded-xl flex items-start"><div className="h-2 w-2 rounded-full bg-indigo-400 mt-2 mr-3 shrink-0" /><p className="text-sm leading-relaxed text-indigo-50">{insight}</p></div>
                     ))}
                 </div>
-            ) : (
-                <div className="text-center py-8 border border-dashed border-white/20 rounded-xl bg-white/5">
-                    <p className="text-indigo-200/50 text-sm">Click the button to generate real-time AI analysis of your portfolio performance.</p>
-                </div>
-            )}
+            ) : <div className="text-center py-8 border border-dashed border-white/20 rounded-xl bg-white/5"><p className="text-indigo-200/50 text-sm">Click the button to generate real-time AI analysis.</p></div>}
         </div>
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Revenue Trend Chart (Large) */}
-        <div className="bg-white rounded-xl shadow-sm p-6 lg:col-span-2 border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h3 className="text-lg font-bold text-gray-900">Revenue Trend</h3>
-                    <p className="text-sm text-gray-500">Realized Income (Interest & Penalties)</p>
-                </div>
-                <div className="p-2 bg-green-50 rounded-lg">
-                    <TrendingUp className="h-5 w-5 text-green-600" />
-                </div>
-            </div>
-            
-            <div className="h-72 w-full">
-                {revenueData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={revenueData}>
-                            <defs>
-                                <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#10B981" stopOpacity={0.1}/>
-                                    <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-                            <XAxis 
-                                dataKey="name" 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{fill: '#9CA3AF', fontSize: 12}}
-                                dy={10}
-                            />
-                            <YAxis 
-                                axisLine={false} 
-                                tickLine={false} 
-                                tick={{fill: '#9CA3AF', fontSize: 12}}
-                                tickFormatter={(val) => `${val / 1000}k`}
-                            />
-                            <Tooltip 
-                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                                formatter={(value: any) => [formatCurrency(value), 'Revenue']}
-                            />
-                            <Area 
-                                type="monotone" 
-                                dataKey="income" 
-                                stroke="#10B981" 
-                                strokeWidth={2}
-                                fillOpacity={1} 
-                                fill="url(#colorIncome)" 
-                            />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                ) : (
-                    <div className="h-full flex items-center justify-center text-gray-400 text-sm">
-                        No revenue data available yet.
-                    </div>
-                )}
-            </div>
-        </div>
-
-        {/* Portfolio Pie Chart (Side) */}
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 flex flex-col">
-          <h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center">
-            <PieChartIcon className="h-5 w-5 mr-2 text-indigo-500" />
-            Risk Distribution
-          </h3>
-          <div className="flex-1 min-h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={chartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend verticalAlign="bottom" height={36} iconType="circle"/>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="mt-4 pt-4 border-t border-gray-100">
-             <div className="flex justify-between items-center text-sm">
-                 <span className="text-gray-500">Active Principal</span>
-                 <span className="font-bold text-indigo-900">{formatCurrency(stats.totalPrincipalOutstanding)}</span>
-             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Admin Section: Officer Performance */}
-      {isExec && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-100 flex justify-between items-center">
-                  <h3 className="text-lg font-bold text-gray-900 flex items-center">
-                      <Shield className="h-5 w-5 mr-2 text-indigo-600" />
-                      Loan Officer Performance
-                  </h3>
-                  <button className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">View All Users</button>
-              </div>
-              <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                          <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Officer</th>
-                              <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Active Loans</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Portfolio Value</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">At Risk</th>
-                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Performance</th>
-                          </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                          {officerStats.length === 0 ? (
-                              <tr><td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">No officers found or no active data.</td></tr>
-                          ) : (
-                              officerStats.map((officer) => (
-                                  <tr key={officer.id} className="hover:bg-gray-50 transition-colors">
-                                      <td className="px-6 py-4 whitespace-nowrap">
-                                          <div className="flex items-center">
-                                              <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3 text-xs">
-                                                  {(officer.name || 'U').charAt(0)}
-                                              </div>
-                                              <div className="text-sm font-medium text-gray-900">{officer.name || 'Unknown'}</div>
-                                          </div>
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                                          {officer.activeCount}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
-                                          {formatCurrency(officer.portfolioValue)}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                                          {officer.atRisk > 0 ? (
-                                              <span className="text-red-600 font-medium flex items-center justify-end">
-                                                  <AlertTriangle className="h-3 w-3 mr-1" /> {officer.atRisk}
-                                              </span>
-                                          ) : (
-                                              <span className="text-green-600">-</span>
-                                          )}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-right">
-                                          <div className="flex items-center justify-end">
-                                              <div className="w-16 bg-gray-200 rounded-full h-1.5 mr-2">
-                                                  <div 
-                                                    className={`h-1.5 rounded-full ${officer.atRisk > 2 ? 'bg-red-500' : 'bg-green-500'}`} 
-                                                    style={{ width: officer.atRisk > 0 ? '60%' : '95%' }}
-                                                  ></div>
-                                              </div>
-                                          </div>
-                                      </td>
-                                  </tr>
-                              ))
-                          )}
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      )}
     </div>
   );
 };
