@@ -259,23 +259,38 @@ export const Users: React.FC = () => {
   };
 
   const handleSaveDelegation = async () => {
-      if (!selectedUser || !delegationData.role) return;
+      if (!selectedUser) return;
+      
+      // If setting a role, check if this role is already delegated to someone else
+      if (delegationData.role) {
+          const existingDelegate = users.find(u => 
+              u.id !== selectedUser.id && 
+              u.delegated_role === delegationData.role &&
+              u.is_active
+          );
+
+          if (existingDelegate) {
+              toast.error(`The role ${delegationData.role.replace('_', ' ')} is already delegated to ${existingDelegate.full_name}. Only one user can hold a delegated role at a time.`);
+              return;
+          }
+      }
       
       setIsProcessing(true);
       try {
           const { error } = await supabase
             .from('users')
             .update({
-                delegated_role: delegationData.role,
-                delegation_start: delegationData.start,
-                delegation_end: delegationData.end || null
+                delegated_role: delegationData.role || null,
+                delegation_start: delegationData.role ? delegationData.start : null,
+                delegation_end: (delegationData.role && delegationData.end) ? delegationData.end : null
             })
             .eq('id', selectedUser.id);
           
           if (error) throw error;
           
-          await logAudit('Role Delegated', { role: delegationData.role, end: delegationData.end }, selectedUser.id);
-          toast.success(`Duties delegated to ${selectedUser.full_name}.`);
+          const action = delegationData.role ? 'Role Delegated' : 'Delegation Cleared';
+          await logAudit(action, { role: delegationData.role, end: delegationData.end }, selectedUser.id);
+          toast.success(delegationData.role ? `Duties delegated to ${selectedUser.full_name}.` : `Delegation cleared for ${selectedUser.full_name}.`);
           setShowEditModal(false);
           fetchUsers();
       } catch (e: any) {
@@ -613,7 +628,7 @@ export const Users: React.FC = () => {
                                           value={delegationData.role}
                                           onChange={e => setDelegationData({...delegationData, role: e.target.value as UserRole})}
                                       >
-                                          <option value="">-- Select Role --</option>
+                                          <option value="">-- Clear Delegation --</option>
                                           <option value="hr">HR Manager</option>
                                           <option value="accountant">Accountant</option>
                                           <option value="loan_officer">Loan Officer</option>
@@ -632,10 +647,10 @@ export const Users: React.FC = () => {
                               <div className="flex justify-end pt-4">
                                   <button 
                                     onClick={handleSaveDelegation}
-                                    disabled={isProcessing || !delegationData.role}
+                                    disabled={isProcessing}
                                     className="bg-indigo-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-indigo-100 transition-all active:scale-95"
                                   >
-                                      Save Delegation
+                                      {delegationData.role ? 'Save Delegation' : 'Clear Delegation'}
                                   </button>
                               </div>
                           </div>
