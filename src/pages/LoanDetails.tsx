@@ -6,9 +6,10 @@ import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
 import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
+import { exportToCSV } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -734,6 +735,18 @@ export const LoanDetails: React.FC = () => {
       navigate(`/loans/edit/${loan.id}`);
   };
 
+  const handleExportRepayments = () => {
+      if (!loan || repayments.length === 0) return;
+      const data = repayments.map(r => ({
+          Date: new Date(r.payment_date).toLocaleDateString(),
+          Total_Paid: r.amount_paid,
+          Principal: r.principal_paid,
+          Interest: r.interest_paid,
+          Penalty: r.penalty_paid
+      }));
+      exportToCSV(data, `Repayments_${loan.borrowers?.full_name.replace(/\s+/g, '_')}`);
+  };
+
   const openDecisionModal = (type: 'approve' | 'reject' | 'reassess') => {
       setDecisionReason('');
       setSendToChat(false);
@@ -1039,27 +1052,37 @@ export const LoanDetails: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block">
         <div className="bg-white shadow rounded-lg overflow-hidden h-full print:shadow-none print:border print:mb-6">
-            <div className="border-b border-gray-200 flex print:hidden">
-                <button
-                    onClick={() => setLeftTab('repayments')}
-                    className={`px-6 py-4 text-sm font-medium focus:outline-none ${
-                        leftTab === 'repayments' 
-                        ? 'border-b-2 border-indigo-500 text-indigo-600 bg-gray-50' 
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                    Repayment History
-                </button>
-                <button
-                    onClick={() => setLeftTab('schedule')}
-                    className={`px-6 py-4 text-sm font-medium focus:outline-none flex items-center ${
-                        leftTab === 'schedule' 
-                        ? 'border-b-2 border-indigo-500 text-indigo-600 bg-gray-50' 
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                >
-                    <Calendar className="h-4 w-4 mr-2" /> Amortization Schedule
-                </button>
+            <div className="border-b border-gray-200 flex justify-between items-center pr-4 print:hidden">
+                <div className="flex">
+                    <button
+                        onClick={() => setLeftTab('repayments')}
+                        className={`px-6 py-4 text-sm font-medium focus:outline-none ${
+                            leftTab === 'repayments' 
+                            ? 'border-b-2 border-indigo-500 text-indigo-600 bg-gray-50' 
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        Repayment History
+                    </button>
+                    <button
+                        onClick={() => setLeftTab('schedule')}
+                        className={`px-6 py-4 text-sm font-medium focus:outline-none flex items-center ${
+                            leftTab === 'schedule' 
+                            ? 'border-b-2 border-indigo-500 text-indigo-600 bg-gray-50' 
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        <Calendar className="h-4 w-4 mr-2" /> Amortization Schedule
+                    </button>
+                </div>
+                {leftTab === 'repayments' && repayments.length > 0 && (
+                    <button 
+                        onClick={handleExportRepayments}
+                        className="text-xs font-bold text-indigo-600 flex items-center hover:underline"
+                    >
+                        <Download className="h-3 w-3 mr-1" /> Export CSV
+                    </button>
+                )}
             </div>
             
             <div className="overflow-x-auto">
@@ -1647,7 +1670,7 @@ export const LoanDetails: React.FC = () => {
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
                 <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowReassessModal(false)}></div>
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl w-full">
                     <div className="p-6">
                         <div className="flex items-center mb-4">
                              <div className="bg-purple-100 rounded-full p-2 mr-3">

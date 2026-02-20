@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { Calendar, Phone, Mail, CheckCircle, AlertCircle, Clock } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { Calendar, Phone, Mail, CheckCircle, AlertCircle, Clock, ChevronRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export const Collections: React.FC = () => {
   const { profile } = useAuth();
@@ -33,19 +33,12 @@ export const Collections: React.FC = () => {
       const { data, error } = await query;
       if (error) throw error;
 
-      // Filter for loans where a payment is likely due (simplified logic)
-      // In a real app, we'd check the specific amortization schedule dates
       setUpcomingLoans(data || []);
     } catch (error) {
       console.error(error);
     } finally {
       setLoading(false);
     }
-  };
-
-  const sendReminder = (loan: Loan) => {
-      toast.success(`Reminder sent to ${loan.borrowers?.full_name}`);
-      // In a real app, this would trigger an SMS or Email via an Edge Function
   };
 
   return (
@@ -115,13 +108,13 @@ export const Collections: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatCurrency(loan.principal_outstanding + loan.interest_outstanding)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                    <button 
-                        onClick={() => sendReminder(loan)}
-                        className="inline-flex items-center px-3 py-1 border border-indigo-600 text-indigo-600 rounded-md hover:bg-indigo-50"
+                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <Link 
+                        to={`/loans/${loan.id}`}
+                        className="inline-flex items-center px-3 py-1 text-indigo-600 hover:text-indigo-900 font-medium"
                     >
-                        <Mail className="h-3 w-3 mr-1" /> Remind
-                    </button>
+                        View Details <ChevronRight className="h-4 w-4 ml-1" />
+                    </Link>
                   </td>
                 </tr>
               ))

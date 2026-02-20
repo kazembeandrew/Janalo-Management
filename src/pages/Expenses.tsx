@@ -11,13 +11,13 @@ export const Expenses: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({
-    category: 'Travel',
+    category: 'Salaries/Wages',
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0]
   });
 
-  const categories = ['Travel', 'Office Supplies', 'Utilities', 'Marketing', 'Legal', 'Other'];
+  const categories = ['Salaries/Wages', 'Travel', 'Office Supplies', 'Utilities', 'Marketing', 'Legal', 'Other'];
 
   useEffect(() => {
     fetchExpenses();
@@ -51,7 +51,7 @@ export const Expenses: React.FC = () => {
       
       setIsModalOpen(false);
       setFormData({
-        category: 'Travel',
+        category: 'Salaries/Wages',
         description: '',
         amount: '',
         date: new Date().toISOString().split('T')[0]
@@ -76,7 +76,7 @@ export const Expenses: React.FC = () => {
       <div className="flex justify-between items-center">
         <div>
             <h1 className="text-2xl font-bold text-gray-900">Expenses</h1>
-            <p className="text-sm text-gray-500">Track operational costs</p>
+            <p className="text-sm text-gray-500">Track operational costs including payroll</p>
         </div>
         <button
             onClick={() => setIsModalOpen(true)}
