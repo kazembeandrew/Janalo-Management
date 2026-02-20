@@ -1,6 +1,18 @@
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
+// Type definition for Vite environment variables
+interface ImportMetaEnv {
+  readonly VITE_GEMINI_API_KEY: string;
+  readonly VITE_SUPABASE_URL: string;
+  readonly VITE_SUPABASE_ANON_KEY: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
+}
+
+const apiKey = (import.meta as unknown as ImportMeta).env.VITE_GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export const analyzeFinancialData = async (data: any): Promise<string[]> => {
   try {
@@ -19,7 +31,6 @@ export const analyzeFinancialData = async (data: any): Promise<string[]> => {
     const response = await result.response;
     const text = response.text();
     
-    // Clean up potential markdown formatting from AI
     const jsonStr = text.replace(/```json|```/g, "").trim();
     return JSON.parse(jsonStr);
   } catch (error) {
