@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 /**
  * Converts an array of objects into a CSV string and triggers a download.
@@ -67,7 +67,7 @@ export const generateReceiptPDF = (loan: any, repayment: any, officerName: strin
     doc.text(`Loan ID: ${loan.id.slice(0, 8)}`, 20, 80);
     
     // Payment Table
-    (doc as any).autoTable({
+    autoTable(doc, {
         startY: 90,
         head: [['Description', 'Amount (MK)']],
         body: [
@@ -109,7 +109,7 @@ export const generateTablePDF = (title: string, headers: string[], rows: any[][]
     doc.setFontSize(10);
     doc.text(`Generated on: ${new Date().toLocaleString()}`, 105, 22, { align: 'center' });
     
-    (doc as any).autoTable({
+    autoTable(doc, {
         startY: 30,
         head: [headers],
         body: rows,
