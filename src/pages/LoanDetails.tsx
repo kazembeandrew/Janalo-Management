@@ -11,6 +11,7 @@ import {
     FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
+import toast from 'react-hot-toast';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -92,15 +93,31 @@ export const LoanDetails: React.FC = () => {
           const newOfficerName = officers.find(o => o.id === selectedOfficer)?.full_name || 'New Officer';
           await addNote(`Loan reassigned to ${newOfficerName} by ${profile?.full_name}.`, true);
           
-          alert(`Loan successfully reassigned to ${newOfficerName}.`);
+          await createNotification(
+              selectedOfficer,
+              'Loan Reassigned',
+              `A loan for ${loan.borrowers?.full_name} has been reassigned to you.`,
+              `/loans/${loan.id}`
+          );
+
+          toast.success(`Loan reassigned to ${newOfficerName}`);
           setShowReassignModal(false);
           fetchData();
       } catch (error) {
           console.error(error);
-          alert('Failed to reassign loan.');
+          toast.error('Failed to reassign loan.');
       } finally {
           setProcessingAction(false);
       }
+  };
+
+  const createNotification = async (userId: string, title: string, message: string, link: string) => {
+      await supabase.from('notifications').insert({
+          user_id: userId,
+          title,
+          message,
+          link
+      });
   };
 
   // Calculate Amortization Schedule
@@ -214,7 +231,7 @@ export const LoanDetails: React.FC = () => {
 
   const captureLocation = () => {
       if (!navigator.geolocation) {
-          alert('Geolocation is not supported by your browser');
+          toast.error('Geolocation is not supported');
           return;
       }
       setLocating(true);
@@ -225,10 +242,11 @@ export const LoanDetails: React.FC = () => {
                   lng: position.coords.longitude
               });
               setLocating(false);
+              toast.success('Location tagged');
           },
           (error) => {
               console.error(error);
-              alert('Unable to retrieve location. Please check permissions.');
+              toast.error('Unable to retrieve location');
               setLocating(false);
           },
           { enableHighAccuracy: true }
@@ -321,7 +339,7 @@ export const LoanDetails: React.FC = () => {
 
       } catch (error) {
           console.error("Failed to send direct message", error);
-          alert("Failed to open chat.");
+          toast.error("Failed to open chat.");
       }
   };
 
@@ -343,7 +361,14 @@ export const LoanDetails: React.FC = () => {
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
 
-        alert(`Success: Loan for ${loan.borrowers?.full_name} has been APPROVED.`);
+        await createNotification(
+            loan.officer_id,
+            'Loan Approved',
+            `The loan for ${loan.borrowers?.full_name} has been approved.`,
+            `/loans/${loan.id}`
+        );
+
+        toast.success(`Loan for ${loan.borrowers?.full_name} approved.`);
 
         const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
@@ -365,7 +390,7 @@ export const LoanDetails: React.FC = () => {
         fetchData();
       } catch (error) {
           console.error(error);
-          alert('Error approving loan: ' + (error as any).message);
+          toast.error('Error approving loan');
       } finally {
           setProcessingAction(false);
       }
@@ -374,7 +399,7 @@ export const LoanDetails: React.FC = () => {
   const handleRejectLoan = async () => {
       if (!loan) return;
       if (!decisionReason.trim()) {
-          alert("Please provide a reason for rejection.");
+          toast.error("Please provide a reason for rejection.");
           return;
       }
       setProcessingAction(true);
@@ -389,7 +414,14 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
 
-        alert(`Loan for ${loan.borrowers?.full_name} has been REJECTED.`);
+        await createNotification(
+            loan.officer_id,
+            'Loan Rejected',
+            `The loan for ${loan.borrowers?.full_name} was rejected.`,
+            `/loans/${loan.id}`
+        );
+
+        toast.success(`Loan for ${loan.borrowers?.full_name} rejected.`);
 
         const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
@@ -409,7 +441,7 @@ export const LoanDetails: React.FC = () => {
         fetchData();
       } catch (error) {
           console.error(error);
-          alert('Error rejecting loan: ' + (error as any).message);
+          toast.error('Error rejecting loan');
       } finally {
           setProcessingAction(false);
       }
@@ -418,7 +450,7 @@ export const LoanDetails: React.FC = () => {
   const handleReassess = async () => {
       if (!loan) return;
       if (!decisionReason.trim()) {
-          alert("Please provide instructions for reassessment.");
+          toast.error("Please provide instructions for reassessment.");
           return;
       }
       setProcessingAction(true);
@@ -432,7 +464,14 @@ export const LoanDetails: React.FC = () => {
           if (error) throw error;
           await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
 
-          alert(`Success: Application returned for REASSESSMENT.`);
+          await createNotification(
+              loan.officer_id,
+              'Reassessment Required',
+              `The application for ${loan.borrowers?.full_name} needs reassessment.`,
+              `/loans/${loan.id}`
+          );
+
+          toast.success(`Application returned for reassessment.`);
 
           const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
@@ -452,7 +491,7 @@ export const LoanDetails: React.FC = () => {
           fetchData();
       } catch (e: any) {
           console.error("Reassess error", e);
-          alert("Failed to update status: " + (e.message || "Unknown error"));
+          toast.error("Failed to update status");
       } finally {
           setProcessingAction(false);
       }
@@ -461,7 +500,7 @@ export const LoanDetails: React.FC = () => {
   const handleDefault = async () => {
       if (!loan) return;
       if (!decisionReason.trim()) {
-          alert("Please provide a reason/justification for marking this as Bad Debt.");
+          toast.error("Please provide a reason for marking this as Bad Debt.");
           return;
       }
       setProcessingAction(true);
@@ -476,12 +515,13 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`MARKED AS BAD DEBT (Defaulted) by ${profile?.full_name}. Justification: ${decisionReason}`, true);
         
+        toast.success('Loan marked as defaulted');
         setShowDefaultModal(false);
         setDecisionReason('');
         fetchData();
       } catch (error) {
           console.error(error);
-          alert('Error updating status');
+          toast.error('Error updating status');
       } finally {
           setProcessingAction(false);
       }
@@ -502,11 +542,12 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`Late Fee of ${formatCurrency(penaltyAmount)} applied.`, true);
 
+        toast.success('Late fee applied');
         setShowPenaltyModal(false);
         setPenaltyAmount(0);
         fetchData();
     } catch (error) {
-        alert('Failed to apply penalty');
+        toast.error('Failed to apply penalty');
     }
   };
 
@@ -578,8 +619,10 @@ export const LoanDetails: React.FC = () => {
 
       if (isCompleted) {
           await addNote('Loan fully repaid and marked as Completed.', true);
+          toast.success('Loan fully repaid!');
       } else {
           await addNote(`Repayment of ${formatCurrency(Number(repayAmount))} recorded.`, true);
+          toast.success('Repayment recorded');
       }
 
       setShowRepayModal(false);
@@ -588,7 +631,7 @@ export const LoanDetails: React.FC = () => {
 
     } catch (error) {
       console.error("Repayment failed", error);
-      alert("Failed to record repayment");
+      toast.error("Failed to record repayment");
     }
   };
 
@@ -597,6 +640,7 @@ export const LoanDetails: React.FC = () => {
       if (!newNote.trim()) return;
       await addNote(newNote, false);
       setNewNote('');
+      toast.success('Note added');
   };
 
   const handleRecordVisit = async (e: React.FormEvent) => {
@@ -628,6 +672,7 @@ export const LoanDetails: React.FC = () => {
           const locationText = visitLocation ? ' (with Geotag)' : '';
           await addNote(`Official Client Visitation recorded on ${visitDate}${locationText}.`, true);
           
+          toast.success('Visitation recorded');
           setShowVisitModal(false);
           setVisitNote('');
           setVisitImageBlob(null);
@@ -636,7 +681,7 @@ export const LoanDetails: React.FC = () => {
           fetchNotes();
       } catch (error) {
           console.error(error);
-          alert('Failed to record visitation');
+          toast.error('Failed to record visitation');
       } finally {
           setProcessingAction(false);
       }
@@ -644,15 +689,16 @@ export const LoanDetails: React.FC = () => {
 
   const handleDelete = async () => {
       if (!loan) return;
-      if (!window.confirm("Are you sure you want to permanently delete this application? This action cannot be undone.")) return;
+      if (!window.confirm("Are you sure you want to permanently delete this application?")) return;
       
       try {
           const { error } = await supabase.from('loans').delete().eq('id', loan.id);
           if (error) throw error;
+          toast.success('Application deleted');
           navigate('/loans');
       } catch (error) {
           console.error(error);
-          alert('Failed to delete loan application.');
+          toast.error('Failed to delete application');
       }
   };
 

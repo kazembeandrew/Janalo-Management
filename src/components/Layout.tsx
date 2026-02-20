@@ -16,6 +16,8 @@ import {
   MessageSquare,
   Shield
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
+import { ToastProvider } from './ToastProvider';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -34,7 +36,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const channel = supabase
       .channel('global-notifications')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
-          console.log('Message change detected, fetching counts...');
           fetchCounts();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchCounts())
@@ -72,6 +73,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      <ToastProvider />
+      
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
         <div 
@@ -92,17 +95,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           </button>
         </div>
 
-        <div className="px-6 py-4">
-          <div className="text-xs uppercase text-indigo-300 font-semibold tracking-wider mb-2">
-            {profile?.role?.replace('_', ' ')}
+        <div className="px-6 py-4 border-b border-indigo-800 flex justify-between items-center">
+          <div className="overflow-hidden">
+            <div className="text-xs uppercase text-indigo-300 font-semibold tracking-wider mb-1">
+              {profile?.role?.replace('_', ' ')}
+            </div>
+            <div className="font-medium truncate text-sm">{profile?.full_name}</div>
           </div>
-          <div className="font-medium truncate">{profile?.full_name}</div>
-          <div className="text-sm text-indigo-300 truncate">{profile?.email}</div>
+          <NotificationBell />
         </div>
 
         <nav className="mt-4 px-3 space-y-1">
           {navigation.map((item) => {
-            // Filter based on role
             if (profile?.role && !item.roles.includes(profile.role)) {
               return null;
             }
@@ -122,7 +126,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <item.icon className="mr-3 h-5 w-5" />
                 {item.name}
                 
-                {/* Notification Badge */}
                 {item.badge !== undefined && item.badge > 0 && (
                     <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
                         {item.badge > 99 ? '99+' : item.badge}
@@ -132,7 +135,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             );
           })}
           
-           {/* Quick Action for Loan Officer/Admin */}
            {(profile?.role === 'loan_officer' || profile?.role === 'admin') && (
              <Link
                 to="/loans/new"
@@ -167,7 +169,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Menu className="h-6 w-6" />
             </button>
             <span className="font-bold text-gray-900">Janalo Management</span>
-            <div className="w-6" /> {/* Spacer */}
+            <NotificationBell />
         </header>
 
         {/* Page Content */}
