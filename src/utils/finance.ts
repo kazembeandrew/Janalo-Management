@@ -10,11 +10,11 @@ export const formatCurrency = (amount: number): string => {
 
 export const calculateLoanDetails = (
   principal: number,
-  rate: number, // Annual rate in percentage (e.g., 10 for 10%)
+  rate: number, // Monthly rate in percentage (e.g., 5 for 5%)
   months: number,
   type: InterestType
 ) => {
-  const monthlyRate = rate / 100 / 12;
+  const monthlyRate = rate / 100;
   
   let monthlyInstallment = 0;
   let totalInterest = 0;
@@ -23,8 +23,8 @@ export const calculateLoanDetails = (
 
   if (type === 'flat') {
     // Flat Rate: Interest is calculated on the full principal for the full term
-    const annualInterest = principal * (rate / 100);
-    totalInterest = annualInterest * (months / 12);
+    // Total interest = Principal * Monthly Rate * Number of Months
+    totalInterest = principal * monthlyRate * months;
     totalPayable = principal + totalInterest;
     monthlyInstallment = totalPayable / months;
 
@@ -111,11 +111,7 @@ export const calculateRepaymentDistribution = (
 
     // 3. Pay Principal Last
     if (remaining > 0) {
-        principalPaid = remaining; // Can exceed outstanding if overpayment, usually handled by UI validation
-        // Cap at principal outstanding logically, but let UI handle overpayment logic
-        if (principalPaid > principalOutstanding) {
-             // For this helper, we just return what goes to principal
-        }
+        principalPaid = remaining;
     }
 
     return { principalPaid, interestPaid, penaltyPaid };

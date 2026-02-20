@@ -101,8 +101,6 @@ export const EditLoan: React.FC = () => {
                           id: Date.now() + Math.random(), 
                           blob: null,
                           existingUrl: url,
-                          // We don't track doc DB ID for simplicity in this edit flow, 
-                          // strictly just showing visual confirmation.
                       });
                   }
               }
@@ -172,9 +170,9 @@ export const EditLoan: React.FC = () => {
         disbursement_date: formData.disbursement_date,
         monthly_installment: preview.monthlyInstallment,
         total_payable: preview.totalPayable,
-        principal_outstanding: formData.principal_amount, // Reset outstanding to new amount
+        principal_outstanding: formData.principal_amount,
         interest_outstanding: preview.totalInterest,
-        status: 'pending' // Reset status to pending for re-approval
+        status: 'pending'
       };
 
       const { error } = await supabase.from('loans').update(loanUpdate).eq('id', id);
@@ -184,21 +182,14 @@ export const EditLoan: React.FC = () => {
       const uploads = [];
       
       const handleDocUpdate = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
-          if (!blob) return; // No new file
-          
-          // Delete old record reference in DB (Supabase RLS cascade doesn't delete file in storage usually, 
-          // but we will just overwrite the active document record. 
-          // A cleaner approach is to delete old DB rows for this type first.)
+          if (!blob) return;
           
           const fileName = `${namePrefix}_${Date.now()}.jpg`;
           const path = `${id}/${fileName}`;
           
           uploads.push(async () => {
-               // Delete old doc row of this type to avoid duplicates
                await supabase.from('loan_documents').delete().eq('loan_id', id).eq('type', type);
-               
                const uploadedPath = await uploadFile(blob, path);
-               
                await supabase.from('loan_documents').insert({
                     loan_id: id,
                     type: type,
@@ -214,7 +205,6 @@ export const EditLoan: React.FC = () => {
       if (appFormBlob) handleDocUpdate(appFormBlob, 'application_form', 'app_form', 'Application Form');
       if (guarantorBlob) handleDocUpdate(guarantorBlob, 'guarantor', 'guarantor', 'Guarantor Form / ID');
 
-      // Collaterals (Only adding new ones for now to avoid complex UI logic with deleting specific old ones)
       collaterals.forEach((c, index) => {
           if (c.blob) {
               handleDocUpdate(c.blob, 'collateral', `collateral_${Date.now()}_${index}`, `Collateral (Added)`);
@@ -250,7 +240,6 @@ export const EditLoan: React.FC = () => {
        <h1 className="text-2xl font-bold text-gray-900">Edit Loan Application</h1>
 
        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-         {/* Left Column: Loan Details */}
          <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Details</h3>
@@ -271,7 +260,7 @@ export const EditLoan: React.FC = () => {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Principal Amount ($)</label>
+                        <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
                         <input 
                             type="number"
                             required
@@ -284,7 +273,7 @@ export const EditLoan: React.FC = () => {
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Interest Rate (% Annual)</label>
+                            <label className="block text-sm font-medium text-gray-700">Interest Rate (% Monthly)</label>
                             <input 
                                 type="number"
                                 required
@@ -397,7 +386,6 @@ export const EditLoan: React.FC = () => {
             </div>
          </div>
 
-         {/* Right Column: Calculator */}
          <div className="space-y-6">
             <div className="bg-indigo-50 rounded-lg p-6 border border-indigo-100 sticky top-6">
                 <h3 className="text-lg font-medium text-indigo-900 flex items-center mb-4">
@@ -457,9 +445,6 @@ export const EditLoan: React.FC = () => {
                             >
                                 {loading ? 'Saving...' : 'Save Changes'}
                             </button>
-                            <p className="text-xs text-center text-indigo-600 mt-2">
-                                Submitting changes will reset the loan status to "Pending".
-                            </p>
                         </div>
                     </div>
                 )}

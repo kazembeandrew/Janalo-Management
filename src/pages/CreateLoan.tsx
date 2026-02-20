@@ -20,7 +20,7 @@ export const CreateLoan: React.FC = () => {
   const [formData, setFormData] = useState({
     borrower_id: '',
     principal_amount: 1000,
-    interest_rate: 10,
+    interest_rate: 5, // Default to 5% monthly
     interest_type: 'flat' as InterestType,
     term_months: 12,
     disbursement_date: new Date().toISOString().split('T')[0]
@@ -248,7 +248,7 @@ export const CreateLoan: React.FC = () => {
                                />
                            </div>
                            <div>
-                               <label className="block text-sm font-medium text-gray-700">Interest Rate (% Annual)</label>
+                               <label className="block text-sm font-medium text-gray-700">Interest Rate (% Monthly)</label>
                                <input 
                                    type="number"
                                    required

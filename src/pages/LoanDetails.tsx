@@ -117,7 +117,6 @@ export const LoanDetails: React.FC = () => {
   const fetchData = async () => {
     if (!id) return;
     try {
-      // We join users to get the loan officer's email for notifications
       const { data: loanData, error: loanError } = await supabase
         .from('loans')
         .select(`
@@ -168,7 +167,6 @@ export const LoanDetails: React.FC = () => {
       
       setDocuments(docData || []);
       
-      // Generate public URLs for images
       if (docData) {
           const urlMap: {[key: string]: string} = {};
           for (const doc of docData) {
@@ -237,10 +235,9 @@ export const LoanDetails: React.FC = () => {
       );
   };
 
-  // --- AI ANALYSIS ---
   const handleAnalyzeLoan = async () => {
     setShowAIModal(true);
-    if (aiAnalysis) return; // Use cached analysis if available
+    if (aiAnalysis) return;
     setAnalyzing(true);
     
     try {
@@ -261,7 +258,6 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
-  // Helper to send Email Notification via Express API
   const sendNotificationEmail = async (subject: string, htmlContent: string) => {
     if (!loan?.users?.email) {
         console.warn("No officer email found, skipping notification.");
@@ -283,13 +279,11 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
-  // Helper to send DM
   const sendDirectMessage = async (recipientId: string, message: string) => {
       if (!profile || !message.trim()) return;
-      if (recipientId === profile.id) return; // Don't message self
+      if (recipientId === profile.id) return;
 
       try {
-          // 1. Check for existing conversation
           const { data: myConvos } = await supabase.from('conversation_participants').select('conversation_id').eq('user_id', profile.id);
           const myConvoIds = myConvos?.map(c => c.conversation_id) || [];
           
@@ -308,7 +302,6 @@ export const LoanDetails: React.FC = () => {
               }
           }
 
-          // 2. Create if not exists
           if (!conversationId) {
               const { data: newConvoId, error: createError } = await supabase.rpc('create_new_conversation', {
                   recipient_id: recipientId
@@ -318,14 +311,12 @@ export const LoanDetails: React.FC = () => {
               conversationId = newConvoId;
           }
 
-          // 3. Send Message
           await supabase.from('direct_messages').insert({
               conversation_id: conversationId,
               sender_id: profile.id,
               content: message
           });
 
-          // Redirect to messages
           navigate('/messages');
 
       } catch (error) {
@@ -352,10 +343,8 @@ export const LoanDetails: React.FC = () => {
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
 
-        // UI Notification
         alert(`Success: Loan for ${loan.borrowers?.full_name} has been APPROVED.`);
 
-        // Email Notification
         const emailBody = `
             <p>Dear ${loan.users?.full_name},</p>
             <p>The loan application for <strong>${loan.borrowers?.full_name}</strong> has been <strong>APPROVED</strong> and marked as Active.</p>
@@ -400,7 +389,6 @@ export const LoanDetails: React.FC = () => {
         
         await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
 
-        // UI Notification
         alert(`Loan for ${loan.borrowers?.full_name} has been REJECTED.`);
 
         const emailBody = `
@@ -444,7 +432,6 @@ export const LoanDetails: React.FC = () => {
           if (error) throw error;
           await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
 
-          // UI Notification
           alert(`Success: Application returned for REASSESSMENT.`);
 
           const emailBody = `
@@ -697,8 +684,6 @@ export const LoanDetails: React.FC = () => {
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to List
          </button>
          <div className="flex space-x-2">
-            
-            {/* AI Analysis Button */}
             <button
                 onClick={handleAnalyzeLoan}
                 className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center mr-4"
@@ -706,7 +691,6 @@ export const LoanDetails: React.FC = () => {
                 <Sparkles className="h-4 w-4 mr-1" /> Smart Analysis
             </button>
 
-            {/* Print Button */}
             <button 
                 onClick={() => window.print()}
                 className="bg-white hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-gray-300 flex items-center mr-4"
@@ -714,7 +698,6 @@ export const LoanDetails: React.FC = () => {
                 <Printer className="h-4 w-4 mr-1" /> Print Statement
             </button>
 
-            {/* Owner Controls for Pending/Rejected/Reassess Loans */}
             {(isPending || isRejected || isReassess) && isOwner && (
                 <div className="flex space-x-2 mr-4 border-r pr-4 border-gray-300">
                     <button 
@@ -733,7 +716,6 @@ export const LoanDetails: React.FC = () => {
                 </div>
             )}
             
-            {/* CEO Reassess Button */}
             {isExecutive && (
                 <button 
                     onClick={() => setShowReassignModal(true)}
@@ -752,7 +734,6 @@ export const LoanDetails: React.FC = () => {
                 </button>
             )}
 
-            {/* Approval Controls (Pending OR Reassess) */}
             {(isPending || isReassess) && isExecutive && (
                 <div className="flex space-x-2 mr-4 border-r pr-4 border-gray-300">
                      <button 
@@ -795,7 +776,6 @@ export const LoanDetails: React.FC = () => {
                 </>
             )}
 
-            {/* Visitation & Default Controls */}
             {loan.status === 'active' && (
                 <div className="ml-2 border-l pl-4 border-gray-300 flex space-x-2">
                     <button
@@ -820,7 +800,6 @@ export const LoanDetails: React.FC = () => {
       </div>
 
       <div id="print-area" className="bg-white shadow rounded-lg overflow-hidden print:shadow-none print:w-full">
-        {/* Print Header - Only visible on print */}
         <div className="hidden print:block px-6 py-4 border-b border-gray-200 text-center">
             <h1 className="text-2xl font-bold text-gray-900">JANALO MANAGEMENT</h1>
             <p className="text-sm text-gray-500">Loan Account Statement</p>
@@ -838,14 +817,6 @@ export const LoanDetails: React.FC = () => {
                                 <User className="h-3 w-3 mr-1" /> 
                                 Officer: <span className="font-medium text-gray-700 ml-1">{loan.users?.full_name || 'Unassigned'}</span>
                             </p>
-                            {isExecutive && loan.officer_id && loan.officer_id !== profile?.id && (
-                                <button 
-                                    onClick={() => sendDirectMessage(loan.officer_id, `Regarding Loan ${loan.id.slice(0, 8)} for ${loan.borrowers?.full_name}: `)}
-                                    className="text-indigo-600 hover:text-indigo-800 text-xs flex items-center bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 print:hidden"
-                                >
-                                    <MessageSquare className="h-3 w-3 mr-1" /> Message
-                                </button>
-                            )}
                         </div>
                         <p className="flex items-center">
                             <MapPin className="h-3 w-3 mr-1" /> 
@@ -865,42 +836,6 @@ export const LoanDetails: React.FC = () => {
             </div>
         </div>
         
-        {/* Warning Banner for Pending/Reassess */}
-        {(isPending || isReassess) && (
-            <div className={`${isReassess ? 'bg-purple-50 border-purple-100' : 'bg-yellow-50 border-yellow-100'} px-6 py-3 border-b flex items-start print:hidden`}>
-                <AlertTriangle className={`h-5 w-5 ${isReassess ? 'text-purple-600' : 'text-yellow-600'} mr-2 mt-0.5`} />
-                <div>
-                    <h3 className={`text-sm font-medium ${isReassess ? 'text-purple-800' : 'text-yellow-800'}`}>
-                        {isReassess ? 'Reassessment Active' : 'Pending Approval'}
-                    </h3>
-                    <p className={`text-sm ${isReassess ? 'text-purple-700' : 'text-yellow-700'} mt-1`}>
-                        {isReassess 
-                            ? "This application is under review. It will remain available for 7 days unless action is taken."
-                            : "This loan application is waiting for Executive approval. No repayments can be made until disbursed."
-                        }
-                    </p>
-                </div>
-            </div>
-        )}
-        
-        {/* Warning Banner for Rejected/Defaulted */}
-        {(isRejected || loan.status === 'defaulted') && (
-            <div className="bg-red-50 px-6 py-3 border-b border-red-100 flex items-start print:hidden">
-                <AlertOctagon className="h-5 w-5 text-red-600 mr-2 mt-0.5" />
-                <div>
-                    <h3 className="text-sm font-medium text-red-800">
-                        {loan.status === 'defaulted' ? 'Bad Debt (Write-Off)' : 'Application Rejected'}
-                    </h3>
-                    <p className="text-sm text-red-700 mt-1">
-                        {loan.status === 'defaulted' 
-                            ? "This loan has been marked as a bad debt. Further collection efforts may be required or it may be written off."
-                            : "This application has been denied. It will be permanently deleted after 24 hours if no changes are made."
-                        }
-                    </p>
-                </div>
-            </div>
-        )}
-
         <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-gray-50 p-4 rounded-lg print:border print:bg-white">
                 <div className="text-xs text-gray-500 uppercase">Total Outstanding</div>
@@ -922,7 +857,7 @@ export const LoanDetails: React.FC = () => {
                         <span>Amount:</span> <span className="font-medium">{formatCurrency(loan.principal_amount)}</span>
                     </div>
                     <div className="flex justify-between">
-                        <span>Rate:</span> <span className="font-medium">{loan.interest_rate}% ({loan.interest_type})</span>
+                        <span>Rate:</span> <span className="font-medium">{loan.interest_rate}% Monthly ({loan.interest_type})</span>
                     </div>
                     <div className="flex justify-between">
                         <span>Duration:</span> <span className="font-medium">{loan.term_months} Months</span>
@@ -943,7 +878,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       </div>
     
-      {/* Attached Documents - HIDDEN ON PRINT */}
       {documents.length > 0 && (
           <div className="bg-white shadow rounded-lg overflow-hidden print:hidden">
              <div className="px-6 py-4 border-b border-gray-200">
@@ -987,7 +921,6 @@ export const LoanDetails: React.FC = () => {
           </div>
       )}
 
-      {/* Official Visitations */}
       {visitations.length > 0 && (
           <div className="bg-white shadow rounded-lg overflow-hidden print:hidden">
              <div className="px-6 py-4 border-b border-gray-200">
@@ -1032,7 +965,6 @@ export const LoanDetails: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print:block">
-        {/* Left Column: Repayments & Schedule */}
         <div className="bg-white shadow rounded-lg overflow-hidden h-full print:shadow-none print:border print:mb-6">
             <div className="border-b border-gray-200 flex print:hidden">
                 <button
@@ -1058,7 +990,6 @@ export const LoanDetails: React.FC = () => {
             </div>
             
             <div className="overflow-x-auto">
-                {/* On print, show BOTH if possible, but for simplicity showing active tab content or enforcing repayments first */}
                 <div className={leftTab === 'repayments' ? 'block' : 'hidden print:block'}>
                     <div className="hidden print:block px-4 py-2 font-bold bg-gray-100 border-b">Repayment History</div>
                     <table className="min-w-full divide-y divide-gray-200">
@@ -1121,7 +1052,6 @@ export const LoanDetails: React.FC = () => {
             </div>
         </div>
 
-        {/* Right Column: Activity Feed - HIDDEN ON PRINT */}
         <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col h-full print:hidden">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
                 <h3 className="text-lg font-medium text-gray-900 flex items-center">
@@ -1130,7 +1060,6 @@ export const LoanDetails: React.FC = () => {
                 </h3>
             </div>
             
-            {/* Notes List */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-96 bg-gray-50">
                 {notes.length === 0 ? (
                     <div className="text-center text-sm text-gray-500 py-4">No activity recorded yet.</div>
@@ -1160,7 +1089,6 @@ export const LoanDetails: React.FC = () => {
                 )}
             </div>
 
-            {/* Input */}
             <div className="p-4 border-t border-gray-200 bg-white">
                 <form onSubmit={handlePostNote} className="flex gap-2">
                     <input 
@@ -1182,9 +1110,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       </div>
 
-      {/* MODALS */}
-      
-      {/* AI Analysis Modal */}
       {showAIModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1226,7 +1151,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Visitation Modal */}
       {showVisitModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1254,7 +1178,6 @@ export const LoanDetails: React.FC = () => {
                                 />
                             </div>
                             
-                            {/* Geolocation Button */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
                                 <div className="flex items-center space-x-2">
@@ -1322,7 +1245,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Default (Bad Debt) Modal */}
       {showDefaultModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1371,7 +1293,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Reassign Modal */}
       {showReassignModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1417,7 +1338,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Repayment Modal */}
       {showRepayModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
              <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1430,7 +1350,7 @@ export const LoanDetails: React.FC = () => {
                         </p>
                         
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Amount Received</label>
+                            <label className="block text-sm font-medium text-gray-700">Amount Received (MK)</label>
                             <input 
                                 type="number" 
                                 required
@@ -1463,7 +1383,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Penalty Modal */}
       {showPenaltyModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
              <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1479,7 +1398,7 @@ export const LoanDetails: React.FC = () => {
                         </p>
                         
                         <div className="mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Penalty Amount</label>
+                            <label className="block text-sm font-medium text-gray-700">Penalty Amount (MK)</label>
                             <input 
                                 type="number" 
                                 required
@@ -1512,7 +1431,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Approve Modal */}
       {showApproveModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1578,7 +1496,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Reject Modal */}
       {showRejectModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1640,7 +1557,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-       {/* Reassess Modal */}
        {showReassessModal && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
             <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -1702,7 +1618,6 @@ export const LoanDetails: React.FC = () => {
         </div>
       )}
 
-      {/* Image Viewer Modal */}
       {viewImage && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-95 p-4" onClick={() => setViewImage(null)}>
             <button 
