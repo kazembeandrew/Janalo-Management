@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency } from '@/utils/finance';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, ComposedChart
 } from 'recharts';
-import { Download, Printer, Sparkles, RefreshCw, TrendingUp, TrendingDown, FileText } from 'lucide-react';
+import { Download, Printer, Sparkles, RefreshCw, TrendingUp, TrendingDown, FileText, ChevronDown } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { exportToCSV, generateTablePDF } from '@/utils/export';
 
@@ -18,9 +18,20 @@ export const Reports: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchReportData();
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchReportData = async () => {
@@ -73,6 +84,7 @@ export const Reports: React.FC = () => {
           Net_Profit: d.profit
       }));
       exportToCSV(data, 'Profitability_Report');
+      setShowExportMenu(false);
   };
 
   const handleExportPDF = () => {
@@ -84,6 +96,7 @@ export const Reports: React.FC = () => {
           d.profit.toFixed(2)
       ]);
       generateTablePDF('Monthly Profitability Report', headers, rows, 'Profitability_Report');
+      setShowExportMenu(false);
   };
 
   const generateAIInsights = async () => {
@@ -127,18 +140,26 @@ export const Reports: React.FC = () => {
                 )}
             </button>
             
-            <div className="relative group">
-                <button className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50">
-                    <Download className="h-4 w-4 mr-2" /> Export Data
+            <div className="relative" ref={exportMenuRef}>
+                <button 
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                    <Download className="h-4 w-4 mr-2" /> Export Data <ChevronDown className="ml-2 h-4 w-4" />
                 </button>
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 hidden group-hover:block z-50">
-                    <button onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
-                        <FileText className="h-4 w-4 mr-2" /> Download CSV
-                    </button>
-                    <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
-                        <Printer className="h-4 w-4 mr-2" /> Download PDF
-                    </button>
-                </div>
+                
+                {showExportMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50 animate-in fade-in zoom-in-95 duration-100">
+                      <div className="py-1">
+                        <button onClick={handleExportCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                            <FileText className="h-4 w-4 mr-2 text-gray-400" /> Download CSV
+                        </button>
+                        <button onClick={handleExportPDF} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center">
+                            <Printer className="h-4 w-4 mr-2 text-gray-400" /> Download PDF
+                        </button>
+                      </div>
+                  </div>
+                )}
             </div>
 
             <button 
