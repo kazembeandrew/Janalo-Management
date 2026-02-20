@@ -18,7 +18,8 @@ import {
   History,
   Calendar,
   Award,
-  Calculator
+  Calculator,
+  UserCircle
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -73,6 +74,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo'] },
     { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin', 'ceo'] },
+    { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer'] },
   ];
 
   const handleSignOut = async () => {
