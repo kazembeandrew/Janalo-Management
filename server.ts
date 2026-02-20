@@ -15,12 +15,9 @@ const SUPABASE_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
 const DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ";
 
 // The Service Role Key is required for administrative tasks (creating users, resetting passwords)
-// It should be set in your environment variables as SUPABASE_SERVICE_ROLE_KEY
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // Initialize Supabase Admin Client
-// We use the service role key if available, otherwise we fall back to the anon key
-// Note: Admin functions will only work if the SERVICE_ROLE_KEY is provided
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY || DEFAULT_ANON_KEY);
 
 // Startup Health Check
@@ -33,7 +30,16 @@ if (SERVICE_ROLE_KEY) {
 }
 console.log("----------------------------------");
 
-// --- ADMIN API ROUTES ---
+// --- API ROUTES ---
+
+// Health Check for UI to verify server status
+app.get("/api/health", (req, res) => {
+    res.json({
+        status: "ok",
+        admin_enabled: !!SERVICE_ROLE_KEY,
+        timestamp: new Date().toISOString()
+    });
+});
 
 // Create User
 app.post("/api/admin/create-user", async (req, res) => {
@@ -55,13 +61,12 @@ app.post("/api/admin/create-user", async (req, res) => {
 
     if (authError) throw authError;
 
-    // Ensure the user profile is updated with the correct role
     const { error: updateError } = await supabaseAdmin
       .from('users')
       .update({ role: role })
       .eq('id', authData.user.id);
 
-    if (updateError) console.warn("User created, but profile role update failed. Check database triggers.");
+    if (updateError) console.warn("User created, but profile role update failed.");
     
     res.json({ success: true, user: authData.user });
   } catch (error: any) {

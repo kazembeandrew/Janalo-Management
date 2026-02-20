@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { UserProfile, UserRole } from '@/types';
-import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark, RefreshCw, Calendar, TrendingUp, Ban } from 'lucide-react';
+import { Shield, User, Power, Lock, Search, Plus, X, Mail, Key, Save, AlertTriangle, Trash2, Check, ArrowRight, UserPlus, Briefcase, Landmark, RefreshCw, Calendar, TrendingUp, Ban, Server, AlertCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,7 @@ export const Users: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [serverStatus, setServerStatus] = useState<{admin_enabled: boolean} | null>(null);
   
   // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -56,7 +57,18 @@ export const Users: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
+    checkServerStatus();
   }, []);
+
+  const checkServerStatus = async () => {
+      try {
+          const res = await fetch('/api/health');
+          const data = await res.json();
+          setServerStatus(data);
+      } catch (e) {
+          console.error("Failed to check server status", e);
+      }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -86,10 +98,12 @@ export const Users: React.FC = () => {
       });
   };
 
-  // --- BACKEND API INTEGRATION ---
-
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (serverStatus && !serverStatus.admin_enabled) {
+          toast.error("Server is not configured for user creation. Please add SUPABASE_SERVICE_ROLE_KEY.");
+          return;
+      }
       setIsProcessing(true);
       
       try {
@@ -117,6 +131,10 @@ export const Users: React.FC = () => {
   const handleResetPassword = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!selectedUser || !newPassword) return;
+      if (serverStatus && !serverStatus.admin_enabled) {
+          toast.error("Server is not configured for password resets.");
+          return;
+      }
       setIsProcessing(true);
 
       try {
@@ -138,8 +156,6 @@ export const Users: React.FC = () => {
           setIsProcessing(false);
       }
   };
-
-  // --- REVOKE ACCESS LOGIC ---
 
   const handleRevokeAccess = async () => {
       if (!selectedUser || !revocationReason.trim()) {
@@ -189,7 +205,7 @@ export const Users: React.FC = () => {
   const handlePermanentDelete = async () => {
       if (!selectedUser || profile?.role !== 'ceo') return;
       
-      if (!window.confirm("CRITICAL ACTION: This will permanently delete the user record. This is only possible if the user has NO linked financial records. Continue?")) return;
+      if (!window.confirm("CRITICAL ACTION: This will permanently delete the user record. Continue?")) return;
 
       setIsProcessing(true);
       try {
@@ -197,7 +213,7 @@ export const Users: React.FC = () => {
           
           if (error) {
               if (error.code === '23503') {
-                  toast.error("Cannot hard delete: User is linked to historical records. Use 'Revoke Access' instead to preserve data integrity.");
+                  toast.error("Cannot hard delete: User is linked to historical records. Use 'Revoke Access' instead.");
                   return;
               }
               throw error;
@@ -290,10 +306,35 @@ export const Users: React.FC = () => {
             <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
             <p className="text-sm text-gray-500">Manage staff access, roles, and delegations.</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)} className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors">
-            <Plus className="h-4 w-4 mr-2" /> Add User
-        </button>
+        <div className="flex items-center space-x-3">
+            {serverStatus && (
+                <div className={`flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
+                    serverStatus.admin_enabled 
+                    ? 'bg-green-50 text-green-700 border-green-100' 
+                    : 'bg-amber-50 text-amber-700 border-amber-100'
+                }`}>
+                    <Server className="h-3 w-3 mr-1" />
+                    {serverStatus.admin_enabled ? 'Admin Server Ready' : 'Admin Server Restricted'}
+                </div>
+            )}
+            <button onClick={() => setShowCreateModal(true)} className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors">
+                <Plus className="h-4 w-4 mr-2" /> Add User
+            </button>
+        </div>
       </div>
+
+      {serverStatus && !serverStatus.admin_enabled && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start">
+              <AlertCircle className="h-5 w-5 text-amber-600 mr-3 shrink-0 mt-0.5" />
+              <div>
+                  <h4 className="text-sm font-bold text-amber-800">Administrative Actions Restricted</h4>
+                  <p className="text-xs text-amber-700 mt-1">
+                      The backend server is missing the <strong>SUPABASE_SERVICE_ROLE_KEY</strong>. 
+                      You can view users, but creating new accounts or resetting passwords will not work until this secret is added to the environment variables.
+                  </p>
+              </div>
+          </div>
+      )}
 
       <div className="relative max-w-md">
         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -369,6 +410,11 @@ export const Users: React.FC = () => {
                       <button onClick={() => setShowCreateModal(false)}><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+                      {serverStatus && !serverStatus.admin_enabled && (
+                          <div className="p-3 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+                              User creation is currently disabled due to missing server configuration.
+                          </div>
+                      )}
                       <div>
                           <label className="block text-sm font-medium text-gray-700">Full Name</label>
                           <input 
@@ -417,7 +463,7 @@ export const Users: React.FC = () => {
                       <div className="pt-4">
                           <button 
                             type="submit"
-                            disabled={isProcessing}
+                            disabled={isProcessing || (serverStatus && !serverStatus.admin_enabled)}
                             className="w-full bg-indigo-600 text-white py-2 rounded-md font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
                           >
                               {isProcessing ? 'Creating Account...' : 'Create User Account'}
@@ -473,7 +519,7 @@ export const Users: React.FC = () => {
                               <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 flex items-start">
                                   <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3 shrink-0" />
                                   <p className="text-xs text-yellow-700">
-                                      <strong>Promotion is permanent.</strong> This replaces the user's current role. If promoting a Loan Officer, their portfolio must be reassigned.
+                                      <strong>Promotion is permanent.</strong> This replaces the user's current role.
                                   </p>
                               </div>
                               <div>
@@ -507,7 +553,7 @@ export const Users: React.FC = () => {
                               <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex items-start">
                                   <Briefcase className="h-5 w-5 text-blue-600 mr-3 shrink-0" />
                                   <p className="text-xs text-blue-700">
-                                      <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously until the end date.
+                                      <strong>Delegation is temporary.</strong> The user will hold both their primary role and the delegated role simultaneously.
                                   </p>
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -553,6 +599,9 @@ export const Users: React.FC = () => {
                                       <Key className="h-4 w-4 mr-2 text-indigo-600" />
                                       Reset User Password
                                   </h4>
+                                  {serverStatus && !serverStatus.admin_enabled && (
+                                      <p className="text-xs text-amber-600 mb-3">Password reset is disabled due to missing server configuration.</p>
+                                  )}
                                   <form onSubmit={handleResetPassword} className="flex gap-2">
                                       <input 
                                         required
@@ -564,7 +613,7 @@ export const Users: React.FC = () => {
                                       />
                                       <button 
                                         type="submit"
-                                        disabled={isProcessing || !newPassword}
+                                        disabled={isProcessing || !newPassword || (serverStatus && !serverStatus.admin_enabled)}
                                         className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:bg-gray-400"
                                       >
                                           Reset
@@ -578,7 +627,7 @@ export const Users: React.FC = () => {
                                       Revoke Access (Deactivate)
                                   </h4>
                                   <p className="text-xs text-gray-500 mb-4">
-                                      Standard procedure for resignations or transfers. User cannot log in, but all historical data is preserved.
+                                      User cannot log in, but all historical data is preserved.
                                   </p>
                                   <button 
                                     onClick={() => setShowRevokeModal(true)}
@@ -593,10 +642,10 @@ export const Users: React.FC = () => {
                                   <div className="p-4 border border-red-200 rounded-lg bg-red-50">
                                       <h4 className="font-bold text-red-800 flex items-center mb-2">
                                           <Trash2 className="h-4 w-4 mr-2" />
-                                          Permanent Deletion (Hard Delete)
+                                          Permanent Deletion
                                       </h4>
                                       <p className="text-xs text-red-700 mb-4">
-                                          <strong>CEO ONLY:</strong> Permanently removes the user record. Only possible if the user has NO linked financial data.
+                                          <strong>CEO ONLY:</strong> Permanently removes the user record.
                                       </p>
                                       <button 
                                         onClick={handlePermanentDelete}
