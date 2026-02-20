@@ -12,7 +12,10 @@ import {
   Target,
   Shield,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  Wallet
 } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { 
@@ -244,6 +247,43 @@ export const Dashboard: React.FC = () => {
           icon={Target}
           color="bg-emerald-500"
         />
+      </div>
+
+      {/* Fund Management / Cash Flow Summary */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+              <h3 className="font-bold text-gray-900 flex items-center">
+                  <Wallet className="h-5 w-5 mr-2 text-indigo-600" />
+                  Fund Management Summary
+              </h3>
+              <span className="text-xs text-gray-500 italic">Real-time capital tracking</span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+              <div className="p-6">
+                  <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-500">Total Disbursed</span>
+                      <ArrowUpRight className="h-4 w-4 text-red-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalDisbursed)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Total capital deployed to clients</p>
+              </div>
+              <div className="p-6">
+                  <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-500">Interest Income</span>
+                      <ArrowDownRight className="h-4 w-4 text-green-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.interestEarned)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Realized profit from completed loans</p>
+              </div>
+              <div className="p-6">
+                  <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-500">Active Principal</span>
+                      <Activity className="h-4 w-4 text-indigo-500" />
+                  </div>
+                  <p className="text-2xl font-bold text-indigo-900">{formatCurrency(stats.totalPrincipalOutstanding)}</p>
+                  <p className="text-xs text-gray-400 mt-1">Capital currently in the field</p>
+              </div>
+          </div>
       </div>
 
       {/* AI Insights Section */}
