@@ -196,10 +196,12 @@ export const Messages: React.FC = () => {
     }, 100);
   };
 
-  const filteredUsers = users.filter(u => 
-    u.full_name.toLowerCase().includes(userSearch.toLowerCase()) ||
-    u.email.toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const filteredUsers = users.filter(u => {
+    const name = u.full_name?.toLowerCase() || '';
+    const email = u.email?.toLowerCase() || '';
+    const search = userSearch.toLowerCase();
+    return name.includes(search) || email.includes(search);
+  });
 
   return (
     <div className="h-[calc(100vh-6rem)] flex bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
@@ -381,11 +383,11 @@ export const Messages: React.FC = () => {
                                     className="w-full flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group"
                                   >
                                       <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
-                                          {user.full_name.charAt(0)}
+                                          {(user.full_name || 'U').charAt(0)}
                                       </div>
                                       <div className="flex-1">
-                                          <p className="font-medium text-gray-900">{user.full_name}</p>
-                                          <p className="text-xs text-gray-500 capitalize">{user.role.replace('_', ' ')}</p>
+                                          <p className="font-medium text-gray-900">{user.full_name || 'Unnamed User'}</p>
+                                          <p className="text-xs text-gray-500 capitalize">{(user.role || 'User').replace('_', ' ')}</p>
                                       </div>
                                       <Check className="h-4 w-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                                   </button>
