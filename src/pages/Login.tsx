@@ -15,8 +15,12 @@ export const Login: React.FC = () => {
     setLoading(true);
     setError(null);
 
-    // Map Username to Email for Supabase Auth
-    const email = `${credential.toLowerCase().trim()}@janalo.com`;
+    // Normalize input: strip domain if user typed it, then add it back consistently
+    let username = credential.toLowerCase().trim();
+    if (username.includes('@')) {
+        username = username.split('@')[0];
+    }
+    const email = `${username}@janalo.com`;
 
     try {
       const { error } = await supabase.auth.signInWithPassword({

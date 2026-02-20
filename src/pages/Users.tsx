@@ -47,7 +47,7 @@ export const Users: React.FC = () => {
   // Create Form States
   const [newUser, setNewUser] = useState({
       full_name: '',
-      username: '', // Changed from email to username
+      username: '', 
       password: '', 
       role: 'loan_officer' as UserRole
   });
