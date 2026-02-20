@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { usePresence } from '@/context/PresenceContext';
-import { Send, User, Search, MessageSquare, Plus, X, Check, MoreVertical, Phone, Video, Info } from 'lucide-react';
+import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info } from 'lucide-react';
 
 interface ConversationSummary {
   conversation_id: string;
@@ -210,212 +210,193 @@ export const Messages: React.FC = () => {
 
   return (
     <div className="h-[calc(100vh-6rem)] flex bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
-      {/* Sidebar: Conversation List */}
-      <div className={`w-full md:w-80 lg:w-96 border-r border-gray-100 flex flex-col ${selectedConvo ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-6 border-b border-gray-50 bg-white">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
-            <button 
-              onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
-              className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
-              title="New Chat"
-            >
-              <Plus className="h-5 w-5" />
-            </button>
+      {/* Conversation List View */}
+      {!selectedConvo ? (
+        <div className="w-full flex flex-col">
+          <div className="p-6 border-b border-gray-50 bg-white">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
+              <button 
+                onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
+                className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
+                title="New Chat"
+              >
+                <Plus className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input 
+                type="text"
+                placeholder="Search conversations..."
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={convoSearch}
+                onChange={(e) => setConvoSearch(e.target.value)}
+              />
+            </div>
           </div>
           
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input 
-              type="text"
-              placeholder="Search conversations..."
-              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
-              value={convoSearch}
-              onChange={(e) => setConvoSearch(e.target.value)}
-            />
-          </div>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {loading ? (
-             <div className="p-8 text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-             </div>
-          ) : filteredConversations.length === 0 ? (
-             <div className="p-12 text-center">
-                 <div className="bg-gray-50 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
-                    <MessageSquare className="h-8 w-8 text-gray-300" />
-                 </div>
-                 <p className="text-gray-500 text-sm font-medium">No conversations found</p>
-                 <button 
-                    onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
-                    className="mt-4 text-indigo-600 text-sm font-bold hover:text-indigo-700"
-                 >
-                     Start a new chat
-                 </button>
-             </div>
-          ) : (
-            filteredConversations.map(convo => (
-              <div 
-                key={convo.conversation_id}
-                onClick={() => setSelectedConvo(convo)}
-                className={`px-6 py-4 cursor-pointer transition-all border-l-4 ${
-                    selectedConvo?.conversation_id === convo.conversation_id 
-                    ? 'bg-indigo-50/50 border-indigo-600' 
-                    : 'border-transparent hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-center gap-4">
-                    <div className="relative flex-shrink-0">
-                        <div className="h-12 w-12 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg">
-                            {(convo.other_user_name || 'U').charAt(0)}
-                        </div>
-                        {onlineUsers.has(convo.other_user_id) && (
-                            <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 bg-green-500 border-2 border-white rounded-full"></div>
-                        )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline mb-1">
-                            <h4 className={`text-sm truncate ${convo.unread_count > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>
-                                {convo.other_user_name}
-                            </h4>
-                            {convo.last_message_at && (
-                                <span className="text-[10px] text-gray-400 font-medium">
-                                    {new Date(convo.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex justify-between items-center gap-2">
-                            <p className={`text-xs truncate ${convo.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                                {convo.last_message || 'No messages yet'}
-                            </p>
-                            {convo.unread_count > 0 && (
-                                <span className="flex-shrink-0 bg-indigo-600 text-white text-[10px] font-bold h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center">
-                                    {convo.unread_count}
-                                </span>
-                            )}
-                        </div>
-                    </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Main: Chat Window */}
-      <div className={`flex-1 flex flex-col bg-gray-50/30 ${!selectedConvo ? 'hidden md:flex' : 'flex'}`}>
-        {selectedConvo ? (
-            <>
-                {/* Chat Header */}
-                <div className="px-6 py-4 border-b border-gray-100 bg-white flex items-center justify-between shadow-sm z-10">
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {loading ? (
+               <div className="p-8 text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+               </div>
+            ) : filteredConversations.length === 0 ? (
+               <div className="p-12 text-center">
+                   <div className="bg-gray-50 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-4">
+                      <MessageSquare className="h-8 w-8 text-gray-300" />
+                   </div>
+                   <p className="text-gray-500 text-sm font-medium">No conversations found</p>
+                   <button 
+                      onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
+                      className="mt-4 text-indigo-600 text-sm font-bold hover:text-indigo-700"
+                   >
+                       Start a new chat
+                   </button>
+               </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {filteredConversations.map(convo => (
+                  <div 
+                    key={convo.conversation_id}
+                    onClick={() => setSelectedConvo(convo)}
+                    className="px-6 py-5 cursor-pointer transition-all hover:bg-indigo-50/30 group"
+                  >
                     <div className="flex items-center gap-4">
-                        <button 
-                            onClick={() => setSelectedConvo(null)}
-                            className="md:hidden p-2 -ml-2 text-gray-400 hover:text-gray-600"
-                        >
-                            <X className="h-6 w-6" />
-                        </button>
-                        <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-                            {(selectedConvo.other_user_name || 'U').charAt(0)}
+                        <div className="relative flex-shrink-0">
+                            <div className="h-14 w-14 rounded-2xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xl group-hover:scale-105 transition-transform">
+                                {(convo.other_user_name || 'U').charAt(0)}
+                            </div>
+                            {onlineUsers.has(convo.other_user_id) && (
+                                <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 bg-green-500 border-2 border-white rounded-full"></div>
+                            )}
                         </div>
-                        <div>
-                            <h3 className="font-bold text-gray-900 leading-tight">{selectedConvo.other_user_name}</h3>
-                            <div className="flex items-center gap-1.5">
-                                <div className={`h-2 w-2 rounded-full ${onlineUsers.has(selectedConvo.other_user_id) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                    {onlineUsers.has(selectedConvo.other_user_id) ? 'Online' : 'Offline'}
-                                </span>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-baseline mb-1">
+                                <h4 className={`text-base truncate ${convo.unread_count > 0 ? 'font-bold text-gray-900' : 'font-semibold text-gray-700'}`}>
+                                    {convo.other_user_name}
+                                </h4>
+                                {convo.last_message_at && (
+                                    <span className="text-xs text-gray-400 font-medium">
+                                        {new Date(convo.last_message_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="flex justify-between items-center gap-2">
+                                <p className={`text-sm truncate ${convo.unread_count > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                                    {convo.last_message || 'No messages yet'}
+                                </p>
+                                {convo.unread_count > 0 && (
+                                    <span className="flex-shrink-0 bg-indigo-600 text-white text-[10px] font-bold h-5 min-w-[20px] px-1.5 rounded-full flex items-center justify-center">
+                                        {convo.unread_count}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Phone className="h-5 w-5" /></button>
-                        <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Video className="h-5 w-5" /></button>
-                        <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Info className="h-5 w-5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Chat Viewer View */
+        <div className="w-full flex flex-col bg-gray-50/30">
+            {/* Chat Header */}
+            <div className="px-6 py-4 border-b border-gray-100 bg-white flex items-center justify-between shadow-sm z-10">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={() => setSelectedConvo(null)}
+                        className="p-2 -ml-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        title="Back to list"
+                    >
+                        <ArrowLeft className="h-6 w-6" />
+                    </button>
+                    <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                        {(selectedConvo.other_user_name || 'U').charAt(0)}
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-gray-900 leading-tight">{selectedConvo.other_user_name}</h3>
+                        <div className="flex items-center gap-1.5">
+                            <div className={`h-2 w-2 rounded-full ${onlineUsers.has(selectedConvo.other_user_id) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                {onlineUsers.has(selectedConvo.other_user_id) ? 'Online' : 'Offline'}
+                            </span>
+                        </div>
                     </div>
                 </div>
+                <div className="flex items-center gap-2">
+                    <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Phone className="h-5 w-5" /></button>
+                    <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Video className="h-5 w-5" /></button>
+                    <button className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><Info className="h-5 w-5" /></button>
+                </div>
+            </div>
 
-                {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-                    {messages.map((msg, idx) => {
-                        const isMe = msg.sender_id === profile?.id;
-                        const showDate = idx === 0 || new Date(messages[idx-1].created_at).toDateString() !== new Date(msg.created_at).toDateString();
-                        
-                        return (
-                            <React.Fragment key={msg.id}>
-                                {showDate && (
-                                    <div className="flex justify-center my-8">
-                                        <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-full uppercase tracking-widest">
-                                            {new Date(msg.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
-                                        </span>
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                {messages.map((msg, idx) => {
+                    const isMe = msg.sender_id === profile?.id;
+                    const showDate = idx === 0 || new Date(messages[idx-1].created_at).toDateString() !== new Date(msg.created_at).toDateString();
+                    
+                    return (
+                        <React.Fragment key={msg.id}>
+                            {showDate && (
+                                <div className="flex justify-center my-8">
+                                    <span className="px-3 py-1 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-full uppercase tracking-widest">
+                                        {new Date(msg.created_at).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                                    </span>
+                                </div>
+                            )}
+                            <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[70%] group ${isMe ? 'items-end' : 'items-start'}`}>
+                                    <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
+                                        isMe 
+                                        ? 'bg-indigo-600 text-white rounded-tr-none' 
+                                        : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
+                                    }`}>
+                                        {msg.content}
                                     </div>
-                                )}
-                                <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[70%] group ${isMe ? 'items-end' : 'items-start'}`}>
-                                        <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
-                                            isMe 
-                                            ? 'bg-indigo-600 text-white rounded-tr-none' 
-                                            : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
-                                        }`}>
-                                            {msg.content}
-                                        </div>
-                                        <div className={`flex items-center gap-1 mt-1.5 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                            <span className="text-[10px] text-gray-400 font-medium">
-                                                {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                            </span>
-                                            {isMe && (
-                                                <Check className={`h-3 w-3 ${msg.is_read ? 'text-indigo-500' : 'text-gray-300'}`} />
-                                            )}
-                                        </div>
+                                    <div className={`flex items-center gap-1 mt-1.5 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                        <span className="text-[10px] text-gray-400 font-medium">
+                                            {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                        </span>
+                                        {isMe && (
+                                            <Check className={`h-3 w-3 ${msg.is_read ? 'text-indigo-500' : 'text-gray-300'}`} />
+                                        )}
                                     </div>
                                 </div>
-                            </React.Fragment>
-                        );
-                    })}
-                    <div ref={messagesEndRef} />
-                </div>
-
-                {/* Input Area */}
-                <div className="p-6 bg-white border-t border-gray-100">
-                    <form onSubmit={sendMessage} className="flex items-center gap-3">
-                        <div className="flex-1 relative">
-                            <input
-                                type="text"
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                placeholder="Type your message..."
-                                className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
-                            />
-                        </div>
-                        <button 
-                            type="submit"
-                            disabled={!newMessage.trim()}
-                            className="bg-indigo-600 text-white rounded-2xl p-3 hover:bg-indigo-700 disabled:opacity-50 disabled:scale-100 active:scale-95 transition-all shadow-lg shadow-indigo-200"
-                        >
-                            <Send className="h-5 w-5" />
-                        </button>
-                    </form>
-                </div>
-            </>
-        ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                <div className="bg-white p-8 rounded-3xl shadow-xl shadow-gray-100 mb-6">
-                    <MessageSquare className="h-16 w-16 text-indigo-100" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Your Inbox</h3>
-                <p className="text-gray-500 text-sm max-w-xs mx-auto leading-relaxed">
-                    Select a conversation from the sidebar to start messaging your team members.
-                </p>
-                <button 
-                    onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
-                    className="mt-8 px-6 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 active:scale-95"
-                >
-                    New Conversation
-                </button>
+                            </div>
+                        </React.Fragment>
+                    );
+                })}
+                <div ref={messagesEndRef} />
             </div>
-        )}
-      </div>
+
+            {/* Input Area */}
+            <div className="p-6 bg-white border-t border-gray-100">
+                <form onSubmit={sendMessage} className="flex items-center gap-3">
+                    <div className="flex-1 relative">
+                        <input
+                            type="text"
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            placeholder="Type your message..."
+                            className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                        />
+                    </div>
+                    <button 
+                        type="submit"
+                        disabled={!newMessage.trim()}
+                        className="bg-indigo-600 text-white rounded-2xl p-3 hover:bg-indigo-700 disabled:opacity-50 disabled:scale-100 active:scale-95 transition-all shadow-lg shadow-indigo-200"
+                    >
+                        <Send className="h-5 w-5" />
+                    </button>
+                </form>
+            </div>
+        </div>
+      )}
 
       {/* New Chat Modal */}
       {showNewChatModal && (
