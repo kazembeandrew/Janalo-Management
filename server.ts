@@ -18,13 +18,11 @@ const SUPABASE_URL = process.env.VITE_SUPABASE_URL || DEFAULT_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 // Initialize Supabase Client
-// We use the service role key if available, otherwise fallback to anon key to prevent crash.
-// Admin features will only work if the service role key is actually provided.
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY || DEFAULT_ANON_KEY);
 
 // --- ADMIN API ROUTES ---
 
-// Create User
+// Create User (Maker: Admin creates, Status: Pending)
 app.post("/api/admin/create-user", async (req, res) => {
   const { email, password, full_name, role } = req.body;
 
@@ -42,6 +40,19 @@ app.post("/api/admin/create-user", async (req, res) => {
     });
 
     if (authError) throw authError;
+
+    // 2. Immediately set to inactive and mark as pending approval in the public users table
+    // The trigger 'handle_new_user' creates the row, so we update it.
+    const { error: updateError } = await supabaseAdmin
+      .from('users')
+      .update({ 
+        is_active: false, 
+        deletion_status: 'pending_approval',
+        role: role // Ensure role from form is applied
+      })
+      .eq('id', authData.user.id);
+
+    if (updateError) throw updateError;
     
     res.json({ success: true, user: authData.user });
   } catch (error: any) {
