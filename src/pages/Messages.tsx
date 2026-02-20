@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { usePresence } from '@/context/PresenceContext';
-import { Send, User, Search, MessageSquare, Clock } from 'lucide-react';
+import { Send, User, Search, MessageSquare, Plus, X, Check } from 'lucide-react';
 
 interface ConversationSummary {
   conversation_id: string;
@@ -21,6 +21,13 @@ interface Message {
   is_read: boolean;
 }
 
+interface UserListItem {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string;
+}
+
 export const Messages: React.FC = () => {
   const { profile } = useAuth();
   const { onlineUsers } = usePresence();
@@ -29,12 +36,15 @@ export const Messages: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [users, setUsers] = useState<UserListItem[]>([]);
+  const [userSearch, setUserSearch] = useState('');
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchConversations();
 
-    // Subscribe to new messages globally to update conversation list
     const channel = supabase
       .channel('inbox-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
@@ -52,7 +62,6 @@ export const Messages: React.FC = () => {
       fetchMessages(selectedConvo.conversation_id);
       markAsRead(selectedConvo.conversation_id);
 
-      // Subscribe to messages in this conversation
       const channel = supabase
         .channel(`convo-${selectedConvo.conversation_id}`)
         .on('postgres_changes', { 
@@ -61,7 +70,11 @@ export const Messages: React.FC = () => {
             table: 'direct_messages',
             filter: `conversation_id=eq.${selectedConvo.conversation_id}`
         }, (payload) => {
-            setMessages(prev => [...prev, payload.new as Message]);
+            const newMsg = payload.new as Message;
+            setMessages(prev => {
+                if (prev.some(m => m.id === newMsg.id)) return prev;
+                return [...prev, newMsg];
+            });
             markAsRead(selectedConvo.conversation_id);
             scrollToBottom();
         })
@@ -92,20 +105,26 @@ export const Messages: React.FC = () => {
     }
   };
 
+  const fetchUsers = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email, role')
+        .eq('is_active', true)
+        .neq('id', profile?.id);
+      
+      if (!error) setUsers(data || []);
+  };
+
   const markAsRead = async (convoId: string) => {
     if (!profile) return;
     
-    // 1. Update DB
-    const { error } = await supabase
+    await supabase
       .from('direct_messages')
       .update({ is_read: true })
       .eq('conversation_id', convoId)
       .neq('sender_id', profile.id)
-      .eq('is_read', false); // Only update if not already read
-    
-    if (error) console.error("Error marking as read:", error);
+      .eq('is_read', false);
 
-    // 2. Update Local State (Sidebar)
     setConversations(prev => prev.map(c => 
         c.conversation_id === convoId ? { ...c, unread_count: 0 } : c
     ));
@@ -115,19 +134,60 @@ export const Messages: React.FC = () => {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConvo || !profile) return;
 
+    const tempMsg = newMessage.trim();
+    setNewMessage('');
+
     try {
       const { error } = await supabase.from('direct_messages').insert({
         conversation_id: selectedConvo.conversation_id,
         sender_id: profile.id,
-        content: newMessage.trim()
+        content: tempMsg
       });
 
       if (error) throw error;
-      setNewMessage('');
-      // Optimistic update handled by subscription
     } catch (error) {
       console.error('Error sending message:', error);
+      setNewMessage(tempMsg);
     }
+  };
+
+  const startNewChat = async (recipient: UserListItem) => {
+      if (!profile) return;
+      setIsCreatingChat(true);
+      
+      try {
+          // Check if conversation already exists
+          const existing = conversations.find(c => c.other_user_id === recipient.id);
+          if (existing) {
+              setSelectedConvo(existing);
+              setShowNewChatModal(false);
+              return;
+          }
+
+          const { data: convoId, error } = await supabase.rpc('create_new_conversation', {
+              recipient_id: recipient.id
+          });
+
+          if (error) throw error;
+
+          const newConvo: ConversationSummary = {
+              conversation_id: convoId,
+              other_user_id: recipient.id,
+              other_user_name: recipient.full_name,
+              last_message: '',
+              last_message_at: new Date().toISOString(),
+              unread_count: 0
+          };
+
+          setConversations(prev => [newConvo, ...prev]);
+          setSelectedConvo(newConvo);
+          setShowNewChatModal(false);
+      } catch (error) {
+          console.error("Error starting chat:", error);
+          alert("Failed to start conversation.");
+      } finally {
+          setIsCreatingChat(false);
+      }
   };
 
   const scrollToBottom = () => {
@@ -136,14 +196,26 @@ export const Messages: React.FC = () => {
     }, 100);
   };
 
+  const filteredUsers = users.filter(u => 
+    u.full_name.toLowerCase().includes(userSearch.toLowerCase()) ||
+    u.email.toLowerCase().includes(userSearch.toLowerCase())
+  );
+
   return (
     <div className="h-[calc(100vh-6rem)] flex bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
       {/* Sidebar: Conversation List */}
       <div className={`w-full md:w-1/3 border-r border-gray-200 flex flex-col ${selectedConvo ? 'hidden md:flex' : 'flex'}`}>
-        <div className="p-4 border-b border-gray-200 bg-gray-50">
+        <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
           <h2 className="text-lg font-bold text-gray-900 flex items-center">
             <MessageSquare className="h-5 w-5 mr-2 text-indigo-600" /> Inbox
           </h2>
+          <button 
+            onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
+            className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-colors"
+            title="New Chat"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
         </div>
         
         <div className="flex-1 overflow-y-auto">
@@ -152,6 +224,12 @@ export const Messages: React.FC = () => {
           ) : conversations.length === 0 ? (
              <div className="p-8 text-center text-gray-500">
                  <p>No messages yet.</p>
+                 <button 
+                    onClick={() => { fetchUsers(); setShowNewChatModal(true); }}
+                    className="mt-4 text-indigo-600 font-medium hover:underline"
+                 >
+                     Start a conversation
+                 </button>
              </div>
           ) : (
             conversations.map(convo => (
@@ -221,7 +299,7 @@ export const Messages: React.FC = () => {
 
                 {/* Messages Area */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
-                    {messages.map((msg, index) => {
+                    {messages.map((msg) => {
                         const isMe = msg.sender_id === profile?.id;
                         return (
                             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -269,6 +347,55 @@ export const Messages: React.FC = () => {
             </div>
         )}
       </div>
+
+      {/* New Chat Modal */}
+      {showNewChatModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                  <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                      <h3 className="font-bold text-gray-900">Start New Conversation</h3>
+                      <button onClick={() => setShowNewChatModal(false)} className="text-gray-500 hover:text-gray-700">
+                          <X className="h-5 w-5" />
+                      </button>
+                  </div>
+                  <div className="p-4">
+                      <div className="relative mb-4">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <input 
+                            type="text"
+                            placeholder="Search team members..."
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                          />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto space-y-1">
+                          {filteredUsers.length === 0 ? (
+                              <p className="text-center py-4 text-gray-500 text-sm">No users found.</p>
+                          ) : (
+                              filteredUsers.map(user => (
+                                  <button
+                                    key={user.id}
+                                    onClick={() => startNewChat(user)}
+                                    disabled={isCreatingChat}
+                                    className="w-full flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors text-left group"
+                                  >
+                                      <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold mr-3">
+                                          {user.full_name.charAt(0)}
+                                      </div>
+                                      <div className="flex-1">
+                                          <p className="font-medium text-gray-900">{user.full_name}</p>
+                                          <p className="text-xs text-gray-500 capitalize">{user.role.replace('_', ' ')}</p>
+                                      </div>
+                                      <Check className="h-4 w-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </button>
+                              ))
+                          )}
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
