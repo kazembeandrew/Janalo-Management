@@ -3,24 +3,26 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { Calendar, Phone, Mail, CheckCircle, AlertCircle, Clock, ChevronRight } from 'lucide-react';
+import { Calendar, Phone, Mail, CheckCircle, AlertCircle, Clock, ChevronRight, TrendingUp } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const Collections: React.FC = () => {
   const { profile } = useAuth();
   const [upcomingLoans, setUpcomingLoans] = useState<Loan[]>([]);
+  const [overdueCount, setOverdueCount] = useState(0);
+  const [mtdCollected, setMtdCollected] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchUpcomingPayments();
+    fetchCollectionData();
   }, [profile]);
 
-  const fetchUpcomingPayments = async () => {
+  const fetchCollectionData = async () => {
     if (!profile) return;
     setLoading(true);
     
     try {
-      // Fetch active loans assigned to this officer
+      // 1. Fetch active loans
       let query = supabase
         .from('loans')
         .select('*, borrowers(*)')
@@ -30,10 +32,35 @@ export const Collections: React.FC = () => {
         query = query.eq('officer_id', profile.id);
       }
 
-      const { data, error } = await query;
+      const { data: loans, error } = await query;
       if (error) throw error;
 
-      setUpcomingLoans(data || []);
+      // 2. Identify Overdue (Simple logic: last update > 30 days ago)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const overdue = loans?.filter(l => new Date(l.updated_at) < thirtyDaysAgo) || [];
+      setOverdueCount(overdue.length);
+      setUpcomingLoans(loans || []);
+
+      // 3. Fetch MTD Collections
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0,0,0,0);
+
+      let repayQuery = supabase
+        .from('repayments')
+        .select('amount_paid')
+        .gte('payment_date', startOfMonth.toISOString().split('T')[0]);
+      
+      if (profile.role === 'loan_officer') {
+          repayQuery = repayQuery.eq('recorded_by', profile.id);
+      }
+
+      const { data: repayments } = await repayQuery;
+      const total = repayments?.reduce((sum, r) => sum + Number(r.amount_paid), 0) || 0;
+      setMtdCollected(total);
+
     } catch (error) {
       console.error(error);
     } finally {
@@ -54,7 +81,7 @@ export const Collections: React.FC = () => {
                   <Clock className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                  <p className="text-xs text-gray-500 uppercase font-bold">Due This Week</p>
+                  <p className="text-xs text-gray-500 uppercase font-bold">Active Portfolio</p>
                   <p className="text-xl font-bold text-gray-900">{upcomingLoans.length}</p>
               </div>
           </div>
@@ -63,22 +90,25 @@ export const Collections: React.FC = () => {
                   <AlertCircle className="h-5 w-5 text-red-600" />
               </div>
               <div>
-                  <p className="text-xs text-gray-500 uppercase font-bold">Overdue</p>
-                  <p className="text-xl font-bold text-gray-900">0</p>
+                  <p className="text-xs text-gray-500 uppercase font-bold">Overdue (30d+)</p>
+                  <p className="text-xl font-bold text-gray-900">{overdueCount}</p>
               </div>
           </div>
           <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 flex items-center">
               <div className="p-2 bg-green-50 rounded-lg mr-3">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
+                  <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
                   <p className="text-xs text-gray-500 uppercase font-bold">Collected (MTD)</p>
-                  <p className="text-xl font-bold text-gray-900">MK 0.00</p>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(mtdCollected)}</p>
               </div>
           </div>
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
+        <div className="px-6 py-4 border-b border-gray-100 bg-gray-50">
+            <h3 className="font-bold text-gray-900">Active Repayment Tracking</h3>
+        </div>
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -92,7 +122,7 @@ export const Collections: React.FC = () => {
             {loading ? (
               <tr><td colSpan={4} className="px-6 py-4 text-center">Loading...</td></tr>
             ) : upcomingLoans.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No upcoming payments found.</td></tr>
+              <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No active loans found.</td></tr>
             ) : (
               upcomingLoans.map(loan => (
                 <tr key={loan.id} className="hover:bg-gray-50">

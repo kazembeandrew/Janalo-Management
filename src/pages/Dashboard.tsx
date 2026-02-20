@@ -5,6 +5,7 @@ import { Activity, Sparkles, RefreshCw } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { AccountantView } from '@/components/dashboard/AccountantView';
 import { HRView } from '@/components/dashboard/HRView';
+import { OfficerView } from '@/components/dashboard/OfficerView';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { DollarSign, Users, AlertTriangle, Target } from 'lucide-react';
 import { formatCurrency } from '@/utils/finance';
@@ -21,7 +22,8 @@ export const Dashboard: React.FC = () => {
     interestEarned: 0,
     totalDisbursed: 0,
     recoveryRate: 0,
-    completedLoans: 0
+    completedLoans: 0,
+    reassessCount: 0
   });
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [profitData, setProfitData] = useState<any[]>([]);
@@ -33,6 +35,7 @@ export const Dashboard: React.FC = () => {
   const isHR = effectiveRoles.includes('hr');
   const isAccountant = effectiveRoles.includes('accountant');
   const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+  const isOfficer = effectiveRoles.includes('loan_officer');
 
   useEffect(() => {
     fetchDashboardData();
@@ -50,6 +53,17 @@ export const Dashboard: React.FC = () => {
       const { data: revData } = await supabase.rpc('get_monthly_revenue');
       const { data: offStats } = await supabase.rpc('get_officer_performance');
       const { data: expenses } = await supabase.from('expenses').select('amount, date');
+      
+      // Fetch reassess count for officers
+      let reassessCount = 0;
+      if (profile) {
+          const { count } = await supabase
+            .from('loans')
+            .select('*', { count: 'exact', head: true })
+            .eq('officer_id', profile.id)
+            .in('status', ['reassess', 'rejected']);
+          reassessCount = count || 0;
+      }
 
       if (rpcStats) {
         const active = rpcStats.active_count || 0;
@@ -66,7 +80,8 @@ export const Dashboard: React.FC = () => {
           interestEarned: rpcStats.earned_interest || 0,
           totalDisbursed: rpcStats.total_disbursed || 0,
           recoveryRate: totalLoans > 0 ? (completed / totalLoans) * 100 : 0,
-          completedLoans: completed
+          completedLoans: completed,
+          reassessCount
         });
       }
 
@@ -111,6 +126,7 @@ export const Dashboard: React.FC = () => {
 
       {isAccountant && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} />}
       {isHR && <HRView stats={stats} officerStats={officerStats} />}
+      {isOfficer && !isHR && !isAccountant && !isExec && <OfficerView stats={stats} />}
       
       {isExec && !isAccountant && !isHR && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
