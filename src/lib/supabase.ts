@@ -18,7 +18,6 @@ const getEnvVar = (key: string) => {
 };
 
 // Default credentials provided for this instance
-// Note: In a production environment, you should ensure these are set via environment variables (VITE_SUPABASE_URL, etc.)
 const DEFAULT_URL = 'https://tfpzehyrkzbenjobkdsz.supabase.co';
 const DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ';
 
