@@ -6,6 +6,7 @@
     <title>Janalo Enterprises</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <style>
       body {
         font-family: 'Inter', sans-serif;
@@ -53,6 +54,14 @@
       .ReactCrop .ord-s  { bottom: 0; left: 50%; margin-bottom: -5px; margin-left: -5px; cursor: s-resize; }
       .ReactCrop .ord-sw { bottom: 0; left: 0; margin-bottom: -5px; margin-left: -5px; cursor: sw-resize; }
       .ReactCrop .ord-w  { top: 50%; left: 0; margin-top: -5px; margin-left: -5px; cursor: w-resize; }
+      
+      /* Leaflet container height */
+      .leaflet-container {
+        width: 100%;
+        height: 100%;
+        border-radius: 0.75rem;
+        z-index: 1;
+      }
     </style>
   <script type="importmap">
 {
@@ -64,7 +73,9 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "lucide-react": "https://esm.sh/lucide-react@^0.574.0",
     "recharts": "https://esm.sh/recharts@^3.7.0",
-    "react-image-crop": "https://esm.sh/react-image-crop@10.1.0"
+    "react-image-crop": "https://esm.sh/react-image-crop@10.1.0",
+    "leaflet": "https://esm.sh/leaflet@1.9.4",
+    "react-leaflet": "https://esm.sh/react-leaflet@4.2.1"
   }
 }
 </script>
