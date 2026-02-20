@@ -16,6 +16,7 @@ import { Messages } from '@/pages/Messages';
 import { Users } from '@/pages/Users';
 import { AuditLogs } from '@/pages/AuditLogs';
 import { Collections } from '@/pages/Collections';
+import { Performance } from '@/pages/Performance';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -71,6 +72,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Collections />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/performance"
+            element={
+              <ProtectedRoute>
+                <Performance />
               </ProtectedRoute>
             }
           />
