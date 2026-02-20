@@ -12,12 +12,15 @@ app.use(express.json());
 
 // Default credentials for the project
 const DEFAULT_URL = "https://tfpzehyrkzbenjobkdsz.supabase.co";
+const DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ";
+
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || DEFAULT_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
-// Initialize Supabase Admin Client
-// Note: Admin features like creating users require the SUPABASE_SERVICE_ROLE_KEY env var
-const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+// Initialize Supabase Client
+// We use the service role key if available, otherwise fallback to anon key to prevent crash.
+// Admin features will only work if the service role key is actually provided.
+const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY || DEFAULT_ANON_KEY);
 
 // --- ADMIN API ROUTES ---
 
@@ -27,7 +30,7 @@ app.post("/api/admin/create-user", async (req, res) => {
 
   try {
     if (!SERVICE_ROLE_KEY) {
-      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server.");
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled.");
     }
 
     // 1. Create user in Auth
@@ -53,7 +56,7 @@ app.post("/api/admin/reset-password", async (req, res) => {
 
   try {
     if (!SERVICE_ROLE_KEY) {
-      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server.");
+      throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured on the server. Admin actions are disabled.");
     }
 
     const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
