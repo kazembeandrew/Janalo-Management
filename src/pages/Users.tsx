@@ -47,7 +47,7 @@ export const Users: React.FC = () => {
   // Create Form States
   const [newUser, setNewUser] = useState({
       full_name: '',
-      email: '',
+      username: '', // Changed from email to username
       password: '', 
       role: 'loan_officer' as UserRole
   });
@@ -112,20 +112,26 @@ export const Users: React.FC = () => {
       }
       setIsProcessing(true);
       
+      // Map Username to Email for Supabase Auth to match Login logic
+      const email = `${newUser.username.toLowerCase().trim()}@janalo.com`;
+      
       try {
           const response = await fetch('/api/admin/create-user', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(newUser)
+              body: JSON.stringify({
+                  ...newUser,
+                  email: email
+              })
           });
 
           const result = await response.json();
           if (!response.ok) throw new Error(result.error || 'Failed to create user');
 
-          await logAudit('User Created', { email: newUser.email, role: newUser.role }, result.user.id);
+          await logAudit('User Created', { username: newUser.username, role: newUser.role }, result.user.id);
           toast.success(`User ${newUser.full_name} created successfully.`);
           setShowCreateModal(false);
-          setNewUser({ full_name: '', email: '', password: '', role: 'loan_officer' });
+          setNewUser({ full_name: '', username: '', password: '', role: 'loan_officer' });
           fetchUsers();
       } catch (error: any) {
           toast.error(error.message);
@@ -561,15 +567,16 @@ export const Users: React.FC = () => {
                           />
                       </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Address</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Username</label>
                           <input 
                             required
-                            type="email"
+                            type="text"
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
-                            placeholder="john@janalo.com"
-                            value={newUser.email}
-                            onChange={e => setNewUser({...newUser, email: e.target.value})}
+                            placeholder="e.g. john"
+                            value={newUser.username}
+                            onChange={e => setNewUser({...newUser, username: e.target.value})}
                           />
+                          <p className="mt-1 text-[10px] text-gray-400 italic">This will be used for login (e.g. {newUser.username || 'john'}@janalo.com)</p>
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Password</label>
