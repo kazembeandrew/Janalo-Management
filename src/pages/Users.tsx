@@ -45,6 +45,9 @@ export const Users: React.FC = () => {
       role: 'loan_officer' as UserRole
   });
 
+  // Password Reset State
+  const [newPassword, setNewPassword] = useState('');
+
   useEffect(() => {
     if (profile && profile.role !== 'admin' && profile.role !== 'ceo') {
       navigate('/');
@@ -57,6 +60,7 @@ export const Users: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -82,25 +86,65 @@ export const Users: React.FC = () => {
       });
   };
 
+  // --- BACKEND API INTEGRATION ---
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setIsProcessing(true);
+      
+      try {
+          const response = await fetch('/api/admin/create-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newUser)
+          });
+
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Failed to create user');
+
+          await logAudit('User Created', { email: newUser.email, role: newUser.role }, result.user.id);
+          toast.success(`User ${newUser.full_name} created successfully.`);
+          setShowCreateModal(false);
+          setNewUser({ full_name: '', email: '', password: '', role: 'loan_officer' });
+          fetchUsers();
+      } catch (error: any) {
+          toast.error(error.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedUser || !newPassword) return;
+      setIsProcessing(true);
+
+      try {
+          const response = await fetch('/api/admin/reset-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: selectedUser.id, newPassword })
+          });
+
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || 'Failed to reset password');
+
+          await logAudit('Password Reset', { admin: profile?.full_name }, selectedUser.id);
+          toast.success("Password updated successfully.");
+          setNewPassword('');
+      } catch (error: any) {
+          toast.error(error.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   // --- REVOKE ACCESS LOGIC ---
 
   const handleRevokeAccess = async () => {
       if (!selectedUser || !revocationReason.trim()) {
           toast.error("Please provide a reason for revoking access.");
           return;
-      }
-
-      if (selectedUser.role === 'loan_officer') {
-          const { count } = await supabase
-            .from('loans')
-            .select('*', { count: 'exact', head: true })
-            .eq('officer_id', selectedUser.id)
-            .neq('status', 'completed');
-          
-          if (count && count > 0 && !successorId) {
-              toast.error("Portfolio reassignment is mandatory for this officer.");
-              return;
-          }
       }
 
       setIsProcessing(true);
@@ -142,8 +186,6 @@ export const Users: React.FC = () => {
       }
   };
 
-  // --- PERMANENT DELETION LOGIC ---
-
   const handlePermanentDelete = async () => {
       if (!selectedUser || profile?.role !== 'ceo') return;
       
@@ -172,39 +214,8 @@ export const Users: React.FC = () => {
       }
   };
 
-  // --- PROMOTION LOGIC ---
-
   const handlePromote = async () => {
       if (!selectedUser || !targetRole) return;
-
-      if (selectedUser.role === 'loan_officer' && targetRole !== 'loan_officer') {
-          const { count } = await supabase
-            .from('loans')
-            .select('*', { count: 'exact', head: true })
-            .eq('officer_id', selectedUser.id)
-            .neq('status', 'completed');
-          
-          if (count && count > 0 && !successorId) {
-              toast.error("Please select a successor for the portfolio first.");
-              return;
-          }
-          
-          if (successorId) {
-              setIsProcessing(true);
-              try {
-                  const { error: rpcError } = await supabase.rpc('reassign_officer_portfolio', {
-                      old_officer_id: selectedUser.id,
-                      new_officer_id: successorId,
-                      reason: `Promotion to ${targetRole}`
-                  });
-                  if (rpcError) throw rpcError;
-              } catch (e: any) {
-                  toast.error("Portfolio transfer failed: " + e.message);
-                  setIsProcessing(false);
-                  return;
-              }
-          }
-      }
 
       setIsProcessing(true);
       try {
@@ -225,8 +236,6 @@ export const Users: React.FC = () => {
           setIsProcessing(false);
       }
   };
-
-  // --- DELEGATION LOGIC ---
 
   const handleSaveDelegation = async () => {
       if (!selectedUser || !delegationData.role) return;
@@ -255,27 +264,6 @@ export const Users: React.FC = () => {
       }
   };
 
-  const handleRevokeDelegation = async () => {
-      if (!selectedUser) return;
-      setIsProcessing(true);
-      try {
-          await supabase.from('users').update({
-              delegated_role: null,
-              delegation_start: null,
-              delegation_end: null
-          }).eq('id', selectedUser.id);
-          
-          await logAudit('Delegation Revoked', {}, selectedUser.id);
-          toast.success("Delegation revoked.");
-          setShowEditModal(false);
-          fetchUsers();
-      } catch (e) {
-          toast.error("Failed to revoke.");
-      } finally {
-          setIsProcessing(false);
-      }
-  };
-
   const openEditModal = (user: UserProfile) => {
       setSelectedUser(user);
       setTargetRole(user.role);
@@ -288,21 +276,36 @@ export const Users: React.FC = () => {
       setShowEditModal(true);
   };
 
-  const openRevokeModal = () => {
-      setRevocationReason('');
-      setSuccessorId('');
-      setShowRevokeModal(true);
-  };
+  const filteredUsers = users.filter(u => 
+    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const potentialSuccessors = users.filter(u => u.role === 'loan_officer' && u.is_active && u.id !== selectedUser?.id);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-        <button onClick={() => setShowCreateModal(true)} className="bg-indigo-900 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center">
+        <div>
+            <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
+            <p className="text-sm text-gray-500">Manage staff access, roles, and delegations.</p>
+        </div>
+        <button onClick={() => setShowCreateModal(true)} className="bg-indigo-900 hover:bg-indigo-800 text-white px-4 py-2 rounded-md text-sm font-medium flex items-center transition-colors">
             <Plus className="h-4 w-4 mr-2" /> Add User
         </button>
+      </div>
+
+      <div className="relative max-w-md">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-gray-400" />
+        </div>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+          placeholder="Search users..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
@@ -316,40 +319,114 @@ export const Users: React.FC = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {users.map(user => (
-              <tr key={user.id} className="hover:bg-gray-50">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                      {user.full_name?.charAt(0)}
+            {loading ? (
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">Loading users...</td></tr>
+            ) : filteredUsers.length === 0 ? (
+                <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No users found.</td></tr>
+            ) : (
+                filteredUsers.map(user => (
+                <tr key={user.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                        {user.full_name?.charAt(0)}
+                        </div>
+                        <div className="ml-3">
+                        <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
+                        <div className="text-xs text-gray-500">{user.email}</div>
+                        </div>
                     </div>
-                    <div className="ml-3">
-                      <div className="text-sm font-medium text-gray-900">{user.full_name}</div>
-                      <div className="text-xs text-gray-500">{user.email}</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex flex-col">
+                        <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 uppercase w-fit">{user.role.replace('_', ' ')}</span>
+                        {user.delegated_role && (
+                            <span className="text-[10px] text-blue-600 font-bold mt-1">+ {user.delegated_role.replace('_', ' ')}</span>
+                        )}
                     </div>
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex flex-col">
-                    <span className="px-2 py-1 rounded-full text-[10px] font-bold bg-gray-100 text-gray-800 uppercase w-fit">{user.role.replace('_', ' ')}</span>
-                    {user.delegated_role && (
-                        <span className="text-[10px] text-blue-600 font-bold mt-1">+ {user.delegated_role.replace('_', ' ')}</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                      {user.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button onClick={() => openEditModal(user)} className="text-indigo-600 hover:text-indigo-900">Manage</button>
-                </td>
-              </tr>
-            ))}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        {user.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <button onClick={() => openEditModal(user)} className="text-indigo-600 hover:text-indigo-900">Manage</button>
+                    </td>
+                </tr>
+                ))
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* CREATE USER MODAL */}
+      {showCreateModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50">
+              <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+                  <div className="bg-indigo-900 px-6 py-4 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center"><UserPlus className="mr-2 h-5 w-5" /> Add New Staff Member</h3>
+                      <button onClick={() => setShowCreateModal(false)}><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                          <input 
+                            required
+                            type="text"
+                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            value={newUser.full_name}
+                            onChange={e => setNewUser({...newUser, full_name: e.target.value})}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700">Email Address</label>
+                          <input 
+                            required
+                            type="email"
+                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            value={newUser.email}
+                            onChange={e => setNewUser({...newUser, email: e.target.value})}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700">Initial Password</label>
+                          <input 
+                            required
+                            type="password"
+                            minLength={6}
+                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            value={newUser.password}
+                            onChange={e => setNewUser({...newUser, password: e.target.value})}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-sm font-medium text-gray-700">Primary Role</label>
+                          <select 
+                            className="mt-1 block w-full border border-gray-300 rounded-md p-2 text-sm"
+                            value={newUser.role}
+                            onChange={e => setNewUser({...newUser, role: e.target.value as UserRole})}
+                          >
+                              <option value="loan_officer">Loan Officer</option>
+                              <option value="hr">HR Manager</option>
+                              <option value="accountant">Accountant</option>
+                              <option value="ceo">CEO / Executive</option>
+                              <option value="admin">System Administrator</option>
+                          </select>
+                      </div>
+                      <div className="pt-4">
+                          <button 
+                            type="submit"
+                            disabled={isProcessing}
+                            className="w-full bg-indigo-600 text-white py-2 rounded-md font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-colors"
+                          >
+                              {isProcessing ? 'Creating Account...' : 'Create User Account'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
 
       {/* MANAGE USER MODAL */}
       {showEditModal && selectedUser && (
@@ -413,21 +490,6 @@ export const Users: React.FC = () => {
                                       <option value="admin">System Administrator</option>
                                   </select>
                               </div>
-                              {selectedUser.role === 'loan_officer' && targetRole !== 'loan_officer' && (
-                                  <div>
-                                      <label className="block text-sm font-medium text-gray-700">Select Successor for Portfolio</label>
-                                      <select 
-                                          className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-                                          value={successorId}
-                                          onChange={e => setSuccessorId(e.target.value)}
-                                      >
-                                          <option value="">-- Select Active Officer --</option>
-                                          {potentialSuccessors.map(u => (
-                                              <option key={u.id} value={u.id}>{u.full_name}</option>
-                                          ))}
-                                      </select>
-                                  </div>
-                              )}
                               <div className="flex justify-end">
                                   <button 
                                     onClick={handlePromote}
@@ -472,14 +534,11 @@ export const Users: React.FC = () => {
                                       />
                                   </div>
                               </div>
-                              <div className="flex justify-between pt-4">
-                                  {selectedUser.delegated_role && (
-                                      <button onClick={handleRevokeDelegation} className="text-red-600 text-sm font-bold hover:underline">Revoke Current Delegation</button>
-                                  )}
+                              <div className="flex justify-end pt-4">
                                   <button 
                                     onClick={handleSaveDelegation}
                                     disabled={isProcessing || !delegationData.role}
-                                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold ml-auto"
+                                    className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold"
                                   >
                                       Save Delegation
                                   </button>
@@ -490,6 +549,30 @@ export const Users: React.FC = () => {
                       {activeTab === 'security' && (
                           <div className="space-y-6">
                               <div className="p-4 border rounded-lg bg-white">
+                                  <h4 className="font-bold text-gray-900 flex items-center mb-4">
+                                      <Key className="h-4 w-4 mr-2 text-indigo-600" />
+                                      Reset User Password
+                                  </h4>
+                                  <form onSubmit={handleResetPassword} className="flex gap-2">
+                                      <input 
+                                        required
+                                        type="password"
+                                        placeholder="New password..."
+                                        className="flex-1 border border-gray-300 rounded-md p-2 text-sm"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                      />
+                                      <button 
+                                        type="submit"
+                                        disabled={isProcessing || !newPassword}
+                                        className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-bold disabled:bg-gray-400"
+                                      >
+                                          Reset
+                                      </button>
+                                  </form>
+                              </div>
+
+                              <div className="p-4 border rounded-lg bg-white">
                                   <h4 className="font-bold text-gray-900 flex items-center mb-2">
                                       <Ban className="h-4 w-4 mr-2 text-red-600" />
                                       Revoke Access (Deactivate)
@@ -498,7 +581,7 @@ export const Users: React.FC = () => {
                                       Standard procedure for resignations or transfers. User cannot log in, but all historical data is preserved.
                                   </p>
                                   <button 
-                                    onClick={openRevokeModal}
+                                    onClick={() => setShowRevokeModal(true)}
                                     disabled={!selectedUser.is_active}
                                     className="w-full py-2 bg-red-50 text-red-700 border border-red-200 rounded-md text-sm font-bold hover:bg-red-100 disabled:opacity-50"
                                   >
