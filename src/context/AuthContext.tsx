@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
   role: UserRole | null;
+  effectiveRoles: UserRole[];
   isLoading: boolean;
   signOut: () => Promise<void>;
 }
@@ -58,22 +59,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) throw error;
       const userProfile = data as UserProfile;
 
-      // Check if user is active. If not, sign them out.
       if (userProfile && !userProfile.is_active) {
-          console.warn('User account is inactive. Signing out.');
           await supabase.auth.signOut();
           setProfile(null);
           setUser(null);
           setSession(null);
-          alert("Your account has been deactivated. Please contact the administrator.");
+          alert("Your account has been deactivated.");
       } else {
           setProfile(userProfile);
       }
 
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      // If we can't fetch profile, it's safer not to assume anything.
-      // However, we shouldn't infinite loop.
     } finally {
       setIsLoading(false);
     }
@@ -84,8 +81,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setProfile(null);
   };
 
+  // Calculate effective roles based on primary role and active delegation
+  const getEffectiveRoles = (): UserRole[] => {
+      if (!profile) return [];
+      const roles: UserRole[] = [profile.role];
+      
+      if (profile.delegated_role) {
+          const now = new Date();
+          const start = profile.delegation_start ? new Date(profile.delegation_start) : null;
+          const end = profile.delegation_end ? new Date(profile.delegation_end) : null;
+          
+          const isStarted = !start || now >= start;
+          const isNotEnded = !end || now <= end;
+          
+          if (isStarted && isNotEnded) {
+              roles.push(profile.delegated_role);
+          }
+      }
+      
+      return Array.from(new Set(roles)); // Unique roles
+  };
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, role: profile?.role ?? null, isLoading, signOut }}>
+    <AuthContext.Provider value={{ 
+        session, 
+        user, 
+        profile, 
+        role: profile?.role ?? null, 
+        effectiveRoles: getEffectiveRoles(),
+        isLoading, 
+        signOut 
+    }}>
       {children}
     </AuthContext.Provider>
   );
