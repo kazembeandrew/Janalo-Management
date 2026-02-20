@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { Plus, Filter, ChevronRight, Clock, ChevronLeft } from 'lucide-react';
+import { exportToCSV } from '@/utils/export';
+import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -23,7 +24,6 @@ export const Loans: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, filter, page]);
 
-  // Reset page when filter changes
   const handleFilterChange = (newFilter: string) => {
       setFilter(newFilter);
       setPage(1);
@@ -48,7 +48,6 @@ export const Loans: React.FC = () => {
         query = query.eq('status', filter);
       }
 
-      // Pagination Logic
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
       
@@ -63,6 +62,18 @@ export const Loans: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleExport = () => {
+      const exportData = loans.map(l => ({
+          Borrower: l.borrowers?.full_name,
+          Principal: l.principal_amount,
+          Outstanding: l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0),
+          Term: l.term_months,
+          Status: l.status,
+          Date: new Date(l.created_at).toLocaleDateString()
+      }));
+      exportToCSV(exportData, 'Janalo_Loans_Export');
   };
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
@@ -86,15 +97,24 @@ export const Loans: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Loan Portfolio</h1>
           <p className="text-sm text-gray-500">View and manage all loans</p>
         </div>
-        {profile?.role !== 'ceo' && (
-          <Link
-            to="/loans/new"
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Application
-          </Link>
-        )}
+        <div className="flex space-x-2">
+            <button
+                onClick={handleExport}
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+            </button>
+            {profile?.role !== 'ceo' && (
+            <Link
+                to="/loans/new"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+                <Plus className="h-4 w-4 mr-2" />
+                New Application
+            </Link>
+            )}
+        </div>
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col min-h-[500px]">
@@ -179,7 +199,6 @@ export const Loans: React.FC = () => {
           </table>
         </div>
 
-        {/* Pagination Controls */}
         <div className="bg-white px-4 py-3 border-t border-gray-200 flex items-center justify-between sm:px-6">
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
@@ -211,7 +230,6 @@ export const Loans: React.FC = () => {
                     </nav>
                 </div>
             </div>
-             {/* Mobile Pagination View */}
              <div className="flex items-center justify-between w-full sm:hidden">
                 <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
