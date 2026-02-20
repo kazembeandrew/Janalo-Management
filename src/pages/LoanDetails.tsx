@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Loan, Repayment, LoanNote, LoanDocument, Visitation } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
-import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
+import { analyzeFinancialData } from '@/services/aiService';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
     FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles
@@ -325,8 +325,12 @@ export const LoanDetails: React.FC = () => {
               content: message
           });
 
+          // Redirect to messages
+          navigate('/messages');
+
       } catch (error) {
           console.error("Failed to send direct message", error);
+          alert("Failed to open chat.");
       }
   };
 
@@ -829,10 +833,20 @@ export const LoanDetails: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-900">{loan.borrowers?.full_name}</h2>
                     <div className="mt-1 text-sm text-gray-500 space-y-1">
                         <p>Loan ID: {loan.id.slice(0, 8)}</p>
-                        <p className="flex items-center">
-                            <User className="h-3 w-3 mr-1" /> 
-                            Officer: <span className="font-medium text-gray-700 ml-1">{loan.users?.full_name || 'Unassigned'}</span>
-                        </p>
+                        <div className="flex items-center space-x-2">
+                            <p className="flex items-center">
+                                <User className="h-3 w-3 mr-1" /> 
+                                Officer: <span className="font-medium text-gray-700 ml-1">{loan.users?.full_name || 'Unassigned'}</span>
+                            </p>
+                            {isExecutive && loan.officer_id && loan.officer_id !== profile?.id && (
+                                <button 
+                                    onClick={() => sendDirectMessage(loan.officer_id, `Regarding Loan ${loan.id.slice(0, 8)} for ${loan.borrowers?.full_name}: `)}
+                                    className="text-indigo-600 hover:text-indigo-800 text-xs flex items-center bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 print:hidden"
+                                >
+                                    <MessageSquare className="h-3 w-3 mr-1" /> Message
+                                </button>
+                            )}
+                        </div>
                         <p className="flex items-center">
                             <MapPin className="h-3 w-3 mr-1" /> 
                             {loan.borrowers?.address || 'No Address'} • {loan.borrowers?.phone || 'No Phone'}
