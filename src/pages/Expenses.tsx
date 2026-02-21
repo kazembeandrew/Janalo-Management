@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Expense } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3 } from 'lucide-react';
+import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3, RefreshCw } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -26,6 +26,17 @@ export const Expenses: React.FC = () => {
 
   useEffect(() => {
     fetchExpenses();
+
+    const channel = supabase
+      .channel('expenses-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => {
+          fetchExpenses();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchExpenses = async () => {
@@ -61,7 +72,6 @@ export const Expenses: React.FC = () => {
         amount: '',
         date: new Date().toISOString().split('T')[0]
       });
-      fetchExpenses();
     } catch (error) {
       console.error(error);
       alert('Error saving expense');
@@ -71,10 +81,8 @@ export const Expenses: React.FC = () => {
   const handleDelete = async (id: string) => {
       if (!confirm('Are you sure you want to delete this expense?')) return;
       await supabase.from('expenses').delete().eq('id', id);
-      fetchExpenses();
   };
 
-  // Analytics Data Preparation
   const categoryData = categories.map(cat => ({
       name: cat,
       value: expenses.filter(e => e.category === cat).reduce((sum, e) => sum + Number(e.amount), 0)
@@ -83,13 +91,13 @@ export const Expenses: React.FC = () => {
   const monthlyTrendData = (() => {
       const months: any = {};
       expenses.forEach(e => {
-          const month = e.date.substring(0, 7); // YYYY-MM
+          const month = e.date.substring(0, 7);
           months[month] = (months[month] || 0) + Number(e.amount);
       });
       return Object.keys(months).sort().map(m => ({
           month: new Date(m + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
           amount: months[m]
-      })).slice(-6); // Last 6 months
+      })).slice(-6);
   })();
 
   const totalExpenses = expenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
@@ -109,7 +117,6 @@ export const Expenses: React.FC = () => {
         </button>
       </div>
 
-      {/* Analytics Section */}
       {!loading && expenses.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -183,7 +190,6 @@ export const Expenses: React.FC = () => {
           </div>
       )}
 
-      {/* List */}
       <div className="bg-white shadow-sm rounded-xl overflow-hidden border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
               <h3 className="font-bold text-gray-900">Expense Ledger</h3>
@@ -201,8 +207,8 @@ export const Expenses: React.FC = () => {
                       </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
-                      {loading ? (
-                          <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500"><TrendingUp className="h-6 w-6 animate-spin mx-auto mb-2" /> Loading ledger...</td></tr>
+                      {loading && expenses.length === 0 ? (
+                          <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500"><RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" /> Loading ledger...</td></tr>
                       ) : expenses.length === 0 ? (
                           <tr><td colSpan={6} className="px-6 py-12 text-center text-gray-500 italic">No expenses recorded yet.</td></tr>
                       ) : (
@@ -234,7 +240,6 @@ export const Expenses: React.FC = () => {
           </div>
       </div>
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">

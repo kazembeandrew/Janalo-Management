@@ -23,10 +23,23 @@ export const Collections: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
-
   useEffect(() => {
     fetchCollectionData();
+
+    // Real-time subscription for repayments and loans
+    const channel = supabase
+      .channel('collections-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'repayments' }, () => {
+          fetchCollectionData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
+          fetchCollectionData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile, effectiveRoles]);
 
   const fetchCollectionData = async () => {
@@ -54,7 +67,8 @@ export const Collections: React.FC = () => {
       let repayQuery = supabase
         .from('repayments')
         .select('*, loans(borrowers(full_name))')
-        .gte('payment_date', startStr);
+        .gte('payment_date', startStr)
+        .order('created_at', { ascending: false });
       
       if (effectiveRoles.includes('loan_officer') && !effectiveRoles.includes('admin')) {
           repayQuery = repayQuery.eq('recorded_by', profile.id);
@@ -69,7 +83,6 @@ export const Collections: React.FC = () => {
       const overdue = loans?.filter(l => new Date(l.updated_at) < thirtyDaysAgo) || [];
       const mtdTotal = repayments?.reduce((sum, r) => sum + Number(r.amount_paid), 0) || 0;
       
-      // Expected is sum of monthly installments for all active loans
       const expected = loans?.reduce((sum, l) => sum + Number(l.monthly_installment), 0) || 0;
       
       setStats({
@@ -149,7 +162,6 @@ export const Collections: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Active Tracking */}
           <div className="lg:col-span-2 bg-white shadow-sm rounded-xl overflow-hidden border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                 <h3 className="font-bold text-gray-900 flex items-center">
@@ -178,7 +190,7 @@ export const Collections: React.FC = () => {
                     </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100">
-                    {loading ? (
+                    {loading && upcomingLoans.length === 0 ? (
                     <tr><td colSpan={4} className="px-6 py-8 text-center text-xs text-gray-500">Loading portfolio...</td></tr>
                     ) : filteredLoans.length === 0 ? (
                     <tr><td colSpan={4} className="px-6 py-8 text-center text-xs text-gray-500">No active loans found.</td></tr>
@@ -218,7 +230,6 @@ export const Collections: React.FC = () => {
             </div>
           </div>
 
-          {/* Daily Log */}
           <div className="bg-white shadow-sm rounded-xl overflow-hidden border border-gray-200 flex flex-col">
               <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
                   <h3 className="font-bold text-gray-900 flex items-center">

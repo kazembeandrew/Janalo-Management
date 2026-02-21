@@ -20,31 +20,25 @@ export const Users: React.FC = () => {
   const [showArchived, setShowArchived] = useState(false);
   const [serverStatus, setServerStatus] = useState<{admin_enabled: boolean} | null>(null);
   
-  // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showRevokeModal, setShowRevokeModal] = useState(false);
   
-  // Editing State
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'promotion' | 'delegation' | 'security'>('profile');
   
-  // Revocation State
   const [revocationReason, setRevocationReason] = useState('');
   const [successorId, setSuccessorId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Promotion State
   const [targetRole, setTargetRole] = useState<UserRole | ''>('');
 
-  // Delegation State
   const [delegationData, setDelegationData] = useState({
       role: '' as UserRole | '',
       start: new Date().toISOString().split('T')[0],
       end: ''
   });
 
-  // Create Form States
   const [newUser, setNewUser] = useState({
       full_name: '',
       username: '', 
@@ -52,7 +46,6 @@ export const Users: React.FC = () => {
       role: 'loan_officer' as UserRole
   });
 
-  // Password Reset State
   const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
@@ -64,6 +57,17 @@ export const Users: React.FC = () => {
   useEffect(() => {
     fetchUsers();
     checkServerStatus();
+
+    const channel = supabase
+      .channel('users-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+          fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const checkServerStatus = async () => {
@@ -112,7 +116,6 @@ export const Users: React.FC = () => {
       }
       setIsProcessing(true);
       
-      // Map Username to Email for Supabase Auth to match Login logic
       const email = `${newUser.username.toLowerCase().trim()}@janalo.com`;
       
       try {
@@ -132,7 +135,6 @@ export const Users: React.FC = () => {
           toast.success(`User ${newUser.full_name} created successfully.`);
           setShowCreateModal(false);
           setNewUser({ full_name: '', username: '', password: '', role: 'loan_officer' });
-          fetchUsers();
       } catch (error: any) {
           toast.error(error.message);
       } finally {
@@ -206,7 +208,6 @@ export const Users: React.FC = () => {
           toast.success(`Access revoked for ${selectedUser.full_name}.`);
           setShowRevokeModal(false);
           setShowEditModal(false);
-          fetchUsers();
       } catch (e: any) {
           toast.error("Revocation failed: " + e.message);
       } finally {
@@ -235,7 +236,6 @@ export const Users: React.FC = () => {
           await logAudit('User Archived', { email: selectedUser.email }, selectedUser.id);
           toast.success("User archived successfully.");
           setShowEditModal(false);
-          fetchUsers();
       } catch (e: any) {
           toast.error("Archiving failed: " + e.message);
       } finally {
@@ -263,7 +263,6 @@ export const Users: React.FC = () => {
           await logAudit('User Permanently Deleted', { email: selectedUser.email }, selectedUser.id);
           toast.success("User record permanently removed.");
           setShowEditModal(false);
-          fetchUsers();
       } catch (e: any) {
           toast.error("Deletion failed: " + e.message);
       } finally {
@@ -280,7 +279,6 @@ export const Users: React.FC = () => {
 
       setIsProcessing(true);
       try {
-          // Use the server-side endpoint to sync with Auth metadata
           const response = await fetch('/api/admin/update-user-role', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -293,7 +291,6 @@ export const Users: React.FC = () => {
           await logAudit('User Promoted', { from: selectedUser.role, to: targetRole }, selectedUser.id);
           toast.success(`${selectedUser.full_name} promoted to ${targetRole.replace('_', ' ')}.`);
           setShowEditModal(false);
-          fetchUsers();
       } catch (e: any) {
           toast.error("Promotion failed: " + e.message);
       } finally {
@@ -306,7 +303,6 @@ export const Users: React.FC = () => {
       
       const isClearing = !delegationData.role;
       
-      // If setting a role, check if this role is already delegated to someone else
       if (!isClearing) {
           const existingDelegate = users.find(u => 
               u.id !== selectedUser.id && 
@@ -340,7 +336,6 @@ export const Users: React.FC = () => {
           toast.success(isClearing ? `Delegation cleared for ${selectedUser.full_name}.` : `Duties delegated to ${selectedUser.full_name}.`);
           
           setShowEditModal(false);
-          await fetchUsers();
       } catch (e: any) {
           toast.error("Delegation failed: " + e.message);
       } finally {
@@ -368,7 +363,6 @@ export const Users: React.FC = () => {
           toast.success(`Delegation cleared for ${selectedUser.full_name}.`);
           
           setShowEditModal(false);
-          await fetchUsers();
       } catch (e: any) {
           toast.error("Failed to clear delegation: " + e.message);
       } finally {
@@ -481,7 +475,7 @@ export const Users: React.FC = () => {
                 </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-                {loading ? (
+                {loading && users.length === 0 ? (
                     <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500"><RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" /> Loading users...</td></tr>
                 ) : filteredUsers.length === 0 ? (
                     <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500">No users found matching your search.</td></tr>
@@ -546,7 +540,6 @@ export const Users: React.FC = () => {
         </div>
       </div>
 
-      {/* CREATE USER MODAL */}
       {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -618,7 +611,6 @@ export const Users: React.FC = () => {
           </div>
       )}
 
-      {/* MANAGE USER MODAL */}
       {showEditModal && selectedUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -859,7 +851,6 @@ export const Users: React.FC = () => {
           </div>
       )}
 
-      {/* REVOKE ACCESS MODAL */}
       {showRevokeModal && selectedUser && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
