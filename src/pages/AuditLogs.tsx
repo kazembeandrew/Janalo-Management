@@ -4,7 +4,7 @@ import { AuditLog } from '@/types';
 import { 
     History, User, Clock, ShieldAlert, Search, Filter, 
     Eye, X, FileText, Database, ChevronRight, Info,
-    Banknote, UserCog, Receipt, ClipboardList
+    Banknote, UserCog, Receipt, ClipboardList, RefreshCw
 } from 'lucide-react';
 
 type EntityFilter = 'all' | 'loan' | 'user' | 'expense' | 'task';
