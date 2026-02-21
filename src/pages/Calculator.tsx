@@ -101,17 +101,17 @@ export const Calculator: React.FC = () => {
                 <CalcIcon className="h-32 w-32" />
             </div>
             <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                    <p className="text-indigo-300 text-sm font-medium uppercase tracking-wider">Monthly Installment</p>
-                    <h2 className="text-4xl font-bold mt-1">{formatCurrency(results?.monthlyInstallment || 0)}</h2>
+                <div className="min-w-0">
+                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Monthly Installment</p>
+                    <h2 className="text-2xl sm:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.monthlyInstallment || 0)}</h2>
                 </div>
-                <div>
-                    <p className="text-indigo-300 text-sm font-medium uppercase tracking-wider">Total Interest</p>
-                    <h2 className="text-4xl font-bold mt-1">{formatCurrency(results?.totalInterest || 0)}</h2>
+                <div className="min-w-0">
+                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Total Interest</p>
+                    <h2 className="text-2xl sm:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.totalInterest || 0)}</h2>
                 </div>
-                <div className="md:col-span-2 pt-4 border-t border-indigo-800">
-                    <p className="text-indigo-300 text-sm font-medium uppercase tracking-wider">Total Payable</p>
-                    <h2 className="text-5xl font-extrabold mt-1">{formatCurrency(results?.totalPayable || 0)}</h2>
+                <div className="md:col-span-2 pt-4 border-t border-indigo-800 min-w-0">
+                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Total Payable</p>
+                    <h2 className="text-3xl sm:text-4xl font-extrabold mt-1 truncate">{formatCurrency(results?.totalPayable || 0)}</h2>
                 </div>
             </div>
           </div>

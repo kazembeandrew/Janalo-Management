@@ -255,7 +255,7 @@ export const FinancialStatements: React.FC = () => {
                   <div className="pt-4 border-t-2 border-gray-900">
                       <div className="flex justify-between items-center">
                           <span className="text-base font-bold text-gray-900">Net Operating Profit</span>
-                          <span className={`text-xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className={`text-lg sm:text-xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {formatCurrency(pnlData.netProfit)}
                           </span>
                       </div>
