@@ -2,8 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { usePresence } from '@/context/PresenceContext';
-import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info, UserPlus, ExternalLink } from 'lucide-react';
+import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info, UserPlus, ExternalLink, Paperclip, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 interface ConversationSummary {
   conversation_id: string;
@@ -20,6 +21,9 @@ interface Message {
   content: string;
   created_at: string;
   is_read: boolean;
+  attachment_path?: string;
+  attachment_name?: string;
+  attachment_type?: string;
 }
 
 interface UserListItem {
@@ -43,9 +47,18 @@ export const Messages: React.FC = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   
+  // Typing State
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Attachment State
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Modals
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [showAttachClientModal, setShowAttachClientModal] = useState(false);
+  const [viewImage, setViewImage] = useState<string | null>(null);
   
   // Data Lists
   const [users, setUsers] = useState<UserListItem[]>([]);
@@ -79,7 +92,26 @@ export const Messages: React.FC = () => {
       fetchMessages(selectedConvo.conversation_id);
       markAsRead(selectedConvo.conversation_id);
 
-      const channel = supabase
+      // Presence Channel for Typing Indicators
+      const presenceChannel = supabase.channel(`typing-${selectedConvo.conversation_id}`, {
+          config: { presence: { key: profile?.id } }
+      });
+
+      presenceChannel
+        .on('presence', { event: 'sync' }, () => {
+            const state = presenceChannel.presenceState();
+            const typing = new Set<string>();
+            for (const key in state) {
+                const presences = state[key] as any[];
+                if (presences.some(p => p.is_typing && p.typing_to === selectedConvo.conversation_id)) {
+                    if (key !== profile?.id) typing.add(key);
+                }
+            }
+            setTypingUsers(typing);
+        })
+        .subscribe();
+
+      const msgChannel = supabase
         .channel(`convo-${selectedConvo.conversation_id}`)
         .on('postgres_changes', { 
             event: 'INSERT', 
@@ -98,10 +130,11 @@ export const Messages: React.FC = () => {
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(presenceChannel);
+        supabase.removeChannel(msgChannel);
       };
     }
-  }, [selectedConvo]);
+  }, [selectedConvo, profile]);
 
   const fetchConversations = async () => {
     const { data, error } = await supabase.rpc('get_my_conversations_details');
@@ -154,6 +187,62 @@ export const Messages: React.FC = () => {
     setConversations(prev => prev.map(c => 
         c.conversation_id === convoId ? { ...c, unread_count: 0 } : c
     ));
+  };
+
+  const handleTyping = () => {
+      if (!selectedConvo || !profile) return;
+      
+      const channel = supabase.channel(`typing-${selectedConvo.conversation_id}`);
+      channel.track({
+          is_typing: true,
+          typing_to: selectedConvo.conversation_id,
+          user_id: profile.id
+      });
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+          channel.track({
+              is_typing: false,
+              typing_to: selectedConvo.conversation_id,
+              user_id: profile.id
+          });
+      }, 3000);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !selectedConvo || !profile) return;
+
+      setIsUploading(true);
+      try {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Math.random()}.${fileExt}`;
+          const filePath = `chat-attachments/${selectedConvo.conversation_id}/${fileName}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('loan-documents')
+            .upload(filePath, file);
+
+          if (uploadError) throw uploadError;
+
+          const { error: msgError } = await supabase.from('direct_messages').insert({
+              conversation_id: selectedConvo.conversation_id,
+              sender_id: profile.id,
+              content: `Sent an attachment: ${file.name}`,
+              attachment_path: filePath,
+              attachment_name: file.name,
+              attachment_type: file.type
+          });
+
+          if (msgError) throw msgError;
+          toast.success("File sent");
+      } catch (error: any) {
+          console.error(error);
+          toast.error("Failed to upload file");
+      } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
   };
 
   const sendMessage = async (content: string) => {
@@ -229,9 +318,9 @@ export const Messages: React.FC = () => {
     }
   };
 
-  const renderMessageContent = (content: string, isMe: boolean) => {
+  const renderMessageContent = (msg: Message, isMe: boolean) => {
       const clientRefRegex = /\[CLIENT_REF:([^:]+):([^\]]+)\]/;
-      const match = content.match(clientRefRegex);
+      const match = msg.content.match(clientRefRegex);
 
       if (match) {
           const [, id, name] = match;
@@ -260,13 +349,40 @@ export const Messages: React.FC = () => {
           );
       }
 
+      if (msg.attachment_path) {
+          const isImage = msg.attachment_type?.startsWith('image/');
+          const { data: pUrl } = supabase.storage.from('loan-documents').getPublicUrl(msg.attachment_path);
+          const url = pUrl.publicUrl;
+
+          return (
+              <div className={`p-2 rounded-2xl shadow-sm border ${isMe ? 'bg-indigo-600 border-indigo-500' : 'bg-white border-gray-100'}`}>
+                  {isImage ? (
+                      <div className="relative cursor-pointer group" onClick={() => setViewImage(url)}>
+                          <img src={url} alt="Attachment" className="max-w-[240px] rounded-xl object-cover max-h-[300px]" />
+                          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                              <ZoomIn className="text-white h-6 w-6" />
+                          </div>
+                      </div>
+                  ) : (
+                      <a href={url} target="_blank" rel="noreferrer" className={`flex items-center gap-3 p-3 rounded-xl ${isMe ? 'bg-white/10 text-white' : 'bg-gray-50 text-gray-900'}`}>
+                          <Paperclip className="h-5 w-5 shrink-0" />
+                          <div className="min-w-0">
+                              <p className="text-xs font-bold truncate">{msg.attachment_name}</p>
+                              <p className="text-[10px] opacity-70 uppercase font-bold">Download File</p>
+                          </div>
+                      </a>
+                  )}
+              </div>
+          );
+      }
+
       return (
           <div className={`px-4 py-2.5 rounded-2xl shadow-sm text-sm leading-relaxed ${
               isMe 
               ? 'bg-indigo-600 text-white rounded-tr-none' 
               : 'bg-white text-gray-800 border border-gray-100 rounded-tl-none'
           }`}>
-              {content}
+              {msg.content}
           </div>
       );
   };
@@ -430,7 +546,7 @@ export const Messages: React.FC = () => {
                             )}
                             <div className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[70%] group ${isMe ? 'items-end' : 'items-start'}`}>
-                                    {renderMessageContent(msg.content, isMe)}
+                                    {renderMessageContent(msg, isMe)}
                                     <div className={`flex items-center gap-1 mt-1.5 px-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
                                         <span className="text-[10px] text-gray-400 font-medium">
                                             {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -444,25 +560,57 @@ export const Messages: React.FC = () => {
                         </React.Fragment>
                     );
                 })}
+                
+                {/* Typing Indicator */}
+                {typingUsers.size > 0 && (
+                    <div className="flex justify-start animate-in fade-in slide-in-from-left-2 duration-200">
+                        <div className="bg-white border border-gray-100 px-4 py-2 rounded-2xl rounded-tl-none shadow-sm flex items-center gap-2">
+                            <div className="flex gap-1">
+                                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Typing...</span>
+                        </div>
+                    </div>
+                )}
                 <div ref={messagesEndRef} />
             </div>
 
             {/* Input Area */}
             <div className="p-6 bg-white border-t border-gray-100">
                 <form onSubmit={handleSendText} className="flex items-center gap-3">
-                    <button 
-                        type="button"
-                        onClick={() => { fetchBorrowers(); setShowAttachClientModal(true); }}
-                        className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
-                        title="Link Client"
-                    >
-                        <UserPlus className="h-5 w-5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <button 
+                            type="button"
+                            onClick={() => { fetchBorrowers(); setShowAttachClientModal(true); }}
+                            className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
+                            title="Link Client"
+                        >
+                            <UserPlus className="h-5 w-5" />
+                        </button>
+                        <button 
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading}
+                            className="p-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"
+                            title="Attach Image"
+                        >
+                            {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <ImageIcon className="h-5 w-5" />}
+                        </button>
+                        <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            className="hidden" 
+                            accept="image/*,application/pdf" 
+                            onChange={handleFileUpload}
+                        />
+                    </div>
                     <div className="flex-1 relative">
                         <input
                             type="text"
                             value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
+                            onChange={(e) => { setNewMessage(e.target.value); handleTyping(); }}
                             placeholder="Type your message..."
                             className="w-full bg-gray-50 border-none rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
                         />
@@ -477,6 +625,16 @@ export const Messages: React.FC = () => {
                 </form>
             </div>
         </div>
+      )}
+
+      {/* Image Viewer Modal */}
+      {viewImage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-sm" onClick={() => setViewImage(null)}>
+              <button className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
+                  <X className="h-6 w-6" />
+              </button>
+              <img src={viewImage} alt="Full View" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" onClick={e => e.stopPropagation()} />
+          </div>
       )}
 
       {/* New Chat Modal */}
