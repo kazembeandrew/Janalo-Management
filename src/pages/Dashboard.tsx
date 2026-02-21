@@ -25,7 +25,8 @@ export const Dashboard: React.FC = () => {
     totalDisbursed: 0,
     recoveryRate: 0,
     completedLoans: 0,
-    reassessCount: 0
+    reassessCount: 0,
+    totalLiquidity: 0
   });
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [profitData, setProfitData] = useState<any[]>([]);
@@ -45,6 +46,7 @@ export const Dashboard: React.FC = () => {
     const channel = supabase.channel('dashboard-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'repayments' }, () => fetchDashboardData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_accounts' }, () => fetchDashboardData())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [profile]);
@@ -55,7 +57,8 @@ export const Dashboard: React.FC = () => {
       const { data: rpcStats } = await supabase.rpc('get_dashboard_stats');
       const { data: revData } = await supabase.rpc('get_monthly_revenue');
       const { data: offStats } = await supabase.rpc('get_officer_performance');
-      const { data: expenses } = await supabase.from('expenses').select('amount, date');
+      const { data: expenses } = await supabase.from('expenses').select('amount, date').eq('status', 'approved');
+      const { data: accounts } = await supabase.from('internal_accounts').select('balance, type');
       
       if (isAccountant || isExec) {
           const { data: loans } = await supabase
@@ -75,6 +78,8 @@ export const Dashboard: React.FC = () => {
           reassessCount = count || 0;
       }
 
+      const liquidity = accounts?.filter(a => a.type !== 'equity' && a.type !== 'liability').reduce((sum, a) => sum + Number(a.balance), 0) || 0;
+
       if (rpcStats) {
         const active = rpcStats.active_count || 0;
         const completed = rpcStats.completed_count || 0;
@@ -91,7 +96,8 @@ export const Dashboard: React.FC = () => {
           totalDisbursed: rpcStats.total_disbursed || 0,
           recoveryRate: totalLoans > 0 ? (completed / totalLoans) * 100 : 0,
           completedLoans: completed,
-          reassessCount
+          reassessCount,
+          totalLiquidity: liquidity
         });
       }
 
@@ -140,10 +146,10 @@ export const Dashboard: React.FC = () => {
       
       {isExec && !isAccountant && !isHR && (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard title="Total Liquidity" value={formatCurrency(stats.totalLiquidity)} icon={Landmark} color="bg-green-600" />
               <StatCard title="Portfolio Value" value={formatCurrency(stats.totalPortfolio)} icon={DollarSign} color="bg-indigo-600" />
               <StatCard title="Active Loans" value={stats.activeLoans} icon={Activity} color="bg-blue-500" />
               <StatCard title="Portfolio At Risk" value={stats.parCount} icon={AlertTriangle} color="bg-red-500" />
-              <StatCard title="Recovery Rate" value={`${stats.recoveryRate.toFixed(1)}%`} icon={Target} color="bg-emerald-500" />
           </div>
       )}
 

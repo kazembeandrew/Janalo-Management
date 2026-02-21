@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StatCard } from './StatCard';
-import { DollarSign, TrendingUp, Receipt, Wallet, Activity, Sparkles, RefreshCw, Calendar } from 'lucide-react';
+import { DollarSign, TrendingUp, Receipt, Wallet, Activity, Sparkles, RefreshCw, Calendar, Landmark } from 'lucide-react';
 import { formatCurrency } from '@/utils/finance';
 import { predictCashFlow } from '@/services/aiService';
 import { 
@@ -30,11 +30,11 @@ export const AccountantView: React.FC<AccountantViewProps> = ({ stats, revenueDa
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard 
-          title="Total Portfolio" 
-          value={formatCurrency(stats.totalPortfolio)} 
-          subtitle="Principal + Interest"
-          icon={DollarSign}
-          color="bg-indigo-600"
+          title="Total Liquidity" 
+          value={formatCurrency(stats.totalLiquidity)} 
+          subtitle="Cash & Bank Balances"
+          icon={Landmark}
+          color="bg-green-600"
         />
         <StatCard 
           title="Interest Earned"
