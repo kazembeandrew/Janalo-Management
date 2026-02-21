@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon } from 'lucide-react';
+import { MapPicker } from '@/components/MapPicker';
 
 const ITEMS_PER_PAGE = 9;
 
@@ -13,6 +14,7 @@ export const Borrowers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [editingBorrower, setEditingBorrower] = useState<Borrower | null>(null);
   
   // Reassignment State
@@ -126,6 +128,11 @@ export const Borrowers: React.FC = () => {
       employment: borrower.employment
     });
     setIsModalOpen(true);
+  };
+
+  const handleLocationSelect = (lat: number, lng: number) => {
+      setFormData({ ...formData, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      setShowMapPicker(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -415,13 +422,24 @@ export const Borrowers: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Address</label>
-                      <input
-                        required
-                        type="text"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      />
+                      <div className="mt-1 flex gap-2">
+                        <input
+                            required
+                            type="text"
+                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                            value={formData.address}
+                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                            placeholder="Street address or coordinates"
+                        />
+                        <button 
+                            type="button"
+                            onClick={() => setShowMapPicker(true)}
+                            className="p-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
+                            title="Pin on Map"
+                        >
+                            <MapIcon className="h-5 w-5" />
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700">Employment / Business</label>
@@ -454,6 +472,17 @@ export const Borrowers: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {showMapPicker && (
+          <MapPicker 
+            onSelect={handleLocationSelect} 
+            onClose={() => setShowMapPicker(false)} 
+            initialLocation={formData.address.includes(',') ? {
+                lat: parseFloat(formData.address.split(',')[0]),
+                lng: parseFloat(formData.address.split(',')[1])
+            } : undefined}
+          />
       )}
     </div>
   );
