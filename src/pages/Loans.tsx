@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
-import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, Calendar, User, Banknote } from 'lucide-react';
+import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, Calendar, User, Banknote, RefreshCw } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -79,7 +79,7 @@ export const Loans: React.FC = () => {
       const exportData = loans.map(l => ({
           Borrower: l.borrowers?.full_name,
           Principal: l.principal_amount,
-          Outstanding: l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0),
+          Outstanding: l.principal_outstanding + l.interest_outstanding + (loan.penalty_outstanding || 0),
           Term: l.term_months,
           Status: l.status,
           Date: new Date(l.created_at).toLocaleDateString()
