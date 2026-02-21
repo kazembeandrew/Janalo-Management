@@ -2,15 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InternalAccount } from '@/types';
+import { Loan, Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { generateReceiptPDF } from '@/utils/export';
 import { 
-    ArrowLeft, User, Phone, MapPin, Building2, FileText, Camera, 
+    ArrowLeft, User, Phone, MapPin, Building2, FileText, 
     MessageSquare, Send, Receipt, ThumbsUp, Printer, RefreshCw, 
-    ChevronRight, ZoomIn, X, Clock, CheckCircle2, AlertCircle, Landmark
+    ChevronRight, ZoomIn, X, Clock, CheckCircle2, AlertCircle, Landmark, Home, History
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+type DetailTab = 'overview' | 'client' | 'documents' | 'notes';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -22,13 +24,12 @@ export const LoanDetails: React.FC = () => {
   const [repayments, setRepayments] = useState<Repayment[]>([]);
   const [notes, setNotes] = useState<LoanNote[]>([]);
   const [documents, setDocuments] = useState<LoanDocument[]>([]);
-  const [visitations, setVisitations] = useState<Visitation[]>([]);
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
-  const [visitationUrls, setVisitationUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   
   // UI State
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [viewImage, setViewImage] = useState<string | null>(null);
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [showApproveModal, setShowApproveModal] = useState(false);
@@ -91,25 +92,6 @@ export const LoanDetails: React.FC = () => {
               if (data) urlMap[doc.id] = data.publicUrl;
           }
           setDocumentUrls(urlMap);
-      }
-
-      // Fetch Visitations
-      const { data: visitData } = await supabase
-        .from('visitations')
-        .select('*, users(full_name)')
-        .eq('loan_id', id)
-        .order('visit_date', { ascending: false });
-      setVisitations(visitData || []);
-
-      if (visitData) {
-          const urlMap: {[key: string]: string} = {};
-          for (const v of visitData) {
-              if (v.image_path) {
-                  const { data: pUrl } = supabase.storage.from('loan-documents').getPublicUrl(v.image_path);
-                  if (pUrl) urlMap[v.id] = pUrl.publicUrl;
-              }
-          }
-          setVisitationUrls(urlMap);
       }
 
     } catch (error) {
@@ -325,38 +307,6 @@ export const LoanDetails: React.FC = () => {
                   </div>
               </div>
 
-              {/* Visitations Section */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <Camera className="h-4 w-4 mr-2 text-indigo-600" />
-                          Field Visitations
-                      </h3>
-                  </div>
-                  <div className="p-6 space-y-4">
-                      {visitations.length === 0 ? (
-                          <p className="text-sm text-gray-400 italic text-center py-4">No field visits recorded.</p>
-                      ) : (
-                          visitations.map(v => (
-                              <div key={v.id} className="flex gap-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                  {v.image_path && (
-                                      <div onClick={() => setViewImage(visitationUrls[v.id])} className="h-16 w-16 rounded-lg overflow-hidden shrink-0 cursor-pointer border border-gray-200">
-                                          <img src={visitationUrls[v.id]} className="h-full w-full object-cover" alt="Visit" />
-                                      </div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                      <div className="flex justify-between items-start mb-1">
-                                          <p className="text-xs font-bold text-gray-900">{new Date(v.visit_date).toLocaleDateString()}</p>
-                                          <p className="text-[10px] text-gray-400 font-bold uppercase">By {v.users?.full_name}</p>
-                                      </div>
-                                      <p className="text-xs text-gray-600 line-clamp-2">{v.notes}</p>
-                                  </div>
-                              </div>
-                          ))
-                      )}
-                  </div>
-              </div>
-
               {/* Repayment History Table */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="p-6 border-b border-gray-100 bg-gray-50/50">
@@ -510,7 +460,7 @@ export const LoanDetails: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><ThumbsUp className="mr-3 h-6 w-6 text-indigo-300" /> Approve & Disburse</h3>
-                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-xl transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
