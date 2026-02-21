@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2, X } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2, X, Activity, RefreshCw } from 'lucide-react';
 import { MapPicker } from '@/components/MapPicker';
 import toast from 'react-hot-toast';
 
@@ -11,7 +11,7 @@ const ITEMS_PER_PAGE = 9;
 
 export const Borrowers: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
-  const [borrowers, setBorrowers] = useState<Borrower[]>([]);
+  const [borrowers, setBorrowers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -65,7 +65,7 @@ export const Borrowers: React.FC = () => {
     try {
       let query = supabase
         .from('borrowers')
-        .select('*', { count: 'exact' })
+        .select('*, loans(id, status)', { count: 'exact' })
         .order('created_at', { ascending: false });
 
       if (effectiveRoles.includes('loan_officer') && !isExec) {
@@ -226,7 +226,7 @@ export const Borrowers: React.FC = () => {
       <div className="min-h-[400px]">
         {loading ? (
              <div className="flex items-center justify-center h-64">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                <RefreshCw className="animate-spin h-8 w-8 text-indigo-600" />
             </div>
         ) : borrowers.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 border-dashed">
@@ -238,64 +238,82 @@ export const Borrowers: React.FC = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {borrowers.map((borrower) => (
-                <div key={borrower.id} className="bg-white overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100 group">
-                <div className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center min-w-0">
-                            <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-3 shrink-0">
-                                {(borrower.full_name || 'C').charAt(0)}
+            {borrowers.map((borrower) => {
+                const activeLoans = borrower.loans?.filter((l: any) => l.status === 'active').length || 0;
+                const totalLoans = borrower.loans?.length || 0;
+
+                return (
+                    <div key={borrower.id} className="bg-white overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100 group flex flex-col">
+                        <div className="p-6 flex-1">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center min-w-0">
+                                    <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-3 shrink-0">
+                                        {(borrower.full_name || 'C').charAt(0)}
+                                    </div>
+                                    <h3 className="text-base font-bold text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
+                                </div>
+                                {activeLoans > 0 && (
+                                    <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase rounded-full border border-green-100">Active</span>
+                                )}
                             </div>
-                            <h3 className="text-base font-bold text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
+                            <div className="space-y-3 text-sm text-gray-600">
+                                <div className="flex items-center">
+                                    <Phone className="h-4 w-4 mr-3 text-gray-400" />
+                                    <span className="font-medium">{borrower.phone || 'No phone'}</span>
+                                </div>
+                                <div className="flex items-start">
+                                    <Home className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                                    <span className="truncate text-xs">{borrower.address || 'No residence address'}</span>
+                                </div>
+                                <div className="flex items-start">
+                                    <Building2 className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                                    <span className="truncate text-xs">{borrower.employment || 'No business address'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-3 bg-gray-50/50 border-t border-gray-100 grid grid-cols-2 gap-4">
+                            <div className="flex items-center text-[10px] font-bold text-gray-500 uppercase">
+                                <Activity className="h-3 w-3 mr-1.5 text-indigo-500" />
+                                {totalLoans} Total Loans
+                            </div>
+                            <div className="flex items-center text-[10px] font-bold text-gray-500 uppercase justify-end">
+                                <Briefcase className="h-3 w-3 mr-1.5 text-emerald-500" />
+                                {activeLoans} Active
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+                            <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center">
+                                <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> View Profile
+                            </Link>
+                            <div className="flex space-x-4">
+                                {isExec && (
+                                    <button 
+                                        onClick={() => { setReassignBorrower(borrower); setShowReassignModal(true); }}
+                                        className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
+                                    >
+                                        Reassign
+                                    </button>
+                                )}
+                                {canCreate && (
+                                <button 
+                                    onClick={() => openEditModal(borrower)}
+                                    className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
+                                >
+                                    Edit
+                                </button>
+                                )}
+                            </div>
                         </div>
                     </div>
-                    <div className="space-y-3 text-sm text-gray-600">
-                        <div className="flex items-center">
-                            <Phone className="h-4 w-4 mr-3 text-gray-400" />
-                            <span className="font-medium">{borrower.phone || 'No phone'}</span>
-                        </div>
-                        <div className="flex items-start">
-                            <Home className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
-                            <span className="truncate text-xs">{borrower.address || 'No residence address'}</span>
-                        </div>
-                        <div className="flex items-start">
-                            <Building2 className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
-                            <span className="truncate text-xs">{borrower.employment || 'No business address'}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center">
-                    <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center">
-                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> View Profile
-                    </Link>
-                    <div className="flex space-x-4">
-                        {isExec && (
-                            <button 
-                                onClick={() => { setReassignBorrower(borrower); setShowReassignModal(true); }}
-                                className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
-                            >
-                                Reassign
-                            </button>
-                        )}
-                        {canCreate && (
-                        <button 
-                            onClick={() => openEditModal(borrower)}
-                            className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
-                        >
-                            Edit
-                        </button>
-                        )}
-                    </div>
-                </div>
-                </div>
-            ))}
+                );
+            })}
           </div>
         )}
       </div>
 
        {/* Pagination Controls */}
        {totalCount > 0 && (
-        <div className="bg-white px-6 py-4 flex items-center justify-between border border-gray-200 rounded-2xl shadow-sm">
+        <div className="bg-white px-6 py-4 flex items-center justify-between border border-gray-200 rounded-2xl shadow-sm mt-6">
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
                     <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
