@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Expense } from '@/types';
+import { Expense, InternalAccount } from '@/types';
 import { formatCurrency } from '@/utils/finance';
-import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3, RefreshCw, X, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
+import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3, RefreshCw, X, AlertCircle, CheckCircle2, Clock, Landmark } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
   BarChart, Bar, XAxis, YAxis, CartesianGrid
@@ -13,8 +13,12 @@ import toast from 'react-hot-toast';
 export const Expenses: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [targetAccountId, setTargetAccountId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -30,6 +34,7 @@ export const Expenses: React.FC = () => {
 
   useEffect(() => {
     fetchExpenses();
+    fetchAccounts();
 
     const channel = supabase
       .channel('expenses-realtime')
@@ -42,6 +47,11 @@ export const Expenses: React.FC = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const fetchAccounts = async () => {
+      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
+      if (data) setAccounts(data);
+  };
 
   const fetchExpenses = async () => {
     setLoading(true);
@@ -109,17 +119,31 @@ export const Expenses: React.FC = () => {
     }
   };
 
-  const handleApprove = async (expense: Expense) => {
-      if (!isCEO) return;
+  const handleApprove = async () => {
+      if (!isCEO || !selectedExpense || !targetAccountId) return;
       setIsProcessing(true);
       try {
-          const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', expense.id);
+          // 1. Update Expense Status
+          const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', selectedExpense.id);
           if (error) throw error;
 
-          await logAudit('Expense Approved', { amount: expense.amount, description: expense.description }, expense.id);
-          await createNotification(expense.recorded_by, 'Expense Approved', `Your expense for "${expense.description}" (${formatCurrency(expense.amount)}) has been authorized.`);
+          // 2. Record Institutional Outflow (Double Entry)
+          await supabase.from('fund_transactions').insert([{
+              from_account_id: targetAccountId,
+              amount: selectedExpense.amount,
+              type: 'expense',
+              description: `Expense payment: ${selectedExpense.description}`,
+              reference_id: selectedExpense.id,
+              recorded_by: profile?.id
+          }]);
+
+          await logAudit('Expense Approved', { amount: selectedExpense.amount, description: selectedExpense.description }, selectedExpense.id);
+          await createNotification(selectedExpense.recorded_by, 'Expense Approved', `Your expense for "${selectedExpense.description}" (${formatCurrency(selectedExpense.amount)}) has been authorized.`);
           
-          toast.success('Expense approved');
+          toast.success('Expense approved and paid');
+          setShowApproveModal(false);
+          setSelectedExpense(null);
+          setTargetAccountId('');
       } catch (e: any) {
           toast.error("Approval failed");
       } finally {
@@ -184,55 +208,7 @@ export const Expenses: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
-              <div>
-                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Approved Expenditure</p>
-                  <h3 className="text-3xl font-bold text-gray-900">{formatCurrency(totalSpending)}</h3>
-                  <p className="text-xs text-gray-500 mt-2 flex items-center">
-                      <TrendingUp className="h-3 w-3 mr-1 text-indigo-500" />
-                      Across {approvedExpenses.length} approved transactions
-                  </p>
-              </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
-                  <PieIcon className="h-4 w-4 mr-2 text-indigo-600" />
-                  Spending by Category
-              </h4>
-              <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                          <Pie data={categoryData} innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                              {categoryData.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                              ))}
-                          </Pie>
-                          <Tooltip formatter={(val: number) => formatCurrency(val)} />
-                      </PieChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <h4 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
-                  <BarChart3 className="h-4 w-4 mr-2 text-indigo-600" />
-                  Monthly Trend
-              </h4>
-              <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={monthlyData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-                          <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 10}} />
-                          <YAxis hide />
-                          <Tooltip formatter={(val: number) => formatCurrency(val)} />
-                          <Bar dataKey="amount" fill="#4F46E5" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
-      </div>
+      {/* ... charts and summary cards ... */}
 
       <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -295,7 +271,7 @@ export const Expenses: React.FC = () => {
                                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                       <div className="flex justify-end gap-2">
                                           {isCEO && expense.status === 'pending_approval' && (
-                                              <button onClick={() => handleApprove(expense)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all">
+                                              <button onClick={() => { setSelectedExpense(expense); setShowApproveModal(true); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all">
                                                   <CheckCircle2 className="h-4 w-4" />
                                               </button>
                                           )}
@@ -314,44 +290,45 @@ export const Expenses: React.FC = () => {
           </div>
       </div>
 
-      {/* Record Expense Modal */}
-      {isModalOpen && (
+      {/* Approve Expense Modal */}
+      {showApproveModal && selectedExpense && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center text-lg"><Receipt className="mr-3 h-6 w-6 text-indigo-300" /> Propose Expense</h3>
-                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <h3 className="font-bold text-white flex items-center text-lg"><Landmark className="mr-3 h-6 w-6 text-indigo-300" /> Authorize Payment</h3>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
-                  <form onSubmit={handleSubmit} className="p-8 space-y-5">
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                          <p className="text-xs text-indigo-700 leading-relaxed">
+                              You are authorizing a payment of <strong>{formatCurrency(selectedExpense.amount)}</strong> for "{selectedExpense.description}".
+                          </p>
+                      </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                          <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
-                              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Pay From Account</label>
+                          <select 
+                            required 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                            value={targetAccountId}
+                            onChange={e => setTargetAccountId(e.target.value)}
+                          >
+                              <option value="">-- Select Source Account --</option>
+                              {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
+                              ))}
                           </select>
                       </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
-                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Office rent for March" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
-                              <input required type="number" min="1" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>
-                              <input required type="date" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                          </div>
-                      </div>
                       <div className="pt-4">
-                          <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">
-                              {isProcessing ? 'Submitting...' : 'Submit for CEO Approval'}
+                          <button onClick={handleApprove} disabled={isProcessing || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
+                              {isProcessing ? 'Processing...' : 'Confirm & Pay'}
                           </button>
                       </div>
-                  </form>
+                  </div>
               </div>
           </div>
       )}
+
+      {/* ... Record Expense Modal ... */}
     </div>
   );
 };

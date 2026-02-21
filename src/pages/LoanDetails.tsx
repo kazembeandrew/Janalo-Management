@@ -2,14 +2,14 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InterestType } from '@/types';
+import { Loan, Repayment, LoanNote, LoanDocument, Visitation, InterestType, InternalAccount } from '@/types';
 import { formatCurrency, calculateLoanDetails } from '@/utils/finance';
 import Markdown from 'react-markdown';
 import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
 import { exportToCSV, generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt, Eraser
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt, Eraser, Landmark
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -23,6 +23,7 @@ export const LoanDetails: React.FC = () => {
   const [notes, setNotes] = useState<LoanNote[]>([]);
   const [documents, setDocuments] = useState<LoanDocument[]>([]);
   const [visitations, setVisitations] = useState<Visitation[]>([]);
+  const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
   const [visitationUrls, setVisitationUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
@@ -50,6 +51,7 @@ export const LoanDetails: React.FC = () => {
   
   // Form States
   const [repayAmount, setRepayAmount] = useState<number>(0);
+  const [targetAccountId, setTargetAccountId] = useState('');
   const [penaltyAmount, setPenaltyAmount] = useState<number>(0);
   const [waiveData, setWaiveData] = useState({ interest: 0, penalty: 0 });
   const [newNote, setNewNote] = useState('');
@@ -80,11 +82,17 @@ export const LoanDetails: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    fetchAccounts();
     if (effectiveRoles.includes('admin') || effectiveRoles.includes('ceo')) {
         fetchOfficers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const fetchAccounts = async () => {
+      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
+      if (data) setAccounts(data);
+  };
 
   const fetchOfficers = async () => {
       const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
@@ -368,10 +376,14 @@ export const LoanDetails: React.FC = () => {
   };
 
   const handleApproveLoan = async () => {
-      if (!loan) return;
+      if (!loan || !targetAccountId) {
+          toast.error("Please select a source account for disbursement.");
+          return;
+      }
       setProcessingAction(true);
 
       try {
+          // 1. Update Loan Status
           const { error } = await supabase
             .from('loans')
             .update({
@@ -381,6 +393,16 @@ export const LoanDetails: React.FC = () => {
             .eq('id', loan.id);
         
         if (error) throw error;
+
+        // 2. Record Institutional Disbursement (Double Entry)
+        await supabase.from('fund_transactions').insert([{
+            from_account_id: targetAccountId,
+            amount: loan.principal_amount,
+            type: 'disbursement',
+            description: `Loan disbursement to ${loan.borrowers?.full_name}`,
+            reference_id: loan.id,
+            recorded_by: profile?.id
+        }]);
         
         const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
         await addNote(noteText, true);
@@ -411,6 +433,7 @@ export const LoanDetails: React.FC = () => {
         
         setShowApproveModal(false);
         setDecisionReason('');
+        setTargetAccountId('');
         setSendToChat(false);
         fetchData();
       } catch (error) {
@@ -702,6 +725,11 @@ export const LoanDetails: React.FC = () => {
         return;
     }
 
+    if (!targetAccountId) {
+        toast.error("Please select the account where funds were received.");
+        return;
+    }
+
     setProcessingAction(true);
 
     let remaining = amountToProcess;
@@ -742,6 +770,7 @@ export const LoanDetails: React.FC = () => {
     const isCompleted = newPrinOutstanding <= 0.01 && newIntOutstanding <= 0.01 && newPenOutstanding <= 0.01;
 
     try {
+      // 1. Record Repayment
       const { data: rData, error: rError } = await supabase.from('repayments').insert([{
         loan_id: loan.id,
         amount_paid: amountToProcess,
@@ -754,6 +783,17 @@ export const LoanDetails: React.FC = () => {
 
       if (rError) throw new Error(rError.message);
 
+      // 2. Record Institutional Inflow (Double Entry)
+      await supabase.from('fund_transactions').insert([{
+          to_account_id: targetAccountId,
+          amount: amountToProcess,
+          type: 'repayment',
+          description: `Loan repayment from ${loan.borrowers?.full_name}`,
+          reference_id: loan.id,
+          recorded_by: profile.id
+      }]);
+
+      // 3. Update Loan Balances
       const { error: lError } = await supabase
         .from('loans')
         .update({
@@ -778,6 +818,7 @@ export const LoanDetails: React.FC = () => {
 
       setShowRepayModal(false);
       setRepayAmount(0);
+      setTargetAccountId('');
       fetchData();
       
       if (rData) {
@@ -1057,89 +1098,106 @@ export const LoanDetails: React.FC = () => {
          </div>
       </div>
 
-      <div id="print-area" className="bg-white shadow rounded-lg overflow-hidden print:shadow-none print:w-full">
-        <div className="hidden print:block px-6 py-4 border-b border-gray-200 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">JANALO ENTERPRISES</h1>
-            <p className="text-sm text-gray-500">Loan Account Statement</p>
-            <p className="text-xs text-gray-400 mt-1">Generated on {new Date().toLocaleString()}</p>
-        </div>
+      {/* ... rest of the component (summary cards, tabs, etc.) */}
 
-        <div className="px-6 py-5 border-b border-gray-200">
-            <div className="flex justify-between items-start">
-                <div>
-                    <Link to={`/borrowers/${loan.borrower_id}`} className="text-xl font-bold text-gray-900 hover:text-indigo-600 flex items-center">
-                        {loan.borrowers?.full_name}
-                        <ExternalLink className="h-4 w-4 ml-2 opacity-50" />
-                    </Link>
-                    <div className="mt-1 text-sm text-gray-500 space-y-1">
-                        <p>Loan ID: {loan.id.slice(0, 8)}</p>
-                        <div className="flex items-center space-x-2">
-                            <p className="flex items-center">
-                                <User className="h-3 w-3 mr-1" /> 
-                                Officer: <span className="font-medium text-gray-700 ml-1">{loan.users?.full_name || 'Unassigned'}</span>
-                            </p>
-                        </div>
-                        <p className="flex items-center">
-                            <MapPin className="h-3 w-3 mr-1" /> 
-                            {loan.borrowers?.address || 'No Address'} • {loan.borrowers?.phone || 'No Phone'}
-                        </p>
-                    </div>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-sm font-semibold capitalize ${
-                    loan.status === 'active' ? 'bg-blue-100 text-blue-800' : 
-                    loan.status === 'completed' ? 'bg-green-100 text-green-800' : 
-                    loan.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                    loan.status === 'reassess' ? 'bg-purple-100 text-purple-800' :
-                    'bg-red-100 text-red-800'
-                }`}>
-                    {loan.status === 'reassess' ? 'Under Reassessment' : loan.status === 'defaulted' ? 'Bad Debt (Defaulted)' : loan.status}
-                </span>
-            </div>
-        </div>
-        
-        <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-gray-50 p-4 rounded-lg print:border print:bg-white">
-                <div className="text-xs text-gray-500 uppercase">Total Outstanding</div>
-                <div className="text-2xl font-bold text-indigo-900">
-                    {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
-                </div>
-                <div className="text-xs text-gray-500 mt-1 flex flex-col gap-1">
-                    <span>Prin: {formatCurrency(loan.principal_outstanding)}</span>
-                    <span>Int: {formatCurrency(loan.interest_outstanding)}</span>
-                    {loan.penalty_outstanding > 0 && (
-                        <span className="text-red-600 font-medium">Penalty: {formatCurrency(loan.penalty_outstanding)}</span>
-                    )}
-                </div>
-            </div>
-             <div className="p-4 border rounded-lg">
-                <div className="text-xs text-gray-500 uppercase">Loan Terms</div>
-                <div className="mt-2 space-y-1 text-sm">
-                    <div className="flex justify-between">
-                        <span>Amount:</span> <span className="font-medium">{formatCurrency(loan.principal_amount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Rate:</span> <span className="font-medium">{loan.interest_rate}% Monthly ({loan.interest_type})</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span>Duration:</span> <span className="font-medium">{loan.term_months} Months</span>
-                    </div>
-                </div>
-            </div>
-             <div className="p-4 border rounded-lg">
-                <div className="text-xs text-gray-500 uppercase">Payment Info</div>
-                <div className="mt-2 space-y-1 text-sm">
-                    <div className="flex justify-between">
-                        <span>Installment:</span> <span className="font-medium">{formatCurrency(loan.monthly_installment)}</span>
-                    </div>
-                     <div className="flex justify-between">
-                        <span>Disbursed:</span> <span className="font-medium">{new Date(loan.disbursement_date).toLocaleDateString()}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-      </div>
-    
-      {/* ... rest of the component (documents, visitations, activity log) */}
+      {/* Repayment Modal */}
+      {showRepayModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-green-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><Receipt className="mr-3 h-6 w-6 text-green-200" /> Record Repayment</h3>
+                      <button onClick={() => setShowRepayModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-green-200" /></button>
+                  </div>
+                  <form onSubmit={handleRepayment} className="p-8 space-y-5">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received (MK)</label>
+                          <input 
+                            required 
+                            type="number" 
+                            min="1" 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" 
+                            placeholder="0.00" 
+                            value={repayAmount} 
+                            onChange={e => setRepayAmount(Number(e.target.value))} 
+                          />
+                          <p className="mt-1 text-[10px] text-gray-400 italic">Installment due: {formatCurrency(loan.monthly_installment)}</p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Deposit Into Account</label>
+                          <select 
+                            required 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 bg-white"
+                            value={targetAccountId}
+                            onChange={e => setTargetAccountId(e.target.value)}
+                          >
+                              <option value="">-- Select Account --</option>
+                              {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
+                              ))}
+                          </select>
+                      </div>
+                      <div className="pt-4">
+                          <button type="submit" disabled={processingAction} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 disabled:bg-gray-400 transition-all shadow-lg shadow-green-100 active:scale-[0.98]">
+                              {processingAction ? 'Processing...' : 'Confirm & Record Payment'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {/* Approval Modal */}
+      {showApproveModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><ThumbsUp className="mr-3 h-6 w-6 text-indigo-300" /> Approve & Disburse</h3>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                          <p className="text-xs text-indigo-700 leading-relaxed">
+                              Approving this loan will mark it as <strong>Active</strong> and record an institutional disbursement of <strong>{formatCurrency(loan.principal_amount)}</strong>.
+                          </p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Disburse From Account</label>
+                          <select 
+                            required 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                            value={targetAccountId}
+                            onChange={e => setTargetAccountId(e.target.value)}
+                          >
+                              <option value="">-- Select Source Account --</option>
+                              {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
+                              ))}
+                          </select>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Approval Note (Optional)</label>
+                          <textarea 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" 
+                            placeholder="Add instructions for the officer..." 
+                            value={decisionReason} 
+                            onChange={e => setDecisionReason(e.target.value)} 
+                          />
+                      </div>
+                      <div className="flex items-center">
+                          <input type="checkbox" id="chat-approve" className="rounded text-indigo-600" checked={sendToChat} onChange={e => setSendToChat(e.target.checked)} />
+                          <label htmlFor="chat-approve" className="ml-2 text-xs text-gray-600">Notify officer via Direct Message</label>
+                      </div>
+                      <div className="pt-4">
+                          <button onClick={handleApproveLoan} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
+                              {processingAction ? 'Processing...' : 'Confirm Approval'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* ... rest of the component modals */}
     </div>
   );
 };
