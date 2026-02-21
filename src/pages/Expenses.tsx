@@ -28,9 +28,6 @@ export const Expenses: React.FC = () => {
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
 
-  const categories = ['Salaries/Wages', 'Travel', 'Office Supplies', 'Utilities', 'Marketing', 'Legal', 'Other'];
-  const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'];
-
   useEffect(() => {
     fetchExpenses();
 
@@ -57,22 +54,45 @@ export const Expenses: React.FC = () => {
     setLoading(false);
   };
 
+  const logAudit = async (action: string, details: any, entityId: string) => {
+      if (!profile) return;
+      await supabase.from('audit_logs').insert({
+          user_id: profile.id,
+          action,
+          entity_type: 'expense',
+          entity_id: entityId,
+          details
+      });
+  };
+
+  const createNotification = async (userId: string, title: string, message: string) => {
+      await supabase.from('notifications').insert({
+          user_id: userId,
+          title,
+          message,
+          link: '/expenses',
+          type: 'info'
+      });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !isAccountant) return;
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase.from('expenses').insert([{
+      const { data, error } = await supabase.from('expenses').insert([{
         category: formData.category,
         description: formData.description,
         amount: Number(formData.amount),
         date: formData.date,
         recorded_by: profile.id,
         status: 'pending_approval'
-      }]);
+      }]).select().single();
 
       if (error) throw error;
+      
+      await logAudit('Expense Proposed', { amount: formData.amount, category: formData.category }, data.id);
       
       toast.success('Expense proposed. Awaiting CEO approval.');
       setIsModalOpen(false);
@@ -89,27 +109,41 @@ export const Expenses: React.FC = () => {
     }
   };
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (expense: Expense) => {
       if (!isCEO) return;
-      const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', id);
-      if (!error) toast.success('Expense approved');
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', expense.id);
+          if (error) throw error;
+
+          await logAudit('Expense Approved', { amount: expense.amount, description: expense.description }, expense.id);
+          await createNotification(expense.recorded_by, 'Expense Approved', `Your expense for "${expense.description}" (${formatCurrency(expense.amount)}) has been authorized.`);
+          
+          toast.success('Expense approved');
+      } catch (e: any) {
+          toast.error("Approval failed");
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
-  const handleDelete = async (id: string) => {
-      if (!isAccountant) return;
+  const handleDelete = async (expense: Expense) => {
+      if (!isAccountant && !isCEO) return;
       if (!confirm('Are you sure you want to delete this expense record?')) return;
       
       try {
-          const { error } = await supabase.from('expenses').delete().eq('id', id);
+          const { error } = await supabase.from('expenses').delete().eq('id', expense.id);
           if (error) throw error;
+          await logAudit('Expense Deleted', { description: expense.description }, expense.id);
           toast.success('Expense deleted');
       } catch (error: any) {
           toast.error('Failed to delete record');
       }
   };
 
-  // Only approved expenses count towards charts
   const approvedExpenses = expenses.filter(e => e.status === 'approved');
+  const categories = ['Salaries/Wages', 'Travel', 'Office Supplies', 'Utilities', 'Marketing', 'Legal', 'Other'];
+  const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280'];
 
   const categoryData = categories.map(cat => ({
       name: cat,
@@ -122,8 +156,7 @@ export const Expenses: React.FC = () => {
       const monthStr = d.toISOString().substring(0, 7);
       return {
           month: d.toLocaleDateString('en-US', { month: 'short' }),
-          amount: approvedExpenses.filter(e => e.date.startsWith(monthStr)).reduce((sum, e) => sum + Number(e.amount), 0),
-          rawMonth: monthStr
+          amount: approvedExpenses.filter(e => e.date.startsWith(monthStr)).reduce((sum, e) => sum + Number(e.amount), 0)
       };
   }).reverse();
 
@@ -262,12 +295,12 @@ export const Expenses: React.FC = () => {
                                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                       <div className="flex justify-end gap-2">
                                           {isCEO && expense.status === 'pending_approval' && (
-                                              <button onClick={() => handleApprove(expense.id)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all">
+                                              <button onClick={() => handleApprove(expense)} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all">
                                                   <CheckCircle2 className="h-4 w-4" />
                                               </button>
                                           )}
-                                          {isAccountant && (
-                                              <button onClick={() => handleDelete(expense.id)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                                          {(isAccountant || isCEO) && (
+                                              <button onClick={() => handleDelete(expense)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
                                                   <Trash2 className="h-4 w-4" />
                                               </button>
                                           )}

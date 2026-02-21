@@ -65,19 +65,42 @@ export const Tasks: React.FC = () => {
       if (data) setUsers(data as any);
   };
 
+  const logAudit = async (action: string, details: any, entityId: string) => {
+      if (!profile) return;
+      await supabase.from('audit_logs').insert({
+          user_id: profile.id,
+          action,
+          entity_type: 'task',
+          entity_id: entityId,
+          details
+      });
+  };
+
+  const createNotification = async (userId: string, title: string, message: string, taskId: string) => {
+      await supabase.from('notifications').insert({
+          user_id: userId,
+          title,
+          message,
+          link: '/tasks',
+          type: 'success'
+      });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
     setIsProcessing(true);
 
     try {
-      const { error } = await supabase.from('tasks').insert([{
+      const { data, error } = await supabase.from('tasks').insert([{
         ...formData,
         created_by: profile.id,
         status: 'pending_approval'
-      }]);
+      }]).select().single();
 
       if (error) throw error;
+      
+      await logAudit('Task Proposed', { title: formData.title, priority: formData.priority }, data.id);
       
       toast.success('Task proposed. Awaiting CEO authorization.');
       setIsModalOpen(false);
@@ -89,24 +112,41 @@ export const Tasks: React.FC = () => {
     }
   };
 
-  const handleUpdateStatus = async (id: string, newStatus: string) => {
-      const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id);
-      if (!error) {
+  const handleUpdateStatus = async (task: Task, newStatus: string) => {
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id);
+          if (error) throw error;
+
+          await logAudit(`Task ${newStatus.replace('_', ' ')}`, { title: task.title }, task.id);
+          
+          if (newStatus === 'approved') {
+              await createNotification(task.assigned_to, 'New Task Assigned', `CEO has authorized the task: "${task.title}". You can now start working on it.`, task.id);
+          }
+
           toast.success(`Task updated to ${newStatus.replace('_', ' ')}`);
-          if (selectedTask?.id === id) {
+          if (selectedTask?.id === task.id) {
               setSelectedTask(prev => prev ? { ...prev, status: newStatus as any } : null);
           }
           fetchTasks();
+      } catch (e: any) {
+          toast.error("Update failed");
+      } finally {
+          setIsProcessing(false);
       }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (task: Task) => {
       if (!confirm('Are you sure you want to permanently delete this task?')) return;
-      const { error } = await supabase.from('tasks').delete().eq('id', id);
-      if (!error) {
+      try {
+          const { error } = await supabase.from('tasks').delete().eq('id', task.id);
+          if (error) throw error;
+          await logAudit('Task Deleted', { title: task.title }, task.id);
           toast.success('Task removed');
           setSelectedTask(null);
           fetchTasks();
+      } catch (e: any) {
+          toast.error("Deletion failed");
       }
   };
 
@@ -145,7 +185,7 @@ export const Tasks: React.FC = () => {
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {isCEO && task.status === 'pending_approval' && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task.id, 'approved'); }} 
+                        onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'approved'); }} 
                         className="p-1 text-green-600 hover:bg-green-50 rounded" 
                         title="Approve"
                       >
@@ -154,7 +194,7 @@ export const Tasks: React.FC = () => {
                   )}
                   {(isCEO || isHR) && (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }} 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(task); }} 
                         className="p-1 text-red-600 hover:bg-red-50 rounded" 
                         title="Delete"
                       >
@@ -319,7 +359,7 @@ export const Tasks: React.FC = () => {
                       <div className="pt-4 flex gap-3">
                           {isCEO && selectedTask.status === 'pending_approval' && (
                               <button 
-                                onClick={() => handleUpdateStatus(selectedTask.id, 'approved')}
+                                onClick={() => handleUpdateStatus(selectedTask, 'approved')}
                                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100"
                               >
                                   Approve Task
@@ -327,7 +367,7 @@ export const Tasks: React.FC = () => {
                           )}
                           {selectedTask.status === 'approved' && (profile?.id === selectedTask.assigned_to || isCEO) && (
                               <button 
-                                onClick={() => handleUpdateStatus(selectedTask.id, 'in_progress')}
+                                onClick={() => handleUpdateStatus(selectedTask, 'in_progress')}
                                 className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                               >
                                   Start Working
@@ -335,7 +375,7 @@ export const Tasks: React.FC = () => {
                           )}
                           {selectedTask.status === 'in_progress' && (profile?.id === selectedTask.assigned_to || isCEO) && (
                               <button 
-                                onClick={() => handleUpdateStatus(selectedTask.id, 'completed')}
+                                onClick={() => handleUpdateStatus(selectedTask, 'completed')}
                                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100"
                               >
                                   Mark as Completed
@@ -343,7 +383,7 @@ export const Tasks: React.FC = () => {
                           )}
                           {(isCEO || isHR) && (
                               <button 
-                                onClick={() => handleDelete(selectedTask.id)}
+                                onClick={() => handleDelete(selectedTask)}
                                 className="px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all"
                               >
                                   <Trash2 className="h-5 w-5" />

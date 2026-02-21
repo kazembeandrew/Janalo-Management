@@ -60,23 +60,49 @@ export const CEOOversight: React.FC = () => {
     }
   };
 
-  const handleApproveExpense = async (id: string) => {
-      const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', id);
+  const logAudit = async (action: string, type: string, id: string, details: any) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('audit_logs').insert({
+          user_id: user.id,
+          action,
+          entity_type: type,
+          entity_id: id,
+          details
+      });
+  };
+
+  const createNotification = async (userId: string, title: string, message: string, link: string) => {
+      await supabase.from('notifications').insert({
+          user_id: userId,
+          title,
+          message,
+          link,
+          type: 'success'
+      });
+  };
+
+  const handleApproveExpense = async (exp: any) => {
+      const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', exp.id);
       if (!error) {
+          await logAudit('Expense Approved', 'expense', exp.id, { amount: exp.amount, description: exp.description });
+          await createNotification(exp.recorded_by, 'Expense Authorized', `CEO has authorized your expense for "${exp.description}" (${formatCurrency(exp.amount)}).`, '/expenses');
           toast.success("Expense authorized");
           fetchOversightData();
       }
   };
 
-  const handleApproveTask = async (id: string) => {
-      const { error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', id);
+  const handleApproveTask = async (task: any) => {
+      const { error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id);
       if (!error) {
-          toast.success("Task/Allocation authorized");
+          await logAudit('Task Approved', 'task', task.id, { title: task.title });
+          await createNotification(task.assigned_to, 'New Task Assigned', `CEO has authorized the task: "${task.title}".`, '/tasks');
+          toast.success("Task authorized");
           fetchOversightData();
       }
   };
 
-  const handleApproveUser = async (userId: string) => {
+  const handleApproveUser = async (user: any) => {
       const { error } = await supabase
         .from('users')
         .update({ 
@@ -84,9 +110,10 @@ export const CEOOversight: React.FC = () => {
             deletion_status: 'approved',
             revocation_reason: 'Archiving approved by CEO'
         })
-        .eq('id', userId);
+        .eq('id', user.id);
       
       if (!error) {
+          await logAudit('User Archive Approved', 'user', user.id, { email: user.email });
           toast.success("User archive confirmed");
           fetchOversightData();
       }
@@ -150,7 +177,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                   </div>
                   <div className="flex gap-2">
-                      <button onClick={() => handleApproveExpense(exp.id)} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                      <button onClick={() => handleApproveExpense(exp)} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
                           <Check className="h-4 w-4" />
                       </button>
                   </div>
@@ -171,7 +198,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                   </div>
                   <div className="flex gap-2">
-                      <button onClick={() => handleApproveTask(task.id)} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                      <button onClick={() => handleApproveTask(task)} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                           <Check className="h-4 w-4" />
                       </button>
                   </div>
@@ -192,7 +219,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                   </div>
                   <div className="flex gap-2">
-                      <button onClick={() => handleApproveUser(user.id)} className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+                      <button onClick={() => handleApproveUser(user)} className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
                           <Check className="h-4 w-4" />
                       </button>
                   </div>
