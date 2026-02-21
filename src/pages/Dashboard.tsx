@@ -56,7 +56,6 @@ export const Dashboard: React.FC = () => {
       const { data: offStats } = await supabase.rpc('get_officer_performance');
       const { data: expenses } = await supabase.from('expenses').select('amount, date');
       
-      // Fetch active loans for the Accountant's forecast
       if (isAccountant || isExec) {
           const { data: loans } = await supabase
             .from('loans')
