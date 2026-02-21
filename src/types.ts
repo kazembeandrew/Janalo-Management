@@ -70,6 +70,30 @@ export interface Loan {
   };
 }
 
+export interface SavingsAccount {
+    id: string;
+    borrower_id: string;
+    balance: number;
+    created_at: string;
+    updated_at: string;
+    borrowers?: {
+        full_name: string;
+    };
+}
+
+export interface SavingsTransaction {
+    id: string;
+    account_id: string;
+    amount: number;
+    type: 'deposit' | 'withdrawal' | 'interest';
+    description: string;
+    recorded_by: string;
+    created_at: string;
+    users?: {
+        full_name: string;
+    };
+}
+
 export interface Expense {
   id: string;
   category: string;

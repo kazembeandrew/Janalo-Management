@@ -1,21 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Borrower, Loan, LoanDocument } from '@/types';
+import { Borrower, Loan, LoanDocument, SavingsAccount, SavingsTransaction } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { assessLoanRisk } from '@/services/aiService';
 import Markdown from 'react-markdown';
-import { ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, ChevronRight, ZoomIn, X, Sparkles, ShieldAlert, RefreshCw } from 'lucide-react';
+import { 
+    ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, ChevronRight, 
+    ZoomIn, X, Sparkles, ShieldAlert, RefreshCw, Wallet, ArrowUpRight, ArrowDownLeft 
+} from 'lucide-react';
 
 export const BorrowerDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [borrower, setBorrower] = useState<Borrower | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
+  const [savings, setSavings] = useState<SavingsAccount | null>(null);
+  const [savingsTransactions, setSavingsTransactions] = useState<SavingsTransaction[]>([]);
   const [allDocuments, setAllDocuments] = useState<LoanDocument[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   const [viewImage, setViewImage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'loans' | 'savings' | 'documents'>('loans');
   
   // AI Risk State
   const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
@@ -32,9 +38,16 @@ export const BorrowerDetails: React.FC = () => {
       if (bError) throw bError;
       setBorrower(bData);
 
-      const { data: lData, error: lError } = await supabase.from('loans').select('*').eq('borrower_id', id).order('created_at', { ascending: false });
-      if (lError) throw lError;
+      const { data: lData } = await supabase.from('loans').select('*').eq('borrower_id', id).order('created_at', { ascending: false });
       setLoans(lData || []);
+
+      const { data: sData } = await supabase.from('savings_accounts').select('*').eq('borrower_id', id).single();
+      setSavings(sData);
+
+      if (sData) {
+          const { data: stData } = await supabase.from('savings_transactions').select('*, users(full_name)').eq('account_id', sData.id).order('created_at', { ascending: false });
+          setSavingsTransactions(stData || []);
+      }
 
       if (lData && lData.length > 0) {
           const loanIds = lData.map(l => l.id);
@@ -64,7 +77,8 @@ export const BorrowerDetails: React.FC = () => {
               borrower,
               loanHistory: loans.map(l => ({ amount: l.principal_amount, status: l.status, term: l.term_months })),
               totalLoans: loans.length,
-              activeLoans: loans.filter(l => l.status === 'active').length
+              activeLoans: loans.filter(l => l.status === 'active').length,
+              savingsBalance: savings?.balance || 0
           });
           setRiskAssessment(risk);
       } catch (e) {
@@ -99,14 +113,18 @@ export const BorrowerDetails: React.FC = () => {
                         </p>
                     </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 md:gap-8">
+                <div className="grid grid-cols-3 gap-4 md:gap-8">
                     <div className="text-center md:text-left">
-                        <p className="text-xs uppercase tracking-wider text-indigo-300 font-semibold">Total Borrowed</p>
-                        <p className="text-xl font-bold">{formatCurrency(totalBorrowed)}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Total Borrowed</p>
+                        <p className="text-lg font-bold">{formatCurrency(totalBorrowed)}</p>
                     </div>
                     <div className="text-center md:text-left">
-                        <p className="text-xs uppercase tracking-wider text-indigo-300 font-semibold">Current Balance</p>
-                        <p className="text-xl font-bold text-green-400">{formatCurrency(totalOutstanding)}</p>
+                        <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Loan Balance</p>
+                        <p className="text-lg font-bold text-red-400">{formatCurrency(totalOutstanding)}</p>
+                    </div>
+                    <div className="text-center md:text-left">
+                        <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Savings Balance</p>
+                        <p className="text-lg font-bold text-green-400">{formatCurrency(savings?.balance || 0)}</p>
                     </div>
                 </div>
             </div>
@@ -157,46 +175,104 @@ export const BorrowerDetails: React.FC = () => {
                         <p className="text-[11px] text-indigo-600/70 italic">Click analyze to generate a risk assessment based on client history.</p>
                     )}
                 </div>
-
-                <div>
-                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight border-b pb-2 mb-4">Document Hub</h3>
-                    {allDocuments.length === 0 ? (
-                        <p className="text-xs text-gray-500 italic">No documents uploaded yet.</p>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-2">
-                            {allDocuments.map(doc => (
-                                <div key={doc.id} onClick={() => setViewImage(documentUrls[doc.id])} className="relative aspect-square rounded border overflow-hidden cursor-pointer group hover:border-indigo-500 transition-colors">
-                                    <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-all"><ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-5 w-5" /></div>
-                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-[8px] text-white p-1 truncate">{doc.type.replace('_', ' ')}</div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
             </div>
 
             <div className="md:col-span-2">
-                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-tight border-b pb-2 mb-4">Loan History</h3>
-                {loans.length === 0 ? (
-                    <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
-                        <Banknote className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                        <p className="text-sm text-gray-500">No loan records found for this client.</p>
-                    </div>
-                ) : (
+                <div className="flex border-b border-gray-200 mb-6">
+                    <button onClick={() => setActiveTab('loans')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'loans' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Loan History</button>
+                    <button onClick={() => setActiveTab('savings')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'savings' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Savings Ledger</button>
+                    <button onClick={() => setActiveTab('documents')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'documents' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Documents</button>
+                </div>
+
+                {activeTab === 'loans' && (
                     <div className="space-y-3">
-                        {loans.map(loan => (
-                            <Link key={loan.id} to={`/loans/${loan.id}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors group">
-                                <div className="flex items-center">
-                                    <div className={`p-2 rounded-lg mr-4 ${loan.status === 'active' ? 'bg-blue-50 text-blue-600' : loan.status === 'completed' ? 'bg-green-50 text-green-600' : loan.status === 'pending' ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 text-gray-600'}`}><Banknote className="h-5 w-5" /></div>
-                                    <div><p className="text-sm font-bold text-gray-900">{formatCurrency(loan.principal_amount)}</p><p className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()} • {loan.term_months} Months</p></div>
+                        {loans.length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
+                                <Banknote className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">No loan records found.</p>
+                            </div>
+                        ) : (
+                            loans.map(loan => (
+                                <Link key={loan.id} to={`/loans/${loan.id}`} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors group">
+                                    <div className="flex items-center">
+                                        <div className={`p-2 rounded-lg mr-4 ${loan.status === 'active' ? 'bg-blue-50 text-blue-600' : loan.status === 'completed' ? 'bg-green-50 text-green-600' : loan.status === 'pending' ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 text-gray-600'}`}><Banknote className="h-5 w-5" /></div>
+                                        <div><p className="text-sm font-bold text-gray-900">{formatCurrency(loan.principal_amount)}</p><p className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()} • {loan.term_months} Months</p></div>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase mr-4 ${loan.status === 'active' ? 'bg-blue-100 text-blue-700' : loan.status === 'completed' ? 'bg-green-100 text-green-700' : loan.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>{loan.status}</span>
+                                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-600 transition-colors" />
+                                    </div>
+                                </Link>
+                            ))
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'savings' && (
+                    <div className="space-y-4">
+                        {!savings ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
+                                <Wallet className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                                <p className="text-sm text-gray-500">No savings account initialized for this client.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex justify-between items-center">
+                                    <div>
+                                        <p className="text-xs text-green-600 font-bold uppercase tracking-wider">Current Savings Balance</p>
+                                        <p className="text-2xl font-bold text-green-700">{formatCurrency(savings.balance)}</p>
+                                    </div>
+                                    <Wallet className="h-8 w-8 text-green-200" />
                                 </div>
-                                <div className="flex items-center">
-                                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase mr-4 ${loan.status === 'active' ? 'bg-blue-100 text-blue-700' : loan.status === 'completed' ? 'bg-green-100 text-green-700' : loan.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}`}>{loan.status}</span>
-                                    <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-600 transition-colors" />
+                                <div className="border rounded-xl overflow-hidden">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Date</th>
+                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
+                                                <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Amount</th>
+                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Description</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-100">
+                                            {savingsTransactions.map(tx => (
+                                                <tr key={tx.id} className="text-xs">
+                                                    <td className="px-4 py-3 whitespace-nowrap text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</td>
+                                                    <td className="px-4 py-3 whitespace-nowrap">
+                                                        <span className={`flex items-center font-bold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {tx.type === 'deposit' ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownLeft className="h-3 w-3 mr-1" />}
+                                                            {tx.type}
+                                                        </span>
+                                                    </td>
+                                                    <td className={`px-4 py-3 whitespace-nowrap text-right font-bold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {formatCurrency(Math.abs(tx.amount))}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-gray-600">{tx.description}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            </Link>
-                        ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {activeTab === 'documents' && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        {allDocuments.length === 0 ? (
+                            <div className="col-span-full text-center py-8 bg-gray-50 rounded-lg border border-dashed">
+                                <p className="text-sm text-gray-500 italic">No documents uploaded yet.</p>
+                            </div>
+                        ) : (
+                            allDocuments.map(doc => (
+                                <div key={doc.id} onClick={() => setViewImage(documentUrls[doc.id])} className="relative aspect-square rounded-xl border overflow-hidden cursor-pointer group hover:border-indigo-500 transition-colors shadow-sm">
+                                    <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-40 flex items-center justify-center transition-all"><ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-6 w-6" /></div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-[10px] text-white p-2 truncate font-bold uppercase">{doc.type.replace('_', ' ')}</div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>
