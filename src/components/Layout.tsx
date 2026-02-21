@@ -20,7 +20,8 @@ import {
   Award,
   Calculator,
   UserCircle,
-  Map as MapIcon
+  Map as MapIcon,
+  ClipboardList
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -67,6 +68,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'ceo', 'hr', 'accountant'] },
     { name: 'Performance', href: '/performance', icon: Award, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },

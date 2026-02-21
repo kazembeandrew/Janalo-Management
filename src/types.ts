@@ -4,6 +4,8 @@ export type InterestType = 'flat' | 'reducing';
 
 export type LoanStatus = 'active' | 'completed' | 'defaulted' | 'pending' | 'rejected' | 'reassess';
 
+export type ApprovalStatus = 'pending_approval' | 'approved' | 'rejected';
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -12,7 +14,6 @@ export interface UserProfile {
   is_active: boolean;
   deletion_status?: 'pending' | 'approved' | 'none' | 'pending_approval';
   created_at: string;
-  // Delegation Fields
   delegated_role?: UserRole | null;
   delegation_start?: string | null;
   delegation_end?: string | null;
@@ -69,12 +70,32 @@ export interface Loan {
   };
 }
 
-export interface AmortizationScheduleItem {
-  month: number;
-  installment: number;
-  principal: number;
-  interest: number;
-  balance: number;
+export interface Expense {
+  id: string;
+  category: string;
+  description: string;
+  amount: number;
+  date: string;
+  recorded_by: string;
+  status: ApprovalStatus;
+  created_at: string;
+  users?: {
+    full_name: string;
+  };
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  assigned_to: string;
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: ApprovalStatus | 'in_progress' | 'completed';
+  created_by: string;
+  created_at: string;
+  users?: {
+    full_name: string;
+  };
 }
 
 export interface Repayment {
@@ -125,28 +146,4 @@ export interface Visitation {
     users?: {
         full_name: string;
     };
-}
-
-export interface Expense {
-  id: string;
-  category: string;
-  description: string;
-  amount: number;
-  date: string;
-  recorded_by: string;
-  created_at: string;
-  users?: {
-    full_name: string;
-  };
-}
-
-export interface DirectMessage {
-  id: string;
-  conversation_id: string;
-  sender_id: string;
-  content: string;
-  created_at: string;
-  attachment_path?: string;
-  attachment_name?: string;
-  attachment_type?: string;
 }
