@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2 } from 'lucide-react';
 import { MapPicker } from '@/components/MapPicker';
+import toast from 'react-hot-toast';
 
 const ITEMS_PER_PAGE = 9;
 
@@ -14,7 +15,11 @@ export const Borrowers: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Map Picker State
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [activeMapTarget, setActiveMapTarget] = useState<'address' | 'employment' | null>(null);
+  
   const [editingBorrower, setEditingBorrower] = useState<Borrower | null>(null);
   
   // Reassignment State
@@ -26,15 +31,14 @@ export const Borrowers: React.FC = () => {
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
-    address: '',
-    employment: ''
+    address: '', // Residence
+    employment: '' // Business/Work
   });
 
   // Pagination State
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  // Role-based permissions using effective roles
   const canCreate = effectiveRoles.includes('admin') || effectiveRoles.includes('loan_officer');
   const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
 
@@ -43,7 +47,6 @@ export const Borrowers: React.FC = () => {
     if (isExec) {
         fetchOfficers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, page, searchTerm, effectiveRoles]); 
 
   const fetchOfficers = async () => {
@@ -53,7 +56,7 @@ export const Borrowers: React.FC = () => {
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearchTerm(e.target.value);
-      setPage(1); // Reset to page 1 on search
+      setPage(1);
   };
 
   const fetchBorrowers = async () => {
@@ -65,17 +68,14 @@ export const Borrowers: React.FC = () => {
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      // Enforce: Loan Officers only see their own clients unless they have exec/admin roles
       if (effectiveRoles.includes('loan_officer') && !isExec) {
         query = query.eq('created_by', profile.id);
       }
 
-      // Server-side search
       if (searchTerm.trim()) {
         query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
       }
 
-      // Pagination
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
@@ -102,14 +102,14 @@ export const Borrowers: React.FC = () => {
           
           if (error) throw error;
           
-          alert(`Client successfully reassigned.`);
+          toast.success(`Client successfully reassigned.`);
           setShowReassignModal(false);
           setReassignBorrower(null);
           setSelectedOfficer('');
           fetchBorrowers();
       } catch (error) {
           console.error(error);
-          alert('Failed to reassign client.');
+          toast.error('Failed to reassign client.');
       }
   };
 
@@ -130,9 +130,17 @@ export const Borrowers: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handleOpenMap = (target: 'address' | 'employment') => {
+      setActiveMapTarget(target);
+      setShowMapPicker(true);
+  };
+
   const handleLocationSelect = (lat: number, lng: number) => {
-      setFormData({ ...formData, address: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      if (activeMapTarget) {
+          setFormData({ ...formData, [activeMapTarget]: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      }
       setShowMapPicker(false);
+      setActiveMapTarget(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -141,7 +149,6 @@ export const Borrowers: React.FC = () => {
 
     try {
       if (editingBorrower) {
-        // Update existing
         const { error } = await supabase
           .from('borrowers')
           .update({
@@ -153,8 +160,8 @@ export const Borrowers: React.FC = () => {
           .eq('id', editingBorrower.id);
 
         if (error) throw error;
+        toast.success('Client updated');
       } else {
-        // Create new
         const { error } = await supabase.from('borrowers').insert([
           {
             ...formData,
@@ -163,16 +170,17 @@ export const Borrowers: React.FC = () => {
         ]);
 
         if (error) throw error;
+        toast.success('Client registered');
       }
 
       setIsModalOpen(false);
       setFormData({ full_name: '', phone: '', address: '', employment: '' });
       setEditingBorrower(null);
-      if (!editingBorrower) setPage(1); // Go to first page on create
+      if (!editingBorrower) setPage(1);
       fetchBorrowers();
     } catch (error) {
       console.error('Error saving borrower:', error);
-      alert('Error saving borrower');
+      toast.error('Error saving borrower');
     }
   };
 
@@ -194,7 +202,7 @@ export const Borrowers: React.FC = () => {
         {canCreate && (
           <button
             onClick={openCreateModal}
-            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            className="inline-flex items-center px-4 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95"
           >
             <Plus className="h-4 w-4 mr-2" />
             Add Borrower
@@ -208,8 +216,8 @@ export const Borrowers: React.FC = () => {
         </div>
         <input
           type="text"
-          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-          placeholder="Search by name or phone (Server-side)..."
+          className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all sm:text-sm"
+          placeholder="Search by name or phone..."
           value={searchTerm}
           onChange={handleSearchChange}
         />
@@ -221,9 +229,9 @@ export const Borrowers: React.FC = () => {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
             </div>
         ) : borrowers.length === 0 ? (
-          <div className="text-center py-10 bg-white rounded-lg border border-gray-200 border-dashed">
-             <User className="mx-auto h-12 w-12 text-gray-400" />
-             <h3 className="mt-2 text-sm font-medium text-gray-900">No borrowers found</h3>
+          <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 border-dashed">
+             <User className="mx-auto h-12 w-12 text-gray-300 mb-4" />
+             <h3 className="text-sm font-bold text-gray-900">No borrowers found</h3>
              <p className="mt-1 text-sm text-gray-500">
                 {searchTerm ? 'Try adjusting your search terms.' : 'Get started by creating a new borrower.'}
              </p>
@@ -231,38 +239,40 @@ export const Borrowers: React.FC = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {borrowers.map((borrower) => (
-                <div key={borrower.id} className="bg-white overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-shadow relative group">
-                <div className="p-5">
+                <div key={borrower.id} className="bg-white overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100 group">
+                <div className="p-6">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-medium text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
-                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
-                            {(borrower.full_name || 'C').charAt(0)}
+                        <div className="flex items-center min-w-0">
+                            <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-3 shrink-0">
+                                {(borrower.full_name || 'C').charAt(0)}
+                            </div>
+                            <h3 className="text-base font-bold text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
                         </div>
                     </div>
-                    <div className="space-y-2 text-sm text-gray-600">
-                    <div className="flex items-center">
-                        <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                        {borrower.phone || 'No phone'}
-                    </div>
-                    <div className="flex items-center">
-                        <MapPin className="h-4 w-4 mr-2 text-gray-400" />
-                        <span className="truncate">{borrower.address || 'No address'}</span>
-                    </div>
-                    <div className="flex items-center">
-                        <Briefcase className="h-4 w-4 mr-2 text-gray-400" />
-                        {borrower.employment || 'Unknown employment'}
-                    </div>
+                    <div className="space-y-3 text-sm text-gray-600">
+                        <div className="flex items-center">
+                            <Phone className="h-4 w-4 mr-3 text-gray-400" />
+                            <span className="font-medium">{borrower.phone || 'No phone'}</span>
+                        </div>
+                        <div className="flex items-start">
+                            <Home className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                            <span className="truncate text-xs">{borrower.address || 'No residence address'}</span>
+                        </div>
+                        <div className="flex items-start">
+                            <Building2 className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                            <span className="truncate text-xs">{borrower.employment || 'No business address'}</span>
+                        </div>
                     </div>
                 </div>
-                <div className="bg-gray-50 px-5 py-3 border-t border-gray-100 flex justify-between items-center">
-                    <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-900 text-xs font-bold flex items-center">
-                        <ExternalLink className="h-3 w-3 mr-1" /> View Profile
+                <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+                    <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center">
+                        <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> View Profile
                     </Link>
-                    <div className="flex space-x-3">
+                    <div className="flex space-x-4">
                         {isExec && (
                             <button 
                                 onClick={() => { setReassignBorrower(borrower); setShowReassignModal(true); }}
-                                className="text-indigo-600 hover:text-indigo-900 text-xs font-medium"
+                                className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
                             >
                                 Reassign
                             </button>
@@ -270,7 +280,7 @@ export const Borrowers: React.FC = () => {
                         {canCreate && (
                         <button 
                             onClick={() => openEditModal(borrower)}
-                            className="text-indigo-600 hover:text-indigo-900 text-xs font-medium"
+                            className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
                         >
                             Edit
                         </button>
@@ -285,53 +295,50 @@ export const Borrowers: React.FC = () => {
 
        {/* Pagination Controls */}
        {totalCount > 0 && (
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 rounded-lg shadow-sm">
+        <div className="bg-white px-6 py-4 flex items-center justify-between border border-gray-200 rounded-2xl shadow-sm">
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
-                    <p className="text-sm text-gray-700">
-                        Showing <span className="font-medium">{(page - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="font-medium">{Math.min(page * ITEMS_PER_PAGE, totalCount)}</span> of <span className="font-medium">{totalCount}</span> results
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                        Showing <span className="text-gray-900">{(page - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-gray-900">{Math.min(page * ITEMS_PER_PAGE, totalCount)}</span> of <span className="text-gray-900">{totalCount}</span>
                     </p>
                 </div>
                 <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                    <nav className="relative z-0 inline-flex rounded-xl shadow-sm -space-x-px" aria-label="Pagination">
                         <button
                             onClick={() => setPage(p => Math.max(1, p - 1))}
                             disabled={page === 1 || loading}
-                            className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+                            className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                         >
-                            <span className="sr-only">Previous</span>
-                            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
+                            <ChevronLeft className="h-5 w-5" />
                         </button>
-                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
+                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-xs font-bold text-gray-700">
                             Page {page} of {totalPages || 1}
                         </span>
                         <button
                             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                             disabled={page === totalPages || totalPages === 0 || loading}
-                            className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:bg-gray-100 disabled:text-gray-400"
+                            className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
                         >
-                            <span className="sr-only">Next</span>
-                            <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                            <ChevronRight className="h-5 w-5" />
                         </button>
                     </nav>
                 </div>
             </div>
-             {/* Mobile Pagination View */}
              <div className="flex items-center justify-between w-full sm:hidden">
                 <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1 || loading}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 border border-gray-300 text-xs font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                     Previous
                 </button>
-                <span className="text-sm text-gray-700">
-                    Page {page}
+                <span className="text-xs font-bold text-gray-700">
+                    {page} / {totalPages}
                 </span>
                 <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages || totalPages === 0 || loading}
-                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 border border-gray-300 text-xs font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
                 >
                     Next
                 </button>
@@ -341,44 +348,41 @@ export const Borrowers: React.FC = () => {
 
       {/* Reassign Modal */}
       {showReassignModal && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowReassignModal(false)}></div>
-                <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
-                    <div className="p-6">
-                        <h3 className="text-lg font-medium text-gray-900 mb-4">Reassign Client</h3>
-                        <p className="text-sm text-gray-500 mb-4">
-                            Select a new loan officer to manage <strong>{reassignBorrower?.full_name}</strong>.
-                        </p>
-                        
-                        <select
-                            className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                            value={selectedOfficer}
-                            onChange={(e) => setSelectedOfficer(e.target.value)}
-                        >
-                            <option value="">-- Select Officer --</option>
-                            {officers.map(o => (
-                                <option key={o.id} value={o.id}>{o.full_name}</option>
-                            ))}
-                        </select>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-8">
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Reassign Client</h3>
+                    <p className="text-sm text-gray-500 mb-6">
+                        Select a new loan officer to manage <strong>{reassignBorrower?.full_name}</strong>.
+                    </p>
+                    
+                    <select
+                        className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                        value={selectedOfficer}
+                        onChange={(e) => setSelectedOfficer(e.target.value)}
+                    >
+                        <option value="">-- Select Officer --</option>
+                        {officers.map(o => (
+                            <option key={o.id} value={o.id}>{o.full_name}</option>
+                        ))}
+                    </select>
 
-                        <div className="flex justify-end space-x-3 mt-6">
-                            <button
-                                type="button"
-                                onClick={() => setShowReassignModal(false)}
-                                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleReassign}
-                                disabled={!selectedOfficer}
-                                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                Confirm Reassignment
-                            </button>
-                        </div>
+                    <div className="flex gap-3 mt-8">
+                        <button
+                            type="button"
+                            onClick={() => setShowReassignModal(false)}
+                            className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleReassign}
+                            disabled={!selectedOfficer}
+                            className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+                        >
+                            Confirm
+                        </button>
                     </div>
                 </div>
             </div>
@@ -387,100 +391,122 @@ export const Borrowers: React.FC = () => {
 
       {/* Create/Edit Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity" aria-hidden="true">
-              <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={() => setIsModalOpen(false)}></div>
-            </div>
-            <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-            <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
               <form onSubmit={handleSubmit}>
-                <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
-                    {editingBorrower ? 'Edit Borrower' : 'Register New Borrower'}
-                  </h3>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                      <input
-                        required
-                        type="text"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={formData.full_name}
-                        onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Phone</label>
-                      <input
-                        required
-                        type="text"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Address</label>
-                      <div className="mt-1 flex gap-2">
-                        <input
-                            required
-                            type="text"
-                            className="block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            value={formData.address}
-                            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                            placeholder="Street address or coordinates"
-                        />
-                        <button 
-                            type="button"
-                            onClick={() => setShowMapPicker(true)}
-                            className="p-2 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
-                            title="Pin on Map"
-                        >
-                            <MapIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700">Employment / Business</label>
-                      <input
-                        required
-                        type="text"
-                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                        value={formData.employment}
-                        onChange={(e) => setFormData({ ...formData, employment: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                    <h3 className="font-bold text-white flex items-center text-lg">
+                        {editingBorrower ? <><Building2 className="mr-3 h-6 w-6 text-indigo-300" /> Edit Client Profile</> : <><Plus className="mr-3 h-6 w-6 text-indigo-300" /> Register New Client</>}
+                    </h3>
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                 </div>
-                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                  <button
-                    type="submit"
-                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-indigo-900 text-base font-medium text-white hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:ml-3 sm:w-auto sm:text-sm"
-                  >
-                    {editingBorrower ? 'Update Client' : 'Save Client'}
-                  </button>
+
+                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="sm:col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                            <input
+                                required
+                                type="text"
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="e.g. John Phiri"
+                                value={formData.full_name}
+                                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                            <input
+                                required
+                                type="text"
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="e.g. +265 888 123 456"
+                                value={formData.phone}
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-6 pt-4 border-t border-gray-100">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center">
+                                <Home className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                                Residence Address
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    required
+                                    type="text"
+                                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    value={formData.address}
+                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                    placeholder="Manual entry or pin on map..."
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => handleOpenMap('address')}
+                                    className="p-2.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all shadow-sm"
+                                    title="Pin Residence on Map"
+                                >
+                                    <MapIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center">
+                                <Building2 className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                                Business or Work Address
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    required
+                                    type="text"
+                                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    value={formData.employment}
+                                    onChange={(e) => setFormData({ ...formData, employment: e.target.value })}
+                                    placeholder="Manual entry or pin on map..."
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => handleOpenMap('employment')}
+                                    className="p-2.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all shadow-sm"
+                                    title="Pin Business on Map"
+                                >
+                                    <MapIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 px-8 py-6 flex gap-3">
                   <button
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100 transition-all"
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
+                  >
+                    {editingBorrower ? 'Update Profile' : 'Register Client'}
                   </button>
                 </div>
               </form>
             </div>
-          </div>
         </div>
       )}
 
       {showMapPicker && (
           <MapPicker 
             onSelect={handleLocationSelect} 
-            onClose={() => setShowMapPicker(false)} 
-            initialLocation={formData.address.includes(',') ? {
-                lat: parseFloat(formData.address.split(',')[0]),
-                lng: parseFloat(formData.address.split(',')[1])
+            onClose={() => { setShowMapPicker(false); setActiveMapTarget(null); }} 
+            initialLocation={activeMapTarget && formData[activeMapTarget].includes(',') ? {
+                lat: parseFloat(formData[activeMapTarget].split(',')[0]),
+                lng: parseFloat(formData[activeMapTarget].split(',')[1])
             } : undefined}
           />
       )}
