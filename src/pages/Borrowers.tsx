@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2 } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2, X } from 'lucide-react';
 import { MapPicker } from '@/components/MapPicker';
 import toast from 'react-hot-toast';
 
