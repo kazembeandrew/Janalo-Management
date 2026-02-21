@@ -29,6 +29,7 @@ export const Dashboard: React.FC = () => {
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [profitData, setProfitData] = useState<any[]>([]);
   const [officerStats, setOfficerStats] = useState<any[]>([]);
+  const [activeLoans, setActiveLoans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -55,6 +56,15 @@ export const Dashboard: React.FC = () => {
       const { data: offStats } = await supabase.rpc('get_officer_performance');
       const { data: expenses } = await supabase.from('expenses').select('amount, date');
       
+      // Fetch active loans for the Accountant's forecast
+      if (isAccountant || isExec) {
+          const { data: loans } = await supabase
+            .from('loans')
+            .select('principal_outstanding, interest_outstanding, penalty_outstanding, monthly_installment, updated_at')
+            .eq('status', 'active');
+          setActiveLoans(loans || []);
+      }
+
       let reassessCount = 0;
       if (profile) {
           const { count } = await supabase
@@ -124,7 +134,7 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {isAccountant && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} />}
+      {isAccountant && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} loanData={activeLoans} />}
       {isHR && <HRView stats={stats} officerStats={officerStats} />}
       {isOfficer && !isHR && !isAccountant && !isExec && <OfficerView stats={stats} />}
       

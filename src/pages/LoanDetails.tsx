@@ -9,7 +9,7 @@ import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
 import { exportToCSV, generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt, Eraser
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -33,6 +33,7 @@ export const LoanDetails: React.FC = () => {
   // Modals
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [showPenaltyModal, setShowPenaltyModal] = useState(false);
+  const [showWaiveModal, setShowWaiveModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showReassessModal, setShowReassessModal] = useState(false);
@@ -50,6 +51,7 @@ export const LoanDetails: React.FC = () => {
   // Form States
   const [repayAmount, setRepayAmount] = useState<number>(0);
   const [penaltyAmount, setPenaltyAmount] = useState<number>(0);
+  const [waiveData, setWaiveData] = useState({ interest: 0, penalty: 0 });
   const [newNote, setNewNote] = useState('');
   
   // Decision Form States
@@ -650,6 +652,46 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
+  const handleWaive = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!loan || !profile) return;
+      setProcessingAction(true);
+
+      try {
+          const newInterest = Math.max(0, loan.interest_outstanding - waiveData.interest);
+          const newPenalty = Math.max(0, (loan.penalty_outstanding || 0) - waiveData.penalty);
+
+          const { error } = await supabase
+            .from('loans')
+            .update({
+                interest_outstanding: newInterest,
+                penalty_outstanding: newPenalty
+            })
+            .eq('id', loan.id);
+          
+          if (error) throw error;
+
+          let note = `CHARGES WAIVED by ${profile.full_name}. `;
+          if (waiveData.interest > 0) note += `Interest: ${formatCurrency(waiveData.interest)}. `;
+          if (waiveData.penalty > 0) note += `Penalty: ${formatCurrency(waiveData.penalty)}. `;
+          if (decisionReason) note += `Reason: ${decisionReason}`;
+
+          await addNote(note, true);
+          await logAudit('Charges Waived', { interest: waiveData.interest, penalty: waiveData.penalty, reason: decisionReason });
+
+          toast.success('Charges waived successfully');
+          setShowWaiveModal(false);
+          setWaiveData({ interest: 0, penalty: 0 });
+          setDecisionReason('');
+          fetchData();
+      } catch (error) {
+          console.error(error);
+          toast.error('Failed to waive charges');
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
   const handleRepayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loan || !profile) return;
@@ -964,12 +1006,20 @@ export const LoanDetails: React.FC = () => {
                         </button>
                     )}
                     {isAccountant && (
-                        <button 
-                            onClick={() => setShowPenaltyModal(true)}
-                            className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
-                        >
-                            + Late Fee
-                        </button>
+                        <>
+                            <button 
+                                onClick={() => setShowWaiveModal(true)}
+                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-amber-200 flex items-center"
+                            >
+                                <Eraser className="h-4 w-4 mr-1" /> Waive
+                            </button>
+                            <button 
+                                onClick={() => setShowPenaltyModal(true)}
+                                className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
+                            >
+                                + Late Fee
+                            </button>
+                        </>
                     )}
                     {(isAccountant || isOfficer) && (
                         <button 
@@ -1340,6 +1390,80 @@ export const LoanDetails: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {showWaiveModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                  <div className="fixed inset-0 bg-gray-500 opacity-75" onClick={() => setShowWaiveModal(false)}></div>
+                  <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg w-full">
+                      <form onSubmit={handleWaive} className="p-6">
+                          <div className="flex items-center mb-4">
+                               <div className="bg-amber-100 rounded-full p-2 mr-3">
+                                  <Eraser className="h-6 w-6 text-amber-600" />
+                               </div>
+                               <h3 className="text-lg font-medium text-gray-900">Waive Charges</h3>
+                          </div>
+                          <p className="text-sm text-gray-500 mb-6">
+                              Forgive outstanding interest or penalties for this client. This action is permanent and will be logged.
+                          </p>
+                          
+                          <div className="space-y-4">
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">Interest to Waive (Max: {formatCurrency(loan.interest_outstanding)})</label>
+                                  <input 
+                                      type="number"
+                                      step="0.01"
+                                      max={loan.interest_outstanding}
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      value={waiveData.interest}
+                                      onChange={e => setWaiveData({...waiveData, interest: Number(e.target.value)})}
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">Penalty to Waive (Max: {formatCurrency(loan.penalty_outstanding || 0)})</label>
+                                  <input 
+                                      type="number"
+                                      step="0.01"
+                                      max={loan.penalty_outstanding || 0}
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      value={waiveData.penalty}
+                                      onChange={e => setWaiveData({...waiveData, penalty: Number(e.target.value)})}
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-sm font-medium text-gray-700">Reason / Justification</label>
+                                  <textarea
+                                      required
+                                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-3 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                      rows={2}
+                                      placeholder="e.g. Medical emergency, bereavement, etc."
+                                      value={decisionReason}
+                                      onChange={e => setDecisionReason(e.target.value)}
+                                  ></textarea>
+                              </div>
+                          </div>
+
+                          <div className="flex justify-end space-x-3 mt-6">
+                              <button
+                                  type="button"
+                                  onClick={() => setShowWaiveModal(false)}
+                                  className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                              >
+                                  Cancel
+                              </button>
+                              <button
+                                  type="submit"
+                                  disabled={processingAction || (waiveData.interest === 0 && waiveData.penalty === 0)}
+                                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50"
+                              >
+                                  {processingAction ? 'Processing...' : 'Confirm Waiver'}
+                              </button>
+                          </div>
+                      </form>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {showRestructureModal && (
           <div className="fixed inset-0 z-50 overflow-y-auto">
