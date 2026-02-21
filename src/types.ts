@@ -19,6 +19,32 @@ export interface UserProfile {
   delegation_end?: string | null;
 }
 
+export interface InternalAccount {
+    id: string;
+    name: string;
+    type: 'bank' | 'cash' | 'equity' | 'liability';
+    balance: number;
+    account_number?: string;
+    bank_name?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface FundTransaction {
+    id: string;
+    from_account_id?: string;
+    to_account_id?: string;
+    amount: number;
+    type: 'transfer' | 'injection' | 'disbursement' | 'repayment' | 'expense';
+    description: string;
+    reference_id?: string; // ID of the loan, expense, etc.
+    recorded_by: string;
+    created_at: string;
+    users?: {
+        full_name: string;
+    };
+}
+
 export interface AuditLog {
   id: string;
   user_id: string;
