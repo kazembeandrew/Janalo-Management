@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Activity, Sparkles, RefreshCw, DollarSign, Users, AlertTriangle, Target, ShieldCheck } from 'lucide-react';
+import { Activity, Sparkles, RefreshCw, DollarSign, Users, AlertTriangle, Target, ShieldCheck, Landmark } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { AccountantView } from '@/components/dashboard/AccountantView';
 import { HRView } from '@/components/dashboard/HRView';
