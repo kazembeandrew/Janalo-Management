@@ -312,7 +312,7 @@ export const LoanDetails: React.FC = () => {
                           {loan.status}
                       </span>
                   </div>
-                  <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-y-6 gap-x-8">
+                  <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
                       <div className="min-w-0">
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Principal Amount</p>
                           <p className="text-lg font-bold text-gray-900 truncate">{formatCurrency(loan.principal_amount)}</p>
@@ -324,6 +324,10 @@ export const LoanDetails: React.FC = () => {
                       <div className="min-w-0">
                           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Loan Term</p>
                           <p className="text-lg font-bold text-gray-900 truncate">{loan.term_months} Months</p>
+                      </div>
+                      <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Interest Type</p>
+                          <p className="text-lg font-bold text-gray-900 truncate capitalize">{loan.interest_type} Rate</p>
                       </div>
                   </div>
               </div>
