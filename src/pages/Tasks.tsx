@@ -122,6 +122,8 @@ export const Tasks: React.FC = () => {
           
           if (newStatus === 'approved') {
               await createNotification(task.assigned_to, 'New Task Assigned', `CEO has authorized the task: "${task.title}". You can now start working on it.`, task.id);
+          } else if (newStatus === 'completed') {
+              await createNotification(task.assigned_to, 'Task Completed', `CEO has marked your task "${task.title}" as completed.`, task.id);
           }
 
           toast.success(`Task updated to ${newStatus.replace('_', ' ')}`);
@@ -166,61 +168,79 @@ export const Tasks: React.FC = () => {
       return matchesSearch && matchesPriority;
   });
 
-  const renderTaskCard = (task: Task) => (
-      <div 
-        key={task.id} 
-        onClick={() => setSelectedTask(task)}
-        className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all group cursor-pointer relative overflow-hidden"
-      >
-          <div className={`absolute top-0 left-0 w-1 h-full ${
-              task.priority === 'critical' ? 'bg-red-500' : 
-              task.priority === 'high' ? 'bg-orange-500' : 
-              task.priority === 'medium' ? 'bg-blue-500' : 'bg-gray-300'
-          }`} />
-          
-          <div className="flex justify-between items-start mb-2">
-              <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${getPriorityColor(task.priority)}`}>
-                  {task.priority}
-              </span>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {isCEO && task.status === 'pending_approval' && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'approved'); }} 
-                        className="p-1 text-green-600 hover:bg-green-50 rounded" 
-                        title="Approve"
-                      >
-                          <Check className="h-3.5 w-3.5" />
-                      </button>
-                  )}
-                  {(isCEO || isHR) && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(task); }} 
-                        className="p-1 text-red-600 hover:bg-red-50 rounded" 
-                        title="Delete"
-                      >
-                          <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                  )}
-              </div>
-          </div>
-          
-          <h4 className="text-sm font-bold text-gray-900 mb-1 line-clamp-1">{task.title}</h4>
-          <p className="text-xs text-gray-500 line-clamp-2 mb-4 leading-relaxed">{task.description}</p>
-          
-          <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-              <div className="flex items-center text-[10px] text-gray-400 font-medium">
-                  <div className="h-5 w-5 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 mr-1.5">
-                      <User className="h-3 w-3" />
+  const renderTaskCard = (task: Task) => {
+      const isAssignedToMe = profile?.id === task.assigned_to;
+      
+      return (
+          <div 
+            key={task.id} 
+            onClick={() => setSelectedTask(task)}
+            className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all group cursor-pointer relative overflow-hidden"
+          >
+              <div className={`absolute top-0 left-0 w-1 h-full ${
+                  task.priority === 'critical' ? 'bg-red-500' : 
+                  task.priority === 'high' ? 'bg-orange-500' : 
+                  task.priority === 'medium' ? 'bg-blue-500' : 'bg-gray-300'
+              }`} />
+              
+              <div className="flex justify-between items-start mb-2">
+                  <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${getPriorityColor(task.priority)}`}>
+                      {task.priority}
+                  </span>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isCEO && task.status === 'pending_approval' && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'approved'); }} 
+                            className="p-1 text-green-600 hover:bg-green-50 rounded" 
+                            title="Approve"
+                          >
+                              <Check className="h-3.5 w-3.5" />
+                          </button>
+                      )}
+                      {(isCEO || isHR) && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDelete(task); }} 
+                            className="p-1 text-red-600 hover:bg-red-50 rounded" 
+                            title="Delete"
+                          >
+                              <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                      )}
                   </div>
-                  {task.users?.full_name || 'Unassigned'}
               </div>
-              <div className="text-[10px] text-gray-400 flex items-center">
-                  <Clock className="h-3 w-3 mr-1" />
-                  {new Date(task.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              
+              <h4 className="text-sm font-bold text-gray-900 mb-1 line-clamp-1">{task.title}</h4>
+              <p className="text-xs text-gray-500 line-clamp-2 mb-4 leading-relaxed">{task.description}</p>
+              
+              <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+                  <div className="flex items-center text-[10px] text-gray-400 font-medium">
+                      <div className="h-5 w-5 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 mr-1.5">
+                          <User className="h-3 w-3" />
+                      </div>
+                      {task.users?.full_name || 'Unassigned'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                      {task.status === 'approved' && isAssignedToMe && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'in_progress'); }}
+                            className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                          >
+                              Start
+                          </button>
+                      )}
+                      {task.status === 'in_progress' && isCEO && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleUpdateStatus(task, 'completed'); }}
+                            className="text-[10px] font-bold text-green-600 hover:text-green-800"
+                          >
+                              Done
+                          </button>
+                      )}
+                  </div>
               </div>
           </div>
-      </div>
-  );
+      );
+  };
 
   return (
     <div className="space-y-6">
@@ -365,7 +385,7 @@ export const Tasks: React.FC = () => {
                                   Approve Task
                               </button>
                           )}
-                          {selectedTask.status === 'approved' && (profile?.id === selectedTask.assigned_to || isCEO) && (
+                          {selectedTask.status === 'approved' && profile?.id === selectedTask.assigned_to && (
                               <button 
                                 onClick={() => handleUpdateStatus(selectedTask, 'in_progress')}
                                 className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
@@ -373,7 +393,7 @@ export const Tasks: React.FC = () => {
                                   Start Working
                               </button>
                           )}
-                          {selectedTask.status === 'in_progress' && (profile?.id === selectedTask.assigned_to || isCEO) && (
+                          {selectedTask.status === 'in_progress' && isCEO && (
                               <button 
                                 onClick={() => handleUpdateStatus(selectedTask, 'completed')}
                                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100"
