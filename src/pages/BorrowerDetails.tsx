@@ -120,6 +120,11 @@ export const BorrowerDetails: React.FC = () => {
       if (mapElement) mapElement.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const openExternalMap = (coords: [number, number]) => {
+      const url = `https://www.google.com/maps/search/?api=1&query=${coords[0]},${coords[1]}`;
+      window.open(url, '_blank');
+  };
+
   if (loading || !borrower) return <div className="p-8 text-center">Loading profile...</div>;
 
   const totalBorrowed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
@@ -188,12 +193,20 @@ export const BorrowerDetails: React.FC = () => {
                                 <div className="flex justify-between items-start">
                                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Residence Address</p>
                                     {residenceCoords && (
-                                        <button 
-                                            onClick={() => jumpToMap(residenceCoords)}
-                                            className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
-                                        >
-                                            <MapPin className="h-2.5 w-2.5 mr-1" /> View on Map
-                                        </button>
+                                        <div className="flex gap-3">
+                                            <button 
+                                                onClick={() => jumpToMap(residenceCoords)}
+                                                className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
+                                            >
+                                                <MapPin className="h-2.5 w-2.5 mr-1" /> View
+                                            </button>
+                                            <button 
+                                                onClick={() => openExternalMap(residenceCoords)}
+                                                className="text-[10px] text-green-600 font-bold hover:underline flex items-center"
+                                            >
+                                                <ExternalLink className="h-2.5 w-2.5 mr-1" /> Google Maps
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                                 <p className="text-sm font-bold text-gray-900 break-words">{borrower.address || 'N/A'}</p>
@@ -208,12 +221,20 @@ export const BorrowerDetails: React.FC = () => {
                                 <div className="flex justify-between items-start">
                                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Business / Work</p>
                                     {businessCoords && (
-                                        <button 
-                                            onClick={() => jumpToMap(businessCoords)}
-                                            className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
-                                        >
-                                            <MapPin className="h-2.5 w-2.5 mr-1" /> View on Map
-                                        </button>
+                                        <div className="flex gap-3">
+                                            <button 
+                                                onClick={() => jumpToMap(businessCoords)}
+                                                className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
+                                            >
+                                                <MapPin className="h-2.5 w-2.5 mr-1" /> View
+                                            </button>
+                                            <button 
+                                                onClick={() => openExternalMap(businessCoords)}
+                                                className="text-[10px] text-green-600 font-bold hover:underline flex items-center"
+                                            >
+                                                <ExternalLink className="h-2.5 w-2.5 mr-1" /> Google Maps
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                                 <p className="text-sm font-bold text-gray-900 break-words">{borrower.employment || 'N/A'}</p>
