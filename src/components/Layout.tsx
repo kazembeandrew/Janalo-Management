@@ -70,7 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Performance', href: '/performance', icon: Award, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo'] },
+    { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin', 'ceo'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
   ];
@@ -106,7 +106,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         <nav className="mt-4 px-3 space-y-1">
           {navigation.map((item) => {
-            // Check if ANY of the user's effective roles are allowed for this item
             const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
             if (!hasAccess) return null;
 

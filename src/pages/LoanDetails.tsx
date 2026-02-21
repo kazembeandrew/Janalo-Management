@@ -16,7 +16,7 @@ import toast from 'react-hot-toast';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const navigate = useNavigate();
   const [loan, setLoan] = useState<Loan | null>(null);
   const [repayments, setRepayments] = useState<Repayment[]>([]);
@@ -78,7 +78,7 @@ export const LoanDetails: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    if (profile?.role === 'admin' || profile?.role === 'ceo') {
+    if (effectiveRoles.includes('admin') || effectiveRoles.includes('ceo')) {
         fetchOfficers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,7 +142,6 @@ export const LoanDetails: React.FC = () => {
       });
   };
 
-  // Calculate Amortization Schedule
   const amortizationSchedule = useMemo(() => {
       if (!loan) return [];
       return calculateLoanDetails(
@@ -304,11 +303,7 @@ export const LoanDetails: React.FC = () => {
   };
 
   const sendNotificationEmail = async (subject: string, htmlContent: string) => {
-    if (!loan?.users?.email) {
-        console.warn("No officer email found, skipping notification.");
-        return;
-    }
-    
+    if (!loan?.users?.email) return;
     try {
         await fetch('/api/admin/send-email', {
             method: 'POST',
@@ -674,7 +669,6 @@ export const LoanDetails: React.FC = () => {
 
     const currentPenalty = loan.penalty_outstanding || 0;
     
-    // 1. Pay Penalty First
     if (currentPenalty > 0) {
         if (remaining >= currentPenalty) {
             penPaid = currentPenalty;
@@ -685,7 +679,6 @@ export const LoanDetails: React.FC = () => {
         }
     }
 
-    // 2. Pay Interest Second
     if (remaining > 0 && loan.interest_outstanding > 0) {
         if (remaining >= loan.interest_outstanding) {
             intPaid = loan.interest_outstanding;
@@ -696,7 +689,6 @@ export const LoanDetails: React.FC = () => {
         }
     }
     
-    // 3. Pay Principal Last
     if (remaining > 0) {
         prinPaid = remaining;
     }
@@ -708,7 +700,6 @@ export const LoanDetails: React.FC = () => {
     const isCompleted = newPrinOutstanding <= 0.01 && newIntOutstanding <= 0.01 && newPenOutstanding <= 0.01;
 
     try {
-      // 1. Insert Repayment Record
       const { data: rData, error: rError } = await supabase.from('repayments').insert([{
         loan_id: loan.id,
         amount_paid: amountToProcess,
@@ -719,12 +710,8 @@ export const LoanDetails: React.FC = () => {
         recorded_by: profile.id
       }]).select().single();
 
-      if (rError) {
-          console.error("[Repayment] Insert Error:", rError);
-          throw new Error(rError.message);
-      }
+      if (rError) throw new Error(rError.message);
 
-      // 2. Update Loan Balances
       const { error: lError } = await supabase
         .from('loans')
         .update({
@@ -735,12 +722,8 @@ export const LoanDetails: React.FC = () => {
         })
         .eq('id', loan.id);
       
-      if (lError) {
-          console.error("[Repayment] Loan Update Error:", lError);
-          throw new Error(lError.message);
-      }
+      if (lError) throw new Error(lError.message);
 
-      // 3. Log Activity
       if (isCompleted) {
           await addNote('Loan fully repaid and marked as Completed.', true);
           await logAudit('Loan Completed', { total_paid: amountToProcess });
@@ -755,7 +738,6 @@ export const LoanDetails: React.FC = () => {
       setRepayAmount(0);
       fetchData();
       
-      // 4. Offer receipt download
       if (rData) {
           setTimeout(() => {
               if (window.confirm("Repayment recorded. Would you like to download the receipt?")) {
@@ -873,8 +855,12 @@ export const LoanDetails: React.FC = () => {
 
   if (loading || !loan) return <div className="p-4">Loading details...</div>;
 
-  const isExecutive = profile?.role === 'ceo' || profile?.role === 'admin';
-  const isOwner = profile?.id === loan.officer_id || profile?.role === 'admin';
+  // Role-Based Logic
+  const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
+  const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
+  const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
+  const isOwner = profile?.id === loan.officer_id || effectiveRoles.includes('admin');
+  
   const isPending = loan.status === 'pending';
   const isReassess = loan.status === 'reassess';
   const isRejected = loan.status === 'rejected';
@@ -944,15 +930,6 @@ export const LoanDetails: React.FC = () => {
                 </button>
             )}
 
-            {isRejected && profile?.role === 'ceo' && (
-                <button 
-                    onClick={() => openDecisionModal('reassess')}
-                    className="bg-purple-100 hover:bg-purple-200 text-purple-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                >
-                    <RefreshCw className="h-4 w-4 mr-1" /> Reassess Application
-                </button>
-            )}
-
             {(isPending || isReassess) && isExecutive && (
                 <div className="flex space-x-2 border-l pl-2 border-gray-300">
                      <button 
@@ -978,19 +955,23 @@ export const LoanDetails: React.FC = () => {
 
             {loan.status === 'active' && (
                 <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                    <button 
-                        onClick={() => setShowRestructureModal(true)}
-                        className="bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-orange-200 flex items-center"
-                    >
-                        <RefreshCw className="h-4 w-4 mr-1" /> Restructure
-                    </button>
-                    <button 
-                        onClick={() => setShowPenaltyModal(true)}
-                        className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
-                    >
-                        + Late Fee
-                    </button>
-                    {profile?.role !== 'ceo' && (
+                    {isExecutive && (
+                        <button 
+                            onClick={() => setShowRestructureModal(true)}
+                            className="bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-orange-200 flex items-center"
+                        >
+                            <RefreshCw className="h-4 w-4 mr-1" /> Restructure
+                        </button>
+                    )}
+                    {isAccountant && (
+                        <button 
+                            onClick={() => setShowPenaltyModal(true)}
+                            className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
+                        >
+                            + Late Fee
+                        </button>
+                    )}
+                    {(isAccountant || isOfficer) && (
                         <button 
                             onClick={() => setShowRepayModal(true)}
                             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm text-sm font-medium"
@@ -1003,12 +984,14 @@ export const LoanDetails: React.FC = () => {
 
             {loan.status === 'active' && (
                 <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                    <button
-                        onClick={() => setShowVisitModal(true)}
-                        className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                    >
-                        <MapPin className="h-4 w-4 mr-1" /> Visit
-                    </button>
+                    {isOfficer && (
+                        <button
+                            onClick={() => setShowVisitModal(true)}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
+                        >
+                            <MapPin className="h-4 w-4 mr-1" /> Visit
+                        </button>
+                    )}
                     
                     {isExecutive && (
                         <button
