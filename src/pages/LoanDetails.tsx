@@ -13,8 +13,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-type DetailTab = 'overview' | 'client' | 'documents' | 'notes';
-
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { profile, effectiveRoles } = useAuth();
@@ -261,7 +259,7 @@ export const LoanDetails: React.FC = () => {
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
 
-  const totalOwed = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+  const totalInterest = loan.total_payable - loan.principal_amount;
 
   return (
     <div className="space-y-6">
@@ -314,21 +312,17 @@ export const LoanDetails: React.FC = () => {
                           {loan.status}
                       </span>
                   </div>
-                  <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-6 gap-x-4">
+                  <div className="p-6 grid grid-cols-1 sm:grid-cols-3 gap-y-6 gap-x-8">
                       <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Principal</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Principal Amount</p>
                           <p className="text-lg font-bold text-gray-900 truncate">{formatCurrency(loan.principal_amount)}</p>
                       </div>
                       <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Outstanding</p>
-                          <p className="text-lg font-bold text-red-600 truncate">{formatCurrency(totalOwed)}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Total Interest</p>
+                          <p className="text-lg font-bold text-indigo-600 truncate">{formatCurrency(totalInterest)}</p>
                       </div>
                       <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Installment</p>
-                          <p className="text-lg font-bold text-indigo-600 truncate">{formatCurrency(loan.monthly_installment)}</p>
-                      </div>
-                      <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Term</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Loan Term</p>
                           <p className="text-lg font-bold text-gray-900 truncate">{loan.term_months} Months</p>
                       </div>
                   </div>
