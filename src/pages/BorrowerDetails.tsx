@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { Borrower, Loan, LoanDocument, SavingsAccount, SavingsTransaction } from '@/types';
+import { Borrower, Loan, LoanDocument } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { assessLoanRisk } from '@/services/aiService';
 import Markdown from 'react-markdown';
@@ -15,13 +15,11 @@ export const BorrowerDetails: React.FC = () => {
   const navigate = useNavigate();
   const [borrower, setBorrower] = useState<Borrower | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
-  const [savings, setSavings] = useState<SavingsAccount | null>(null);
-  const [savingsTransactions, setSavingsTransactions] = useState<SavingsTransaction[]>([]);
   const [allDocuments, setAllDocuments] = useState<LoanDocument[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   const [viewImage, setViewImage] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'loans' | 'savings' | 'documents'>('loans');
+  const [activeTab, setActiveTab] = useState<'loans' | 'documents'>('loans');
   
   // AI Risk State
   const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
@@ -40,14 +38,6 @@ export const BorrowerDetails: React.FC = () => {
 
       const { data: lData } = await supabase.from('loans').select('*').eq('borrower_id', id).order('created_at', { ascending: false });
       setLoans(lData || []);
-
-      const { data: sData } = await supabase.from('savings_accounts').select('*').eq('borrower_id', id).single();
-      setSavings(sData);
-
-      if (sData) {
-          const { data: stData } = await supabase.from('savings_transactions').select('*, users(full_name)').eq('account_id', sData.id).order('created_at', { ascending: false });
-          setSavingsTransactions(stData || []);
-      }
 
       if (lData && lData.length > 0) {
           const loanIds = lData.map(l => l.id);
@@ -77,8 +67,7 @@ export const BorrowerDetails: React.FC = () => {
               borrower,
               loanHistory: loans.map(l => ({ amount: l.principal_amount, status: l.status, term: l.term_months })),
               totalLoans: loans.length,
-              activeLoans: loans.filter(l => l.status === 'active').length,
-              savingsBalance: savings?.balance || 0
+              activeLoans: loans.filter(l => l.status === 'active').length
           });
           setRiskAssessment(risk);
       } catch (e) {
@@ -113,7 +102,7 @@ export const BorrowerDetails: React.FC = () => {
                         </p>
                     </div>
                 </div>
-                <div className="grid grid-cols-3 gap-4 md:gap-8">
+                <div className="grid grid-cols-2 gap-4 md:gap-8">
                     <div className="text-center md:text-left">
                         <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Total Borrowed</p>
                         <p className="text-lg font-bold">{formatCurrency(totalBorrowed)}</p>
@@ -121,10 +110,6 @@ export const BorrowerDetails: React.FC = () => {
                     <div className="text-center md:text-left">
                         <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Loan Balance</p>
                         <p className="text-lg font-bold text-red-400">{formatCurrency(totalOutstanding)}</p>
-                    </div>
-                    <div className="text-center md:text-left">
-                        <p className="text-[10px] uppercase tracking-wider text-indigo-300 font-semibold">Savings Balance</p>
-                        <p className="text-lg font-bold text-green-400">{formatCurrency(savings?.balance || 0)}</p>
                     </div>
                 </div>
             </div>
@@ -180,7 +165,6 @@ export const BorrowerDetails: React.FC = () => {
             <div className="md:col-span-2">
                 <div className="flex border-b border-gray-200 mb-6">
                     <button onClick={() => setActiveTab('loans')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'loans' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Loan History</button>
-                    <button onClick={() => setActiveTab('savings')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'savings' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Savings Ledger</button>
                     <button onClick={() => setActiveTab('documents')} className={`px-6 py-3 text-sm font-bold uppercase tracking-wider transition-all ${activeTab === 'documents' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}>Documents</button>
                 </div>
 
@@ -204,56 +188,6 @@ export const BorrowerDetails: React.FC = () => {
                                     </div>
                                 </Link>
                             ))
-                        )}
-                    </div>
-                )}
-
-                {activeTab === 'savings' && (
-                    <div className="space-y-4">
-                        {!savings ? (
-                            <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed">
-                                <Wallet className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-                                <p className="text-sm text-gray-500">No savings account initialized for this client.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex justify-between items-center">
-                                    <div>
-                                        <p className="text-xs text-green-600 font-bold uppercase tracking-wider">Current Savings Balance</p>
-                                        <p className="text-2xl font-bold text-green-700">{formatCurrency(savings.balance)}</p>
-                                    </div>
-                                    <Wallet className="h-8 w-8 text-green-200" />
-                                </div>
-                                <div className="border rounded-xl overflow-hidden">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Date</th>
-                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
-                                                <th className="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Amount</th>
-                                                <th className="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Description</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-100">
-                                            {savingsTransactions.map(tx => (
-                                                <tr key={tx.id} className="text-xs">
-                                                    <td className="px-4 py-3 whitespace-nowrap text-gray-500">{new Date(tx.created_at).toLocaleDateString()}</td>
-                                                    <td className="px-4 py-3 whitespace-nowrap">
-                                                        <span className={`flex items-center font-bold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                                                            {tx.type === 'deposit' ? <ArrowUpRight className="h-3 w-3 mr-1" /> : <ArrowDownLeft className="h-3 w-3 mr-1" />}
-                                                            {tx.type}
-                                                        </span>
-                                                    </td>
-                                                    <td className={`px-4 py-3 whitespace-nowrap text-right font-bold ${tx.type === 'deposit' ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {formatCurrency(Math.abs(tx.amount))}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600">{tx.description}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
                         )}
                     </div>
                 )}

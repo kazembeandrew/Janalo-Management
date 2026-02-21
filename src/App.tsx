@@ -22,7 +22,7 @@ import { Calculator } from '@/pages/Calculator';
 import { Profile } from '@/pages/Profile';
 import { ClientMap } from '@/pages/ClientMap';
 import { Tasks } from '@/pages/Tasks';
-import { Savings } from '@/pages/Savings';
+import { Repayments } from '@/pages/Repayments';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -82,10 +82,10 @@ const App: React.FC = () => {
             }
           />
           <Route
-            path="/savings"
+            path="/repayments"
             element={
               <ProtectedRoute>
-                <Savings />
+                <Repayments />
               </ProtectedRoute>
             }
           />

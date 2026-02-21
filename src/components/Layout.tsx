@@ -65,7 +65,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
-    { name: 'Savings', href: '/savings', icon: Wallet, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Repayments', href: '/repayments', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer', 'accountant'] },
     { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
