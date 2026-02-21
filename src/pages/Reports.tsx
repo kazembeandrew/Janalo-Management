@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, ComposedChart
 } from 'recharts';
-import { Download, Printer, Sparkles, RefreshCw, TrendingUp, TrendingDown, FileText, ChevronDown } from 'lucide-react';
+import { Download, Printer, Sparkles, RefreshCw, TrendingUp, TrendingDown, FileText, ChevronDown, AlertTriangle } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { exportToCSV, generateTablePDF } from '@/utils/export';
 
@@ -13,8 +13,8 @@ export const Reports: React.FC = () => {
   const [statusData, setStatusData] = useState<any[]>([]);
   const [timelineData, setTimelineData] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [expenseData, setExpenseData] = useState<any[]>([]);
   const [profitData, setProfitData] = useState<any[]>([]);
+  const [parAgingData, setParAgingData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -69,6 +69,33 @@ export const Reports: React.FC = () => {
         }));
         setProfitData(combined);
 
+        // 6. PAR Aging Calculation
+        const { data: activeLoans } = await supabase
+            .from('loans')
+            .select('id, principal_outstanding, interest_outstanding, penalty_outstanding, updated_at')
+            .eq('status', 'active');
+        
+        if (activeLoans) {
+            const buckets = [
+                { range: 'Current', min: 0, max: 30, value: 0, count: 0 },
+                { range: '31-60 Days', min: 31, max: 60, value: 0, count: 0 },
+                { range: '61-90 Days', min: 61, max: 90, value: 0, count: 0 },
+                { range: '91+ Days', min: 91, max: 9999, value: 0, count: 0 }
+            ];
+
+            const now = new Date();
+            activeLoans.forEach(loan => {
+                const lastUpdate = new Date(loan.updated_at);
+                const diffDays = Math.floor((now.getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
+                const totalOutstanding = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+
+                const bucket = buckets.find(b => diffDays >= b.min && diffDays <= b.max) || buckets[0];
+                bucket.value += totalOutstanding;
+                bucket.count += 1;
+            });
+            setParAgingData(buckets);
+        }
+
     } catch (error) {
         console.error(error);
     } finally {
@@ -104,13 +131,15 @@ export const Reports: React.FC = () => {
     const insights = await analyzeFinancialData({
       statusData,
       timelineData,
-      profitData
+      profitData,
+      parAgingData
     });
     setAiInsights(insights);
     setIsAnalyzing(false);
   };
 
   const COLORS = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
+  const PAR_COLORS = ['#10B981', '#F59E0B', '#F97316', '#EF4444'];
 
   if (loading) return <div className="p-8 text-center">Generating reports...</div>;
 
@@ -228,6 +257,58 @@ export const Reports: React.FC = () => {
               </div>
           </div>
 
+          {/* PAR Aging Analysis */}
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid">
+              <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-gray-900">Portfolio At Risk (PAR) Aging</h3>
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                          <Pie
+                              data={parAgingData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                          >
+                              {parAgingData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={PAR_COLORS[index % PAR_COLORS.length]} />
+                              ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                          <Legend />
+                      </PieChart>
+                  </ResponsiveContainer>
+              </div>
+              <div className="mt-4 overflow-x-auto">
+                  <table className="min-w-full text-xs">
+                      <thead>
+                          <tr className="text-gray-500 border-b">
+                              <th className="text-left py-2">Aging Bucket</th>
+                              <th className="text-center py-2">Count</th>
+                              <th className="text-right py-2">Value</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {parAgingData.map((bucket, idx) => (
+                              <tr key={idx} className="border-b last:border-0">
+                                  <td className="py-2 font-medium flex items-center">
+                                      <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: PAR_COLORS[idx] }} />
+                                      {bucket.range}
+                                  </td>
+                                  <td className="text-center py-2">{bucket.count}</td>
+                                  <td className="text-right py-2 font-bold">{formatCurrency(bucket.value)}</td>
+                              </tr>
+                          ))}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+
           {/* Portfolio Status */}
           <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Portfolio Distribution (Value)</h3>
@@ -256,7 +337,7 @@ export const Reports: React.FC = () => {
           </div>
 
           {/* Disbursement Timeline */}
-          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid">
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid lg:col-span-2">
               <h3 className="text-lg font-bold text-gray-900 mb-4">Disbursement Timeline</h3>
               <div className="h-64">
                   <ResponsiveContainer width="100%" height="100%">
