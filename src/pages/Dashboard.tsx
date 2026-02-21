@@ -145,7 +145,7 @@ export const Dashboard: React.FC = () => {
       {isOfficer && !isHR && !isAccountant && !isExec && <OfficerView stats={stats} />}
       
       {isExec && !isAccountant && !isHR && (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <StatCard title="Total Liquidity" value={formatCurrency(stats.totalLiquidity)} icon={Landmark} color="bg-green-600" />
               <StatCard title="Portfolio Value" value={formatCurrency(stats.totalPortfolio)} icon={DollarSign} color="bg-indigo-600" />
               <StatCard title="Active Loans" value={stats.activeLoans} icon={Activity} color="bg-blue-500" />
