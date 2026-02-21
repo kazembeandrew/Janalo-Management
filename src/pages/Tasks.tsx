@@ -36,12 +36,19 @@ export const Tasks: React.FC = () => {
 
   const fetchTasks = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('tasks')
-      .select('*, users!assigned_to(full_name)')
-      .order('created_at', { ascending: false });
-    if (data) setTasks(data as any);
-    setLoading(false);
+    try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*, users!assigned_to(full_name)')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        setTasks(data as any || []);
+    } catch (e: any) {
+        console.error("Task fetch error:", e);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const fetchUsers = async () => {
@@ -75,13 +82,19 @@ export const Tasks: React.FC = () => {
 
   const handleUpdateStatus = async (id: string, newStatus: string) => {
       const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', id);
-      if (!error) toast.success(`Task updated to ${newStatus}`);
+      if (!error) {
+          toast.success(`Task updated to ${newStatus.replace('_', ' ')}`);
+          fetchTasks();
+      }
   };
 
   const handleDelete = async (id: string) => {
       if (!confirm('Delete this task?')) return;
       const { error } = await supabase.from('tasks').delete().eq('id', id);
-      if (!error) toast.success('Task removed');
+      if (!error) {
+          toast.success('Task removed');
+          fetchTasks();
+      }
   };
 
   const getPriorityColor = (p: string) => {
@@ -107,51 +120,57 @@ export const Tasks: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {['pending_approval', 'approved', 'in_progress', 'completed'].map(status => (
-              <div key={status} className="space-y-4">
-                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center">
-                      {status.replace('_', ' ')}
-                      <span className="ml-2 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md text-[10px]">
-                          {tasks.filter(t => t.status === status).length}
-                      </span>
-                  </h3>
-                  <div className="space-y-3">
-                      {tasks.filter(t => t.status === status).map(task => (
-                          <div key={task.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
-                              <div className="flex justify-between items-start mb-2">
-                                  <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${getPriorityColor(task.priority)}`}>
-                                      {task.priority}
-                                  </span>
-                                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      {isCEO && task.status === 'pending_approval' && (
-                                          <button onClick={() => handleUpdateStatus(task.id, 'approved')} className="p-1 text-green-600 hover:bg-green-50 rounded"><Check className="h-3 w-3" /></button>
+      {loading && tasks.length === 0 ? (
+          <div className="flex justify-center py-12">
+              <RefreshCw className="h-8 w-8 animate-spin text-indigo-600" />
+          </div>
+      ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {['pending_approval', 'approved', 'in_progress', 'completed'].map(status => (
+                  <div key={status} className="space-y-4">
+                      <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center">
+                          {status.replace('_', ' ')}
+                          <span className="ml-2 bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-md text-[10px]">
+                              {tasks.filter(t => t.status === status).length}
+                          </span>
+                      </h3>
+                      <div className="space-y-3">
+                          {tasks.filter(t => t.status === status).map(task => (
+                              <div key={task.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
+                                  <div className="flex justify-between items-start mb-2">
+                                      <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${getPriorityColor(task.priority)}`}>
+                                          {task.priority}
+                                      </span>
+                                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          {isCEO && task.status === 'pending_approval' && (
+                                              <button onClick={() => handleUpdateStatus(task.id, 'approved')} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Approve"><Check className="h-3 w-3" /></button>
+                                          )}
+                                          {(isCEO || isHR) && (
+                                              <button onClick={() => handleDelete(task.id)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="h-3 w-3" /></button>
+                                          )}
+                                      </div>
+                                  </div>
+                                  <h4 className="text-sm font-bold text-gray-900 mb-1">{task.title}</h4>
+                                  <p className="text-xs text-gray-500 line-clamp-2 mb-3">{task.description}</p>
+                                  <div className="flex items-center justify-between pt-3 border-t border-gray-50">
+                                      <div className="flex items-center text-[10px] text-gray-400">
+                                          <User className="h-3 w-3 mr-1" />
+                                          {task.users?.full_name || 'Unassigned'}
+                                      </div>
+                                      {task.status === 'approved' && (profile?.id === task.assigned_to || isCEO) && (
+                                          <button onClick={() => handleUpdateStatus(task.id, 'in_progress')} className="text-[10px] font-bold text-indigo-600 hover:underline">Start Task</button>
                                       )}
-                                      {(isCEO || isHR) && (
-                                          <button onClick={() => handleDelete(task.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><Trash2 className="h-3 w-3" /></button>
+                                      {task.status === 'in_progress' && (profile?.id === task.assigned_to || isCEO) && (
+                                          <button onClick={() => handleUpdateStatus(task.id, 'completed')} className="text-[10px] font-bold text-green-600 hover:underline">Complete</button>
                                       )}
                                   </div>
                               </div>
-                              <h4 className="text-sm font-bold text-gray-900 mb-1">{task.title}</h4>
-                              <p className="text-xs text-gray-500 line-clamp-2 mb-3">{task.description}</p>
-                              <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-                                  <div className="flex items-center text-[10px] text-gray-400">
-                                      <User className="h-3 w-3 mr-1" />
-                                      {task.users?.full_name || 'Unassigned'}
-                                  </div>
-                                  {task.status === 'approved' && (
-                                      <button onClick={() => handleUpdateStatus(task.id, 'in_progress')} className="text-[10px] font-bold text-indigo-600 hover:underline">Start Task</button>
-                                  )}
-                                  {task.status === 'in_progress' && (
-                                      <button onClick={() => handleUpdateStatus(task.id, 'completed')} className="text-[10px] font-bold text-green-600 hover:underline">Complete</button>
-                                  )}
-                              </div>
-                          </div>
-                      ))}
+                          ))}
+                      </div>
                   </div>
-              </div>
-          ))}
-      </div>
+              ))}
+          </div>
+      )}
 
       {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
