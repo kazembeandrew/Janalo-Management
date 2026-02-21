@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Budget } from '@/types';
-import { formatCurrency } from '@/utils/finance';
+import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { 
     Target, TrendingUp, TrendingDown, Plus, 
     RefreshCw, AlertCircle, CheckCircle2, X, 
@@ -25,9 +25,10 @@ export const Budgets: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [formData, setFormData] = useState({
       category: 'Salaries/Wages',
-      amount: '',
+      amount: 0,
       type: 'expense' as 'income' | 'expense'
   });
+  const [displayAmount, setDisplayAmount] = useState('');
 
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
 
@@ -84,6 +85,12 @@ export const Budgets: React.FC = () => {
     }
   };
 
+  const handleAmountChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayAmount(formatNumberWithCommas(val));
+      setFormData({ ...formData, amount: numeric });
+  };
+
   const handleSaveBudget = async (e: React.FormEvent) => {
       e.preventDefault();
       setIsProcessing(true);
@@ -100,6 +107,7 @@ export const Budgets: React.FC = () => {
           if (error) throw error;
           toast.success('Budget updated');
           setShowModal(false);
+          setDisplayAmount('');
           fetchData();
       } catch (e: any) {
           toast.error(e.message);
@@ -188,7 +196,7 @@ export const Budgets: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                   <h3 className="font-bold text-gray-900 flex items-center">
                       <BarChart3 className="h-4 w-4 mr-2 text-indigo-600" />
                       Budget vs Actual Analysis
@@ -214,7 +222,7 @@ export const Budgets: React.FC = () => {
           </div>
 
           <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
                   <h3 className="font-bold text-gray-900 flex items-center">
                       <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
                       Critical Variances
@@ -311,7 +319,7 @@ export const Budgets: React.FC = () => {
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Budgeted Amount (MK)</label>
-                          <input required type="number" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
+                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayAmount} onChange={e => handleAmountChange(e.target.value)} />
                       </div>
                       <div className="pt-4">
                           <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">

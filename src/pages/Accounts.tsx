@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { InternalAccount, FundTransaction } from '@/types';
-import { formatCurrency } from '@/utils/finance';
+import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { 
     Landmark, Wallet, ArrowUpRight, ArrowDownLeft, Plus, 
     Search, History, RefreshCw, Landmark as BankIcon, 
@@ -27,16 +27,18 @@ export const Accounts: React.FC = () => {
       type: 'bank' as any,
       account_number: '',
       bank_name: '',
-      initial_balance: '0'
+      initial_balance: 0
   });
+  const [displayInitialBalance, setDisplayInitialBalance] = useState('0');
 
   const [fundForm, setFundForm] = useState({
       type: 'injection' as any,
       from_account_id: '',
       to_account_id: '',
-      amount: '',
+      amount: 0,
       description: ''
   });
+  const [displayFundAmount, setDisplayFundAmount] = useState('');
 
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
 
@@ -87,6 +89,18 @@ export const Accounts: React.FC = () => {
       }
   };
 
+  const handleInitialBalanceChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayInitialBalance(formatNumberWithCommas(val));
+      setAccountForm({ ...accountForm, initial_balance: numeric });
+  };
+
+  const handleFundAmountChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayFundAmount(formatNumberWithCommas(val));
+      setFundForm({ ...fundForm, amount: numeric });
+  };
+
   const handleCreateAccount = async (e: React.FormEvent) => {
       e.preventDefault();
       setIsProcessing(true);
@@ -118,7 +132,8 @@ export const Accounts: React.FC = () => {
 
           toast.success('Account created successfully');
           setShowAccountModal(false);
-          setAccountForm({ name: '', type: 'bank', account_number: '', bank_name: '', initial_balance: '0' });
+          setAccountForm({ name: '', type: 'bank', account_number: '', bank_name: '', initial_balance: 0 });
+          setDisplayInitialBalance('0');
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -157,7 +172,8 @@ export const Accounts: React.FC = () => {
 
           toast.success('Transaction recorded');
           setShowFundModal(false);
-          setFundForm({ type: 'injection', from_account_id: '', to_account_id: '', amount: '', description: '' });
+          setFundForm({ type: 'injection', from_account_id: '', to_account_id: '', amount: 0, description: '' });
+          setDisplayFundAmount('');
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -368,7 +384,7 @@ export const Accounts: React.FC = () => {
                           </div>
                           <div>
                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Balance (MK)</label>
-                              <input type="number" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={accountForm.initial_balance} onChange={e => setAccountForm({...accountForm, initial_balance: e.target.value})} />
+                              <input type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={displayInitialBalance} onChange={e => handleInitialBalanceChange(e.target.value)} />
                           </div>
                       </div>
                       <div>
@@ -419,7 +435,7 @@ export const Accounts: React.FC = () => {
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
-                          <input required type="number" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={fundForm.amount} onChange={e => setFundForm({...fundForm, amount: e.target.value})} />
+                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayFundAmount} onChange={e => handleFundAmountChange(e.target.value)} />
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>

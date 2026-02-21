@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Expense, InternalAccount } from '@/types';
-import { formatCurrency } from '@/utils/finance';
+import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3, RefreshCw, X, AlertCircle, CheckCircle2, Clock, Landmark } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -25,9 +25,10 @@ export const Expenses: React.FC = () => {
   const [formData, setFormData] = useState({
     category: 'Salaries/Wages',
     description: '',
-    amount: '',
+    amount: 0,
     date: new Date().toISOString().split('T')[0]
   });
+  const [displayAmount, setDisplayAmount] = useState('');
 
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
@@ -85,6 +86,12 @@ export const Expenses: React.FC = () => {
       });
   };
 
+  const handleAmountChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayAmount(formatNumberWithCommas(val));
+      setFormData({ ...formData, amount: numeric });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || !isAccountant) return;
@@ -109,9 +116,10 @@ export const Expenses: React.FC = () => {
       setFormData({
         category: 'Salaries/Wages',
         description: '',
-        amount: '',
+        amount: 0,
         date: new Date().toISOString().split('T')[0]
       });
+      setDisplayAmount('');
     } catch (error: any) {
       toast.error(error.message || 'Error saving expense');
     } finally {
@@ -385,7 +393,7 @@ export const Expenses: React.FC = () => {
                       <div className="grid grid-cols-2 gap-4">
                           <div>
                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
-                              <input required type="number" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
+                              <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayAmount} onChange={e => handleAmountChange(e.target.value)} />
                           </div>
                           <div>
                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>

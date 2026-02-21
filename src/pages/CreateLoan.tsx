@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower, InterestType } from '@/types';
-import { calculateLoanDetails, formatCurrency } from '@/utils/finance';
+import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -28,16 +28,8 @@ export const CreateLoan: React.FC = () => {
     disbursement_date: new Date().toISOString().split('T')[0]
   });
 
-  // Documents State
-  const [idCardBlob, setIdCardBlob] = useState<Blob | null>(null);
-  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
-  const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
-  
-  const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
-      { id: Date.now(), blob: null }
-  ]);
-
-  const [preview, setPreview] = useState<any>(null);
+  // Display state for formatted input
+  const [displayPrincipal, setDisplayPrincipal] = useState('1,000');
 
   useEffect(() => {
     const fetchBorrowers = async () => {
@@ -80,6 +72,12 @@ export const CreateLoan: React.FC = () => {
   const handleBorrowerChange = (id: string) => {
       setFormData({ ...formData, borrower_id: id });
       checkExistingLoans(id);
+  };
+
+  const handlePrincipalChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayPrincipal(formatNumberWithCommas(val));
+      setFormData({ ...formData, principal_amount: numeric });
   };
 
   const addCollateralField = () => {
@@ -171,6 +169,14 @@ export const CreateLoan: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const [idCardBlob, setIdCardBlob] = useState<Blob | null>(null);
+  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
+  const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
+  const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
+      { id: Date.now(), blob: null }
+  ]);
+  const [preview, setPreview] = useState<any>(null);
 
   const steps = [
       { id: 'borrower', name: 'Borrower', icon: User },
@@ -268,11 +274,11 @@ export const CreateLoan: React.FC = () => {
                            <div className="sm:col-span-2">
                                <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
                                <input 
-                                   type="number"
+                                   type="text"
                                    required
                                    className="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                   value={formData.principal_amount}
-                                   onChange={e => setFormData({...formData, principal_amount: Number(e.target.value)})}
+                                   value={displayPrincipal}
+                                   onChange={e => handlePrincipalChange(e.target.value)}
                                />
                            </div>
                            <div>

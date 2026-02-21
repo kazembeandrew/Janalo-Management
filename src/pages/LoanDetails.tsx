@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan, Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
-import { formatCurrency } from '@/utils/finance';
+import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { generateReceiptPDF } from '@/utils/export';
 import { 
     ArrowLeft, User, Phone, MapPin, Building2, FileText, 
@@ -37,6 +37,7 @@ export const LoanDetails: React.FC = () => {
   
   // Form States
   const [repayAmount, setRepayAmount] = useState<number>(0);
+  const [displayRepayAmount, setDisplayRepayAmount] = useState('');
   const [targetAccountId, setTargetAccountId] = useState('');
   const [newNote, setNewNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
@@ -125,6 +126,12 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
+  const handleRepayAmountChange = (val: string) => {
+      const numeric = parseFormattedNumber(val);
+      setDisplayRepayAmount(formatNumberWithCommas(val));
+      setRepayAmount(numeric);
+  };
+
   const handleRepayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loan || !profile || !targetAccountId) return;
@@ -169,6 +176,8 @@ export const LoanDetails: React.FC = () => {
 
         toast.success('Repayment recorded');
         setShowRepayModal(false);
+        setDisplayRepayAmount('');
+        setRepayAmount(0);
         fetchData();
         if (rData) generateReceiptPDF(loan, rData, profile.full_name);
     } catch (e: any) {
@@ -490,7 +499,7 @@ export const LoanDetails: React.FC = () => {
                   <form onSubmit={handleRepayment} className="p-8 space-y-5">
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received (MK)</label>
-                          <input required type="number" min="1" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={repayAmount} onChange={e => setRepayAmount(Number(e.target.value))} />
+                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={displayRepayAmount} onChange={e => handleRepayAmountChange(e.target.value)} />
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Deposit Into Account</label>

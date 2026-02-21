@@ -8,6 +8,28 @@ export const formatCurrency = (amount: number): string => {
   }).format(amount).replace('MWK', 'MK'); // Standard notation in Malawi often uses MK
 };
 
+/**
+ * Formats a number string with commas for display in inputs.
+ * e.g., "1000" -> "1,000"
+ */
+export const formatNumberWithCommas = (value: string | number): string => {
+    if (value === undefined || value === null || value === '') return '';
+    const stringValue = String(value).replace(/,/g, '');
+    if (isNaN(Number(stringValue))) return String(value);
+    
+    const parts = stringValue.split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return parts.join('.');
+};
+
+/**
+ * Removes commas from a formatted string to get the raw numeric value.
+ * e.g., "1,000.50" -> 1000.5
+ */
+export const parseFormattedNumber = (value: string): number => {
+    return Number(value.replace(/,/g, '')) || 0;
+};
+
 export const calculateLoanDetails = (
   principal: number,
   rate: number, // Monthly rate in percentage (e.g., 5 for 5%)
