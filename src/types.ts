@@ -37,12 +37,21 @@ export interface FundTransaction {
     amount: number;
     type: 'transfer' | 'injection' | 'disbursement' | 'repayment' | 'expense';
     description: string;
-    reference_id?: string; // ID of the loan, expense, etc.
+    reference_id?: string;
     recorded_by: string;
+    is_verified: boolean;
     created_at: string;
     users?: {
         full_name: string;
     };
+}
+
+export interface Budget {
+    id: string;
+    category: string;
+    amount: number;
+    month: string; // YYYY-MM
+    type: 'income' | 'expense';
 }
 
 export interface AuditLog {
