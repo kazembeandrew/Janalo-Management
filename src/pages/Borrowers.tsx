@@ -8,7 +8,7 @@ import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight
 const ITEMS_PER_PAGE = 9;
 
 export const Borrowers: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,8 +32,9 @@ export const Borrowers: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  const canCreate = profile?.role === 'admin' || profile?.role === 'loan_officer';
-  const isExec = profile?.role === 'admin' || profile?.role === 'ceo';
+  // Role-based permissions using effective roles
+  const canCreate = effectiveRoles.includes('admin') || effectiveRoles.includes('loan_officer');
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
 
   useEffect(() => {
     fetchBorrowers();
@@ -41,7 +42,7 @@ export const Borrowers: React.FC = () => {
         fetchOfficers();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, page, searchTerm]); // Re-fetch on search or page change
+  }, [profile, page, searchTerm, effectiveRoles]); 
 
   const fetchOfficers = async () => {
       const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
@@ -62,8 +63,8 @@ export const Borrowers: React.FC = () => {
         .select('*', { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      // Enforce: Loan Officers only see their own clients
-      if (profile.role === 'loan_officer') {
+      // Enforce: Loan Officers only see their own clients unless they have exec/admin roles
+      if (effectiveRoles.includes('loan_officer') && !isExec) {
         query = query.eq('created_by', profile.id);
       }
 
@@ -175,10 +176,10 @@ export const Borrowers: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {profile?.role === 'loan_officer' ? 'My Clients' : 'All Borrowers'}
+            {effectiveRoles.includes('loan_officer') && !isExec ? 'My Clients' : 'All Borrowers'}
           </h1>
           <p className="text-sm text-gray-500">
-            {profile?.role === 'loan_officer' 
+            {effectiveRoles.includes('loan_officer') && !isExec 
               ? 'Manage clients assigned to you' 
               : 'Directory of all borrowers in the system'}
           </p>

@@ -10,7 +10,7 @@ import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download } from 'lucide
 const ITEMS_PER_PAGE = 10;
 
 export const Loans: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
@@ -18,6 +18,9 @@ export const Loans: React.FC = () => {
   // Pagination State
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+  const isOfficer = effectiveRoles.includes('loan_officer');
 
   useEffect(() => {
     fetchLoans();
@@ -34,7 +37,7 @@ export const Loans: React.FC = () => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, filter, page]);
+  }, [profile, filter, page, effectiveRoles]);
 
   const handleFilterChange = (newFilter: string) => {
       setFilter(newFilter);
@@ -51,8 +54,9 @@ export const Loans: React.FC = () => {
         `, { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      if (profile?.role === 'loan_officer') {
-        query = query.eq('officer_id', profile.id);
+      // Enforce: Loan Officers only see their assigned loans unless they have exec/admin roles
+      if (isOfficer && !isExec) {
+        query = query.eq('officer_id', profile?.id);
       }
 
       if (filter !== 'all') {
@@ -116,7 +120,7 @@ export const Loans: React.FC = () => {
                 <Download className="h-4 w-4 mr-2" />
                 Export CSV
             </button>
-            {profile?.role !== 'ceo' && (
+            {effectiveRoles.includes('loan_officer') && (
             <Link
                 to="/loans/new"
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -197,7 +201,7 @@ export const Loans: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
-                        {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
+                        {loan.status === 'pending' && isExec 
                             ? 'Review' 
                             : 'Details'} 
                         <ChevronRight className="ml-1 h-4 w-4" />
