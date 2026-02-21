@@ -256,7 +256,7 @@ export const Loans: React.FC = () => {
                         </Link>
                     );
                 })
-            ))}
+            )}
         </div>
 
         <div className="bg-white px-4 py-4 border-t border-gray-100 flex items-center justify-between sm:px-6">
