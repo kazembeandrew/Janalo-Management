@@ -25,7 +25,8 @@ import {
   Wallet,
   Landmark,
   Scale,
-  Target
+  Target,
+  CalendarDays
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -69,6 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
     { name: 'Repayments', href: '/repayments', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Global Schedule', href: '/schedule', icon: CalendarDays, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Accounts', href: '/accounts', icon: Landmark, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Budgets', href: '/budgets', icon: Target, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Statements', href: '/statements', icon: Scale, roles: ['admin', 'ceo', 'accountant'] },

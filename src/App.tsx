@@ -26,6 +26,7 @@ import { Repayments } from '@/pages/Repayments';
 import { Accounts } from '@/pages/Accounts';
 import { FinancialStatements } from '@/pages/FinancialStatements';
 import { Budgets } from '@/pages/Budgets';
+import { GlobalSchedule } from '@/pages/GlobalSchedule';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -89,6 +90,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Repayments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/schedule"
+            element={
+              <ProtectedRoute>
+                <GlobalSchedule />
               </ProtectedRoute>
             }
           />
