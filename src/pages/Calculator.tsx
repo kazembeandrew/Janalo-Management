@@ -95,23 +95,23 @@ export const Calculator: React.FC = () => {
         </div>
 
         {/* Results */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-indigo-900 rounded-xl p-8 text-white shadow-lg relative overflow-hidden">
+        <div className="lg:col-span-2 space-y-6 min-w-0">
+          <div className="bg-indigo-900 rounded-xl p-6 sm:p-8 text-white shadow-lg relative overflow-hidden">
             <div className="absolute top-0 right-0 p-4 opacity-10">
                 <CalcIcon className="h-32 w-32" />
             </div>
-            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                 <div className="min-w-0">
-                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Monthly Installment</p>
-                    <h2 className="text-2xl sm:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.monthlyInstallment || 0)}</h2>
+                    <p className="text-indigo-300 text-[10px] sm:text-xs font-medium uppercase tracking-wider">Monthly Installment</p>
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.monthlyInstallment || 0)}</h2>
                 </div>
                 <div className="min-w-0">
-                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Total Interest</p>
-                    <h2 className="text-2xl sm:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.totalInterest || 0)}</h2>
+                    <p className="text-indigo-300 text-[10px] sm:text-xs font-medium uppercase tracking-wider">Total Interest</p>
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-bold mt-1 truncate">{formatCurrency(results?.totalInterest || 0)}</h2>
                 </div>
                 <div className="md:col-span-2 pt-4 border-t border-indigo-800 min-w-0">
-                    <p className="text-indigo-300 text-xs font-medium uppercase tracking-wider">Total Payable</p>
-                    <h2 className="text-3xl sm:text-4xl font-extrabold mt-1 truncate">{formatCurrency(results?.totalPayable || 0)}</h2>
+                    <p className="text-indigo-300 text-[10px] sm:text-xs font-medium uppercase tracking-wider">Total Payable</p>
+                    <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold mt-1 truncate">{formatCurrency(results?.totalPayable || 0)}</h2>
                 </div>
             </div>
           </div>
@@ -125,19 +125,19 @@ export const Calculator: React.FC = () => {
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50 sticky top-0">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Month</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Principal</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Interest</th>
-                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Balance</th>
+                            <th className="px-4 py-3 text-left text-[10px] font-medium text-gray-500 uppercase">Month</th>
+                            <th className="px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase">Principal</th>
+                            <th className="px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase">Interest</th>
+                            <th className="px-4 py-3 text-right text-[10px] font-medium text-gray-500 uppercase">Balance</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {results?.schedule.map((item: any) => (
                             <tr key={item.month} className="hover:bg-gray-50">
-                                <td className="px-6 py-3 text-sm text-gray-900 font-medium">{item.month}</td>
-                                <td className="px-6 py-3 text-sm text-right text-gray-500">{formatCurrency(item.principal)}</td>
-                                <td className="px-6 py-3 text-sm text-right text-gray-500">{formatCurrency(item.interest)}</td>
-                                <td className="px-6 py-3 text-sm text-right text-indigo-600 font-bold">{formatCurrency(item.balance)}</td>
+                                <td className="px-4 py-3 text-xs text-gray-900 font-medium">{item.month}</td>
+                                <td className="px-4 py-3 text-xs text-right text-gray-500">{formatCurrency(item.principal)}</td>
+                                <td className="px-4 py-3 text-xs text-right text-gray-500">{formatCurrency(item.interest)}</td>
+                                <td className="px-4 py-3 text-xs text-right text-indigo-600 font-bold">{formatCurrency(item.balance)}</td>
                             </tr>
                         ))}
                     </tbody>

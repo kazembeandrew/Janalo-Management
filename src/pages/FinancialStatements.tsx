@@ -220,15 +220,15 @@ export const FinancialStatements: React.FC = () => {
                       <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Interest Income</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(pnlData.interestIncome)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(pnlData.interestIncome)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Penalty & Late Fees</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(pnlData.penaltyIncome)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(pnlData.penaltyIncome)}</span>
                           </div>
                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-100">
                               <span>Total Operating Revenue</span>
-                              <span className="text-indigo-600">{formatCurrency(pnlData.totalRevenue)}</span>
+                              <span className="text-indigo-600 truncate ml-4">{formatCurrency(pnlData.totalRevenue)}</span>
                           </div>
                       </div>
                   </div>
@@ -239,7 +239,7 @@ export const FinancialStatements: React.FC = () => {
                           {Object.entries(pnlData.expenseCategories).map(([cat, amt]: any) => (
                               <div key={cat} className="flex justify-between text-sm">
                                   <span className="text-gray-600">{cat}</span>
-                                  <span className="font-medium text-red-600">({formatCurrency(amt)})</span>
+                                  <span className="font-medium text-red-600 truncate ml-4">({formatCurrency(amt)})</span>
                               </div>
                           ))}
                           {Object.keys(pnlData.expenseCategories).length === 0 && (
@@ -247,7 +247,7 @@ export const FinancialStatements: React.FC = () => {
                           )}
                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-100">
                               <span>Total Operating Expenses</span>
-                              <span className="text-red-600">({formatCurrency(pnlData.totalExpenses)})</span>
+                              <span className="text-red-600 truncate ml-4">({formatCurrency(pnlData.totalExpenses)})</span>
                           </div>
                       </div>
                   </div>
@@ -255,7 +255,7 @@ export const FinancialStatements: React.FC = () => {
                   <div className="pt-4 border-t-2 border-gray-900">
                       <div className="flex justify-between items-center">
                           <span className="text-base font-bold text-gray-900">Net Operating Profit</span>
-                          <span className={`text-lg sm:text-xl font-bold ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className={`text-lg sm:text-xl font-bold truncate ml-4 ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                               {formatCurrency(pnlData.netProfit)}
                           </span>
                       </div>
@@ -278,15 +278,15 @@ export const FinancialStatements: React.FC = () => {
                       <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Cash & Bank Balances</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(balanceSheet.assets.cash)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.assets.cash)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Loan Portfolio (Principal)</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(balanceSheet.assets.receivables)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.assets.receivables)}</span>
                           </div>
                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-100">
                               <span>Total Assets</span>
-                              <span className="text-indigo-600">{formatCurrency(balanceSheet.assets.total)}</span>
+                              <span className="text-indigo-600 truncate ml-4">{formatCurrency(balanceSheet.assets.total)}</span>
                           </div>
                       </div>
                   </div>
@@ -296,15 +296,15 @@ export const FinancialStatements: React.FC = () => {
                       <div className="space-y-2">
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Institutional Liabilities</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(balanceSheet.liabilities.total)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.liabilities.total)}</span>
                           </div>
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Owner's Equity / Capital</span>
-                              <span className="font-medium text-gray-900">{formatCurrency(balanceSheet.equity.total)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.equity.total)}</span>
                           </div>
                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-100">
                               <span>Total Liabilities & Equity</span>
-                              <span className="text-indigo-600">{formatCurrency(balanceSheet.liabilities.total + balanceSheet.equity.total)}</span>
+                              <span className="text-indigo-600 truncate ml-4">{formatCurrency(balanceSheet.liabilities.total + balanceSheet.equity.total)}</span>
                           </div>
                       </div>
                   </div>
@@ -339,15 +339,15 @@ export const FinancialStatements: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
-                          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                              <p className="text-[10px] text-gray-400 uppercase font-bold">Net Profit</p>
-                              <p className={`text-sm font-bold ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 min-w-0">
+                              <p className="text-[10px] text-gray-400 uppercase font-bold truncate">Net Profit</p>
+                              <p className={`text-sm font-bold truncate ${pnlData.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                                   {formatCurrency(pnlData.netProfit)}
                               </p>
                           </div>
-                          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                              <p className="text-[10px] text-gray-400 uppercase font-bold">Total Assets</p>
-                              <p className="text-sm font-bold text-indigo-600">{formatCurrency(balanceSheet.assets.total)}</p>
+                          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 min-w-0">
+                              <p className="text-[10px] text-gray-400 uppercase font-bold truncate">Total Assets</p>
+                              <p className="text-sm font-bold text-indigo-600 truncate">{formatCurrency(balanceSheet.assets.total)}</p>
                           </div>
                       </div>
 
