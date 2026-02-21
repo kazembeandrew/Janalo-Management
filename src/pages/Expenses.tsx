@@ -208,7 +208,80 @@ export const Expenses: React.FC = () => {
         )}
       </div>
 
-      {/* ... charts and summary cards ... */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Approved Spending</p>
+              <h3 className="text-3xl font-bold text-red-600">{formatCurrency(totalSpending)}</h3>
+              <div className="mt-2 flex items-center text-xs text-gray-500">
+                  <TrendingUp className="h-3 w-3 mr-1 text-indigo-500" />
+                  Across {approvedExpenses.length} records
+              </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Pending Authorization</p>
+              <h3 className="text-3xl font-bold text-amber-600">{formatCurrency(expenses.filter(e => e.status === 'pending_approval').reduce((sum, e) => sum + Number(e.amount), 0))}</h3>
+              <div className="mt-2 flex items-center text-xs text-amber-600">
+                  <Clock className="h-3 w-3 mr-1" />
+                  {expenses.filter(e => e.status === 'pending_approval').length} requests awaiting CEO
+              </div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Top Category</p>
+              <h3 className="text-3xl font-bold text-gray-900">{categoryData.sort((a, b) => b.value - a.value)[0]?.name || 'N/A'}</h3>
+              <div className="mt-2 flex items-center text-xs text-blue-600">
+                  <PieIcon className="h-3 w-3 mr-1" />
+                  Highest expenditure area
+              </div>
+          </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2 text-indigo-600" />
+                  Spending Trend (Last 6 Months)
+              </h3>
+              <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={monthlyData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
+                          <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 12}} />
+                          <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                          <Bar dataKey="amount" fill="#4F46E5" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center">
+                  <PieIcon className="h-5 w-5 mr-2 text-indigo-600" />
+                  Expense Distribution
+              </h3>
+              <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                          <Pie
+                              data={categoryData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={80}
+                              paddingAngle={5}
+                              dataKey="value"
+                          >
+                              {categoryData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                          </Pie>
+                          <Tooltip formatter={(val: number) => formatCurrency(val)} />
+                          <Legend />
+                      </PieChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
+      </div>
 
       <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -290,6 +363,45 @@ export const Expenses: React.FC = () => {
           </div>
       </div>
 
+      {/* Propose Expense Modal */}
+      {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><Receipt className="mr-3 h-6 w-6 text-indigo-300" /> Propose Expense</h3>
+                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <form onSubmit={handleSubmit} className="p-8 space-y-5">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+                          <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                          </select>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
+                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Office rent for March" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
+                              <input required type="number" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>
+                              <input required type="date" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                          </div>
+                      </div>
+                      <div className="pt-4">
+                          <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">
+                              {isProcessing ? 'Submitting...' : 'Submit for Approval'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
       {/* Approve Expense Modal */}
       {showApproveModal && selectedExpense && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -327,8 +439,6 @@ export const Expenses: React.FC = () => {
               </div>
           </div>
       )}
-
-      {/* ... Record Expense Modal ... */}
     </div>
   );
 };
