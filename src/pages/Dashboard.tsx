@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Activity, Sparkles, RefreshCw, DollarSign, Users, AlertTriangle, Target } from 'lucide-react';
+import { Activity, Sparkles, RefreshCw, DollarSign, Users, AlertTriangle, Target, ShieldCheck } from 'lucide-react';
 import { analyzeFinancialData } from '@/services/aiService';
 import { AccountantView } from '@/components/dashboard/AccountantView';
 import { HRView } from '@/components/dashboard/HRView';
@@ -9,6 +9,7 @@ import { OfficerView } from '@/components/dashboard/OfficerView';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { OfficerLeaderboard } from '@/components/dashboard/OfficerLeaderboard';
+import { CEOOversight } from '@/components/dashboard/CEOOversight';
 import { formatCurrency } from '@/utils/finance';
 
 export const Dashboard: React.FC = () => {
@@ -148,6 +149,8 @@ export const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+              {isExec && <CEOOversight />}
+
               <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
                 <div className="relative z-10">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">

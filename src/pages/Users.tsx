@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const Users: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,11 +48,14 @@ export const Users: React.FC = () => {
 
   const [newPassword, setNewPassword] = useState('');
 
+  const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
+  const isHR = effectiveRoles.includes('hr');
+
   useEffect(() => {
-    if (profile && profile.role !== 'admin' && profile.role !== 'ceo') {
+    if (profile && !isCEO && !isHR) {
       navigate('/');
     }
-  }, [profile, navigate]);
+  }, [profile, navigate, isCEO, isHR]);
 
   useEffect(() => {
     fetchUsers();
@@ -216,35 +219,53 @@ export const Users: React.FC = () => {
   };
 
   const handleArchiveUser = async () => {
-      if (!selectedUser || profile?.role !== 'ceo') return;
+      if (!selectedUser) return;
       
-      if (!window.confirm("Archive User: This will deactivate the user and hide them from the active list. Historical records will be preserved. Continue?")) return;
-
-      setIsProcessing(true);
-      try {
-          const { error } = await supabase
-            .from('users')
-            .update({ 
-                is_active: false, 
-                deletion_status: 'approved',
-                revocation_reason: 'Archived by CEO'
-            })
-            .eq('id', selectedUser.id);
-          
-          if (error) throw error;
-          
-          await logAudit('User Archived', { email: selectedUser.email }, selectedUser.id);
-          toast.success("User archived successfully.");
-          setShowEditModal(false);
-      } catch (e: any) {
-          toast.error("Archiving failed: " + e.message);
-      } finally {
-          setIsProcessing(false);
+      const isCEO = profile?.role === 'ceo' || profile?.role === 'admin';
+      
+      if (isCEO) {
+          if (!window.confirm("Archive User: This will deactivate the user immediately. Continue?")) return;
+          setIsProcessing(true);
+          try {
+              const { error } = await supabase
+                .from('users')
+                .update({ 
+                    is_active: false, 
+                    deletion_status: 'approved',
+                    revocation_reason: 'Archived by CEO'
+                })
+                .eq('id', selectedUser.id);
+              if (error) throw error;
+              toast.success("User archived successfully.");
+              setShowEditModal(false);
+          } catch (e: any) {
+              toast.error("Archiving failed: " + e.message);
+          } finally {
+              setIsProcessing(false);
+          }
+      } else if (isHR) {
+          if (!window.confirm("Request Archive: This will send a request to the CEO for approval. Continue?")) return;
+          setIsProcessing(true);
+          try {
+              const { error } = await supabase
+                .from('users')
+                .update({ 
+                    deletion_status: 'pending_approval'
+                })
+                .eq('id', selectedUser.id);
+              if (error) throw error;
+              toast.success("Archive request sent to CEO.");
+              setShowEditModal(false);
+          } catch (e: any) {
+              toast.error("Request failed: " + e.message);
+          } finally {
+              setIsProcessing(false);
+          }
       }
   };
 
   const handlePermanentDelete = async () => {
-      if (!selectedUser || profile?.role !== 'ceo') return;
+      if (!selectedUser || !isCEO) return;
       
       if (!window.confirm("CRITICAL ACTION: This will permanently delete the user record. This only works for users with NO historical data. Continue?")) return;
 
@@ -492,6 +513,9 @@ export const Users: React.FC = () => {
                                 {user.full_name}
                                 {user.deletion_status === 'approved' && (
                                     <span className="ml-2 px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[8px] font-bold uppercase rounded border border-gray-200">Archived</span>
+                                )}
+                                {user.deletion_status === 'pending_approval' && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-bold uppercase rounded border border-amber-200">Pending CEO Approval</span>
                                 )}
                             </div>
                             <div className="text-xs text-gray-500 flex items-center">
@@ -807,41 +831,47 @@ export const Users: React.FC = () => {
                                   </button>
                               </div>
 
-                              {profile.role === 'ceo' && (
+                              {(isCEO || isHR) && (
                                   <div className="p-6 border border-red-200 rounded-2xl bg-red-50 space-y-4">
                                       <div>
                                           <h4 className="font-bold text-red-800 flex items-center mb-2">
                                               <Archive className="h-5 w-5 mr-2" />
-                                              Archive User (Soft Delete)
+                                              {isCEO ? 'Archive User (Soft Delete)' : 'Request User Archive'}
                                           </h4>
                                           <p className="text-xs text-red-700 mb-3 leading-relaxed">
-                                              Use this if the user has historical records. It will hide them from the active list while keeping data integrity.
+                                              {isCEO 
+                                                ? "Use this if the user has historical records. It will hide them from the active list while keeping data integrity."
+                                                : "This will send a request to the CEO to archive this user account."}
                                           </p>
                                           <button 
                                             onClick={handleArchiveUser}
-                                            disabled={isProcessing || selectedUser.deletion_status === 'approved'}
+                                            disabled={isProcessing || selectedUser.deletion_status === 'approved' || selectedUser.deletion_status === 'pending_approval'}
                                             className="w-full py-3 bg-white text-red-700 border border-red-300 rounded-xl text-sm font-bold hover:bg-red-50 transition-all active:scale-[0.99]"
                                           >
-                                              {selectedUser.deletion_status === 'approved' ? 'User Already Archived' : 'Archive User Record'}
+                                              {selectedUser.deletion_status === 'approved' ? 'User Already Archived' : 
+                                               selectedUser.deletion_status === 'pending_approval' ? 'Archive Request Pending' :
+                                               isCEO ? 'Archive User Record' : 'Send Archive Request'}
                                           </button>
                                       </div>
 
-                                      <div className="pt-4 border-t border-red-200">
-                                          <h4 className="font-bold text-red-800 flex items-center mb-2">
-                                              <Trash2 className="h-5 w-5 mr-2" />
-                                              Permanent Deletion
-                                          </h4>
-                                          <p className="text-xs text-red-700 mb-3 leading-relaxed">
-                                              <strong>CEO ONLY:</strong> This action permanently removes the user record. This only works for accounts with <strong>NO</strong> historical data.
-                                          </p>
-                                          <button 
-                                            onClick={handlePermanentDelete}
-                                            disabled={isProcessing}
-                                            className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-[0.99]"
-                                          >
-                                              Permanently Delete Record
-                                          </button>
-                                      </div>
+                                      {isCEO && (
+                                          <div className="pt-4 border-t border-red-200">
+                                              <h4 className="font-bold text-red-800 flex items-center mb-2">
+                                                  <Trash2 className="h-5 w-5 mr-2" />
+                                                  Permanent Deletion
+                                              </h4>
+                                              <p className="text-xs text-red-700 mb-3 leading-relaxed">
+                                                  <strong>CEO ONLY:</strong> This action permanently removes the user record. This only works for accounts with <strong>NO</strong> historical data.
+                                              </p>
+                                              <button 
+                                                onClick={handlePermanentDelete}
+                                                disabled={isProcessing}
+                                                className="w-full py-3 bg-red-600 text-white rounded-xl text-sm font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 active:scale-[0.99]"
+                                              >
+                                                  Permanently Delete Record
+                                              </button>
+                                          </div>
+                                      )}
                                   </div>
                               )}
                           </div>
