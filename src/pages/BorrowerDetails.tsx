@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
 import { Borrower, Loan, LoanDocument } from '@/types';
@@ -10,7 +10,7 @@ import Markdown from 'react-markdown';
 import { 
     ArrowLeft, User, Phone, MapPin, Briefcase, Banknote, Clock, ChevronRight, 
     ZoomIn, X, Sparkles, ShieldAlert, RefreshCw, Wallet, ArrowUpRight, ArrowDownLeft,
-    Home, Building2, Map as MapIcon
+    Home, Building2, Map as MapIcon, ExternalLink
 } from 'lucide-react';
 
 // Fix for default marker icons
@@ -24,6 +24,17 @@ let DefaultIcon = L.icon({
     iconAnchor: [12, 41]
 });
 
+// Helper component to center map when triggered from sidebar
+const MapRecenter = ({ position }: { position: [number, number] | null }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (position) {
+            map.setView(position, 16);
+        }
+    }, [position, map]);
+    return null;
+};
+
 export const BorrowerDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -34,6 +45,7 @@ export const BorrowerDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [viewImage, setViewImage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'loans' | 'documents' | 'map'>('loans');
+  const [mapFocus, setMapFocus] = useState<[number, number] | null>(null);
   
   // AI Risk State
   const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
@@ -100,6 +112,14 @@ export const BorrowerDetails: React.FC = () => {
       return null;
   };
 
+  const jumpToMap = (coords: [number, number]) => {
+      setMapFocus(coords);
+      setActiveTab('map');
+      // Scroll to map section if on mobile
+      const mapElement = document.getElementById('borrower-tabs');
+      if (mapElement) mapElement.scrollIntoView({ behavior: 'smooth' });
+  };
+
   if (loading || !borrower) return <div className="p-8 text-center">Loading profile...</div>;
 
   const totalBorrowed = loans.reduce((sum, l) => sum + Number(l.principal_amount), 0);
@@ -159,21 +179,43 @@ export const BorrowerDetails: React.FC = () => {
                                 <p className="text-sm font-bold text-gray-900">{borrower.phone || 'N/A'}</p>
                             </div>
                         </div>
+                        
                         <div className="flex items-start group">
                             <div className="p-2 bg-gray-50 rounded-lg mr-4 group-hover:bg-indigo-50 transition-colors">
                                 <Home className="h-5 w-5 text-gray-400 group-hover:text-indigo-600" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Residence Address</p>
+                                <div className="flex justify-between items-start">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Residence Address</p>
+                                    {residenceCoords && (
+                                        <button 
+                                            onClick={() => jumpToMap(residenceCoords)}
+                                            className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
+                                        >
+                                            <MapPin className="h-2.5 w-2.5 mr-1" /> View on Map
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-sm font-bold text-gray-900 break-words">{borrower.address || 'N/A'}</p>
                             </div>
                         </div>
+
                         <div className="flex items-start group">
                             <div className="p-2 bg-gray-50 rounded-lg mr-4 group-hover:bg-indigo-50 transition-colors">
                                 <Building2 className="h-5 w-5 text-gray-400 group-hover:text-indigo-600" />
                             </div>
                             <div className="min-w-0 flex-1">
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Business / Work</p>
+                                <div className="flex justify-between items-start">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Business / Work</p>
+                                    {businessCoords && (
+                                        <button 
+                                            onClick={() => jumpToMap(businessCoords)}
+                                            className="text-[10px] text-indigo-600 font-bold hover:underline flex items-center"
+                                        >
+                                            <MapPin className="h-2.5 w-2.5 mr-1" /> View on Map
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-sm font-bold text-gray-900 break-words">{borrower.employment || 'N/A'}</p>
                             </div>
                         </div>
@@ -207,16 +249,14 @@ export const BorrowerDetails: React.FC = () => {
                 </div>
             </div>
 
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-2" id="borrower-tabs">
                 <div className="flex border-b border-gray-100 mb-8">
                     <button onClick={() => setActiveTab('loans')} className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'loans' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Loan History</button>
                     <button onClick={() => setActiveTab('documents')} className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all ${activeTab === 'documents' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
-                    {hasAnyCoords && (
-                        <button onClick={() => setActiveTab('map')} className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all flex items-center ${activeTab === 'map' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                            <MapIcon className="h-3.5 w-3.5 mr-2" />
-                            Location Map
-                        </button>
-                    )}
+                    <button onClick={() => setActiveTab('map')} className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all flex items-center ${activeTab === 'map' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
+                        <MapIcon className="h-3.5 w-3.5 mr-2" />
+                        Location Map
+                    </button>
                 </div>
 
                 {activeTab === 'loans' && (
@@ -275,45 +315,59 @@ export const BorrowerDetails: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'map' && hasAnyCoords && (
+                {activeTab === 'map' && (
                     <div className="h-[450px] rounded-2xl overflow-hidden border border-gray-200 shadow-inner relative">
-                        <MapContainer 
-                            center={residenceCoords || businessCoords || [-13.2543, 34.3015]} 
-                            zoom={14} 
-                            className="h-full w-full"
-                        >
-                            <TileLayer
-                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            />
-                            {residenceCoords && (
-                                <Marker position={residenceCoords} icon={DefaultIcon}>
-                                    <Popup>
-                                        <div className="text-center">
-                                            <p className="font-bold text-indigo-600">Residence</p>
-                                            <p className="text-xs text-gray-500">{borrower.full_name}</p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
-                            )}
-                            {businessCoords && (
-                                <Marker position={businessCoords} icon={DefaultIcon}>
-                                    <Popup>
-                                        <div className="text-center">
-                                            <p className="font-bold text-green-600">Business / Work</p>
-                                            <p className="text-xs text-gray-500">{borrower.full_name}</p>
-                                        </div>
-                                    </Popup>
-                                </Marker>
-                            )}
-                        </MapContainer>
-                        <div className="absolute bottom-4 left-4 z-[1000] bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-white/20">
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Map Legend</p>
-                            <div className="space-y-1.5">
-                                {residenceCoords && <div className="flex items-center text-xs font-bold text-gray-700"><div className="w-2 h-2 rounded-full bg-indigo-600 mr-2" /> Residence</div>}
-                                {businessCoords && <div className="flex items-center text-xs font-bold text-gray-700"><div className="w-2 h-2 rounded-full bg-green-600 mr-2" /> Business</div>}
+                        {hasAnyCoords ? (
+                            <MapContainer 
+                                center={mapFocus || residenceCoords || businessCoords || [-13.2543, 34.3015]} 
+                                zoom={14} 
+                                className="h-full w-full"
+                            >
+                                <TileLayer
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                />
+                                {residenceCoords && (
+                                    <Marker position={residenceCoords} icon={DefaultIcon}>
+                                        <Popup>
+                                            <div className="text-center">
+                                                <p className="font-bold text-indigo-600">Residence</p>
+                                                <p className="text-xs text-gray-500">{borrower.full_name}</p>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                )}
+                                {businessCoords && (
+                                    <Marker position={businessCoords} icon={DefaultIcon}>
+                                        <Popup>
+                                            <div className="text-center">
+                                                <p className="font-bold text-green-600">Business / Work</p>
+                                                <p className="text-xs text-gray-500">{borrower.full_name}</p>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                )}
+                                <MapRecenter position={mapFocus} />
+                            </MapContainer>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center bg-gray-50 text-center p-8">
+                                <MapPin className="h-12 w-12 text-gray-300 mb-4" />
+                                <h3 className="text-lg font-bold text-gray-900">No Geodata Available</h3>
+                                <p className="text-sm text-gray-500 mt-2 max-w-xs">
+                                    This client does not have any pinned map locations. Edit their profile to add GPS coordinates for their residence or business.
+                                </p>
                             </div>
-                        </div>
+                        )}
+                        
+                        {hasAnyCoords && (
+                            <div className="absolute bottom-4 left-4 z-[1000] bg-white/90 backdrop-blur-md p-3 rounded-xl shadow-lg border border-white/20">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Map Legend</p>
+                                <div className="space-y-1.5">
+                                    {residenceCoords && <div className="flex items-center text-xs font-bold text-gray-700"><div className="w-2 h-2 rounded-full bg-indigo-600 mr-2" /> Residence</div>}
+                                    {businessCoords && <div className="flex items-center text-xs font-bold text-gray-700"><div className="w-2 h-2 rounded-full bg-green-600 mr-2" /> Business</div>}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
