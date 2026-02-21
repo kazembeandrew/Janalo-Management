@@ -9,15 +9,19 @@ import { analyzeFinancialData, assessLoanRisk } from '@/services/aiService';
 import { exportToCSV, generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, AlertOctagon, AlertTriangle, ThumbsUp, ThumbsDown, MessageSquare, Send, 
-    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt, Eraser, Landmark
+    FileImage, ExternalLink, X, ZoomIn, Trash2, Edit, RefreshCw, Mail, MapPin, Camera, User, Calendar, Printer, Locate, Sparkles, ShieldCheck, Download, FileText, Receipt, Eraser, Landmark, ChevronRight, Building2, Home, Phone, History, ClipboardList
 } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
+
+type DetailTab = 'overview' | 'client' | 'documents' | 'visitations' | 'notes';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { profile, effectiveRoles } = useAuth();
   const navigate = useNavigate();
+  
+  // Data State
   const [loan, setLoan] = useState<Loan | null>(null);
   const [repayments, setRepayments] = useState<Repayment[]>([]);
   const [notes, setNotes] = useState<LoanNote[]>([]);
@@ -29,8 +33,9 @@ export const LoanDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   // UI State
-  const [leftTab, setLeftTab] = useState<'repayments' | 'schedule'>('repayments');
-
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [viewImage, setViewImage] = useState<string | null>(null);
+  
   // Modals
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [showPenaltyModal, setShowPenaltyModal] = useState(false);
@@ -41,13 +46,8 @@ export const LoanDetails: React.FC = () => {
   const [showVisitModal, setShowVisitModal] = useState(false);
   const [showDefaultModal, setShowDefaultModal] = useState(false);
   const [showRestructureModal, setShowRestructureModal] = useState(false);
-  const [viewImage, setViewImage] = useState<string | null>(null);
-  
-  // AI Analysis State
   const [showAIModal, setShowAIModal] = useState(false);
-  const [aiAnalysis, setAiAnalysis] = useState('');
-  const [analyzing, setAnalyzing] = useState(false);
-  const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
+  const [showReassignModal, setShowReassignModal] = useState(false);
   
   // Form States
   const [repayAmount, setRepayAmount] = useState<number>(0);
@@ -55,18 +55,14 @@ export const LoanDetails: React.FC = () => {
   const [penaltyAmount, setPenaltyAmount] = useState<number>(0);
   const [waiveData, setWaiveData] = useState({ interest: 0, penalty: 0 });
   const [newNote, setNewNote] = useState('');
-  
-  // Decision Form States
   const [decisionReason, setDecisionReason] = useState('');
   const [sendToChat, setSendToChat] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
-
-  // Restructure Form State
-  const [restructureData, setRestructureData] = useState({
-      new_rate: 5,
-      new_term: 6,
-      new_type: 'flat' as InterestType
-  });
+  const [aiAnalysis, setAiAnalysis] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [riskAssessment, setRiskAssessment] = useState<string | null>(null);
+  const [selectedOfficer, setSelectedOfficer] = useState('');
+  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
 
   // Visit Form State
   const [visitNote, setVisitNote] = useState('');
@@ -75,92 +71,13 @@ export const LoanDetails: React.FC = () => {
   const [visitLocation, setVisitLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locating, setLocating] = useState(false);
 
-  // Officer List for Reassignment
-  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
-  const [showReassignModal, setShowReassignModal] = useState(false);
-  const [selectedOfficer, setSelectedOfficer] = useState('');
-
   useEffect(() => {
     fetchData();
     fetchAccounts();
     if (effectiveRoles.includes('admin') || effectiveRoles.includes('ceo')) {
         fetchOfficers();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  const fetchAccounts = async () => {
-      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
-      if (data) setAccounts(data);
-  };
-
-  const fetchOfficers = async () => {
-      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
-      setOfficers(data || []);
-  };
-
-  const logAudit = async (action: string, details: any) => {
-      if (!profile || !id) return;
-      await supabase.from('audit_logs').insert({
-          user_id: profile.id,
-          action,
-          entity_type: 'loan',
-          entity_id: id,
-          details
-      });
-  };
-
-  const handleReassign = async () => {
-      if (!loan || !selectedOfficer) return;
-      setProcessingAction(true);
-      try {
-          const { error } = await supabase
-            .from('loans')
-            .update({ officer_id: selectedOfficer })
-            .eq('id', loan.id);
-          
-          if (error) throw error;
-          
-          const newOfficerName = officers.find(o => o.id === selectedOfficer)?.full_name || 'New Officer';
-          await addNote(`Loan reassigned to ${newOfficerName} by ${profile?.full_name}.`, true);
-          await logAudit('Loan Reassigned', { to_officer: newOfficerName });
-          
-          await createNotification(
-              selectedOfficer,
-              'Loan Reassigned',
-              `A loan for ${loan.borrowers?.full_name} has been reassigned to you.`,
-              `/loans/${loan.id}`
-          );
-
-          toast.success(`Loan reassigned to ${newOfficerName}`);
-          setShowReassignModal(false);
-          fetchData();
-      } catch (error) {
-          console.error(error);
-          toast.error('Failed to reassign loan.');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const createNotification = async (userId: string, title: string, message: string, link: string) => {
-      await supabase.from('notifications').insert({
-          user_id: userId,
-          title,
-          message,
-          link
-      });
-  };
-
-  const amortizationSchedule = useMemo(() => {
-      if (!loan) return [];
-      return calculateLoanDetails(
-          loan.principal_amount,
-          loan.interest_rate,
-          loan.term_months,
-          loan.interest_type
-      ).schedule;
-  }, [loan]);
 
   const fetchData = async () => {
     if (!id) return;
@@ -169,7 +86,7 @@ export const LoanDetails: React.FC = () => {
         .from('loans')
         .select(`
             *, 
-            borrowers(id, full_name, address, phone),
+            borrowers(id, full_name, address, phone, employment, created_at),
             users!officer_id (email, full_name)
         `)
         .eq('id', id)
@@ -219,9 +136,7 @@ export const LoanDetails: React.FC = () => {
           const urlMap: {[key: string]: string} = {};
           for (const doc of docData) {
               const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
-              if (data) {
-                  urlMap[doc.id] = data.publicUrl;
-              }
+              if (data) urlMap[doc.id] = data.publicUrl;
           }
           setDocumentUrls(urlMap);
       }
@@ -249,6 +164,16 @@ export const LoanDetails: React.FC = () => {
       }
   };
 
+  const fetchAccounts = async () => {
+      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
+      if (data) setAccounts(data);
+  };
+
+  const fetchOfficers = async () => {
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
+      setOfficers(data || []);
+  };
+
   const addNote = async (content: string, isSystem = false) => {
     if (!id || !profile) return;
     await supabase.from('loan_notes').insert([{
@@ -260,581 +185,15 @@ export const LoanDetails: React.FC = () => {
     fetchNotes();
   };
 
-  const captureLocation = () => {
-      if (!navigator.geolocation) {
-          toast.error('Geolocation is not supported');
-          return;
-      }
-      setLocating(true);
-      navigator.geolocation.getCurrentPosition(
-          (position) => {
-              setVisitLocation({
-                  lat: position.coords.latitude,
-                  lng: position.coords.longitude
-              });
-              setLocating(false);
-              toast.success('Location tagged');
-          },
-          (error) => {
-              console.error(error);
-              toast.error('Unable to retrieve location');
-              setLocating(false);
-          },
-          { enableHighAccuracy: true }
-      );
-  };
-
-  const handleAnalyzeLoan = async () => {
-    setShowAIModal(true);
-    if (aiAnalysis) return;
-    setAnalyzing(true);
-    
-    try {
-        const insights = await analyzeFinancialData({
-            loan,
-            repayments: repayments.slice(0, 10),
-            notes: notes.filter(n => !n.is_system).slice(0, 5),
-            visitations: visitations.slice(0, 3)
-        });
-        
-        setAiAnalysis(insights.join('\n\n'));
-
-        if (loan?.status === 'pending') {
-            const risk = await assessLoanRisk(loan);
-            setRiskAssessment(risk);
-        }
-
-    } catch (e: any) {
-        console.error("AI Error:", e);
-        setAiAnalysis(`Failed to generate analysis. Error: ${e.message || 'Unknown error'}`);
-    } finally {
-        setAnalyzing(false);
-    }
-  };
-
-  const sendNotificationEmail = async (subject: string, htmlContent: string) => {
-    if (!loan?.users?.email) return;
-    try {
-        await fetch('/api/admin/send-email', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                to: loan.users.email,
-                subject: subject,
-                html: htmlContent
-            })
-        });
-    } catch (e) {
-        console.warn("Email dispatch error:", e);
-    }
-  };
-
-  const sendDirectMessage = async (recipientId: string, message: string) => {
-      if (!profile || !message.trim()) return;
-      if (recipientId === profile.id) return;
-
-      try {
-          const { data: myConvos } = await supabase.from('conversation_participants').select('conversation_id').eq('user_id', profile.id);
-          const myConvoIds = myConvos?.map(c => c.conversation_id) || [];
-          
-          let conversationId = null;
-
-          if (myConvoIds.length > 0) {
-              const { data: targetConvos } = await supabase
-                .from('conversation_participants')
-                .select('conversation_id')
-                .eq('user_id', recipientId)
-                .in('conversation_id', myConvoIds)
-                .limit(1);
-              
-              if (targetConvos && targetConvos.length > 0) {
-                  conversationId = targetConvos[0].conversation_id;
-              }
-          }
-
-          if (!conversationId) {
-              const { data: newConvoId, error: createError } = await supabase.rpc('create_new_conversation', {
-                  recipient_id: recipientId
-              });
-              
-              if (createError) throw createError;
-              conversationId = newConvoId;
-          }
-
-          await supabase.from('direct_messages').insert({
-              conversation_id: conversationId,
-              sender_id: profile.id,
-              content: message
-          });
-
-          navigate('/messages');
-
-      } catch (error) {
-          console.error("Failed to send direct message", error);
-          toast.error("Failed to open chat.");
-      }
-  };
-
-  const handleApproveLoan = async () => {
-      if (!loan || !targetAccountId) {
-          toast.error("Please select a source account for disbursement.");
-          return;
-      }
-      setProcessingAction(true);
-
-      try {
-          // 1. Update Loan Status
-          const { error } = await supabase
-            .from('loans')
-            .update({
-                status: 'active',
-                disbursement_date: new Date().toISOString().split('T')[0]
-            })
-            .eq('id', loan.id);
-        
-        if (error) throw error;
-
-        // 2. Record Institutional Disbursement (Double Entry)
-        await supabase.from('fund_transactions').insert([{
-            from_account_id: targetAccountId,
-            amount: loan.principal_amount,
-            type: 'disbursement',
-            description: `Loan disbursement to ${loan.borrowers?.full_name}`,
-            reference_id: loan.id,
-            recorded_by: profile?.id
-        }]);
-        
-        const noteText = `Loan Approved and Disbursed by ${profile?.full_name}. ${decisionReason ? `Note: ${decisionReason}` : ''}`;
-        await addNote(noteText, true);
-        await logAudit('Loan Approved', { amount: loan.principal_amount, borrower: loan.borrowers?.full_name });
-
-        await createNotification(
-            loan.officer_id,
-            'Loan Approved',
-            `The loan for ${loan.borrowers?.full_name} has been approved.`,
-            `/loans/${loan.id}`
-        );
-
-        toast.success(`Loan for ${loan.borrowers?.full_name} approved.`);
-
-        const emailBody = `
-            <p>Dear ${loan.users?.full_name},</p>
-            <p>The loan application for <strong>${loan.borrowers?.full_name}</strong> has been <strong>APPROVED</strong> and marked as Active.</p>
-            <p><strong>Amount:</strong> ${formatCurrency(loan.principal_amount)}<br/>
-            <strong>Disbursement Date:</strong> ${new Date().toLocaleDateString()}</p>
-            ${decisionReason ? `<p><strong>Note:</strong> ${decisionReason}</p>` : ''}
-            <p>Please proceed with the fund disbursement process.</p>
-        `;
-        sendNotificationEmail(`Loan Approved: ${loan.borrowers?.full_name}`, emailBody);
-
-        if (sendToChat && loan.officer_id) {
-            await sendDirectMessage(loan.officer_id, `[System: Loan Approved] ${decisionReason || 'Your loan application for ' + loan.borrowers?.full_name + ' has been approved.'}`);
-        }
-        
-        setShowApproveModal(false);
-        setDecisionReason('');
-        setTargetAccountId('');
-        setSendToChat(false);
-        fetchData();
-      } catch (error) {
-          console.error(error);
-          toast.error('Error approving loan');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleRejectLoan = async () => {
-      if (!loan) return;
-      if (!decisionReason.trim()) {
-          toast.error("Please provide a reason for rejection.");
-          return;
-      }
-      setProcessingAction(true);
-
-      try {
-          const { error } = await supabase
-            .from('loans')
-            .update({ status: 'rejected' })
-            .eq('id', loan.id);
-        
-        if (error) throw error;
-        
-        await addNote(`Loan Rejected by ${profile?.full_name}. Reason: ${decisionReason}`, true);
-        await logAudit('Loan Rejected', { reason: decisionReason });
-
-        await createNotification(
-            loan.officer_id,
-            'Loan Rejected',
-            `The loan for ${loan.borrowers?.full_name} was rejected.`,
-            `/loans/${loan.id}`
-        );
-
-        toast.success(`Loan for ${loan.borrowers?.full_name} rejected.`);
-
-        const emailBody = `
-            <p>Dear ${loan.users?.full_name},</p>
-            <p>The loan application for <strong>${loan.borrowers?.full_name}</strong> has been <strong>REJECTED</strong>.</p>
-            <p><strong>Reason:</strong> ${decisionReason}</p>
-            <p>Please review the application and contact administration if you have questions.</p>
-        `;
-        sendNotificationEmail(`Loan Rejected: ${loan.borrowers?.full_name}`, emailBody);
-
-        if (sendToChat && loan.officer_id) {
-            await sendDirectMessage(loan.officer_id, `[System: Loan Rejected] Regarding ${loan.borrowers?.full_name}: ${decisionReason}`);
-        }
-        
-        setShowRejectModal(false);
-        setDecisionReason('');
-        setSendToChat(false);
-        fetchData();
-      } catch (error) {
-          console.error(error);
-          toast.error('Error rejecting loan');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-  
-  const handleReassess = async () => {
-      if (!loan) return;
-      if (!decisionReason.trim()) {
-          toast.error("Please provide instructions for reassessment.");
-          return;
-      }
-      setProcessingAction(true);
-      
-      try {
-          const { error } = await supabase
-            .from('loans')
-            .update({ status: 'reassess' })
-            .eq('id', loan.id);
-            
-          if (error) throw error;
-          await addNote(`Application moved to Reassessment by ${profile?.full_name}. Note: ${decisionReason}`, true);
-          await logAudit('Loan Reassessment Requested', { instructions: decisionReason });
-
-          await createNotification(
-              loan.officer_id,
-              'Reassessment Required',
-              `The application for ${loan.borrowers?.full_name} needs reassessment.`,
-              `/loans/${loan.id}`
-          );
-
-          toast.success(`Application returned for reassessment.`);
-
-          const emailBody = `
-            <p>Dear ${loan.users?.full_name},</p>
-            <p>The loan application for <strong>${loan.borrowers?.full_name}</strong> has been flagged for <strong>REASSESSMENT</strong>.</p>
-            <p><strong>Instructions:</strong> ${decisionReason}</p>
-            <p>Please update the application details as requested and resubmit.</p>
-          `;
-          sendNotificationEmail(`Action Required: Reassess ${loan.borrowers?.full_name}`, emailBody);
-
-          if (sendToChat && loan.officer_id) {
-            await sendDirectMessage(loan.officer_id, `[System: Reassessment Requested] Please review the application for ${loan.borrowers?.full_name}. Instructions: ${decisionReason}`);
-          }
-
-          setShowReassessModal(false);
-          setDecisionReason('');
-          setSendToChat(false);
-          fetchData();
-      } catch (e: any) {
-          console.error("Reassess error", e);
-          toast.error("Failed to update status");
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleResubmit = async () => {
-      if (!loan) return;
-      setProcessingAction(true);
-      try {
-          const { error } = await supabase
-            .from('loans')
-            .update({ status: 'pending' })
-            .eq('id', loan.id);
-          
-          if (error) throw error;
-          await addNote(`Application resubmitted for approval by ${profile?.full_name}.`, true);
-          await logAudit('Loan Resubmitted', { borrower: loan.borrowers?.full_name });
-          
-          toast.success("Application resubmitted successfully.");
-          fetchData();
-      } catch (e) {
-          console.error(e);
-          toast.error("Failed to resubmit application.");
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleDefault = async () => {
-      if (!loan) return;
-      if (!decisionReason.trim()) {
-          toast.error("Please provide a reason for marking this as Bad Debt.");
-          return;
-      }
-      setProcessingAction(true);
-
-      try {
-          const { error } = await supabase
-            .from('loans')
-            .update({ status: 'defaulted' })
-            .eq('id', loan.id);
-        
-        if (error) throw error;
-        
-        await addNote(`MARKED AS BAD DEBT (Defaulted) by ${profile?.full_name}. Justification: ${decisionReason}`, true);
-        await logAudit('Loan Defaulted', { reason: decisionReason });
-        
-        toast.success('Loan marked as defaulted');
-        setShowDefaultModal(false);
-        setDecisionReason('');
-        fetchData();
-      } catch (error) {
-          console.error(error);
-          toast.error('Error updating status');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleRestructure = async () => {
-      if (!loan) return;
-      setProcessingAction(true);
-      
-      try {
-          const outstandingPrincipal = loan.principal_outstanding;
-          const outstandingInterest = loan.interest_outstanding;
-          const outstandingPenalty = loan.penalty_outstanding || 0;
-          const newPrincipal = outstandingPrincipal + outstandingInterest + outstandingPenalty;
-          
-          const details = calculateLoanDetails(
-              newPrincipal,
-              restructureData.new_rate,
-              restructureData.new_term,
-              restructureData.new_type
-          );
-          
-          const { error } = await supabase
-            .from('loans')
-            .update({
-                principal_amount: newPrincipal,
-                interest_rate: restructureData.new_rate,
-                term_months: restructureData.new_term,
-                interest_type: restructureData.new_type,
-                principal_outstanding: newPrincipal,
-                interest_outstanding: details.totalInterest,
-                penalty_outstanding: 0,
-                monthly_installment: details.monthlyInstallment,
-                total_payable: details.totalPayable,
-                updated_at: new Date().toISOString()
-            })
-            .eq('id', loan.id);
-            
-          if (error) throw error;
-          
-          await addNote(`LOAN RESTRUCTURED by ${profile?.full_name}. New Principal: ${formatCurrency(newPrincipal)}, Term: ${restructureData.new_term} months.`, true);
-          await logAudit('Loan Restructured', { new_principal: newPrincipal, term: restructureData.new_term });
-          
-          toast.success('Loan successfully restructured');
-          setShowRestructureModal(false);
-          fetchData();
-      } catch (e: any) {
-          console.error(e);
-          toast.error('Failed to restructure loan');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handlePenalty = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loan || !profile) return;
-    
-    try {
-        const newPenalty = (loan.penalty_outstanding || 0) + Number(penaltyAmount);
-        const { error } = await supabase
-            .from('loans')
-            .update({ penalty_outstanding: newPenalty })
-            .eq('id', loan.id);
-        
-        if (error) throw error;
-        
-        await addNote(`Late Fee of ${formatCurrency(penaltyAmount)} applied.`, true);
-        await logAudit('Penalty Applied', { amount: penaltyAmount });
-
-        toast.success('Late fee applied');
-        setShowPenaltyModal(false);
-        setPenaltyAmount(0);
-        fetchData();
-    } catch (error) {
-        toast.error('Failed to apply penalty');
-    }
-  };
-
-  const handleWaive = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!loan || !profile) return;
-      setProcessingAction(true);
-
-      try {
-          const newInterest = Math.max(0, loan.interest_outstanding - waiveData.interest);
-          const newPenalty = Math.max(0, (loan.penalty_outstanding || 0) - waiveData.penalty);
-
-          const { error } = await supabase
-            .from('loans')
-            .update({
-                interest_outstanding: newInterest,
-                penalty_outstanding: newPenalty
-            })
-            .eq('id', loan.id);
-          
-          if (error) throw error;
-
-          let note = `CHARGES WAIVED by ${profile.full_name}. `;
-          if (waiveData.interest > 0) note += `Interest: ${formatCurrency(waiveData.interest)}. `;
-          if (waiveData.penalty > 0) note += `Penalty: ${formatCurrency(waiveData.penalty)}. `;
-          if (decisionReason) note += `Reason: ${decisionReason}`;
-
-          await addNote(note, true);
-          await logAudit('Charges Waived', { interest: waiveData.interest, penalty: waiveData.penalty, reason: decisionReason });
-
-          toast.success('Charges waived successfully');
-          setShowWaiveModal(false);
-          setWaiveData({ interest: 0, penalty: 0 });
-          setDecisionReason('');
-          fetchData();
-      } catch (error) {
-          console.error(error);
-          toast.error('Failed to waive charges');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleRepayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!loan || !profile) return;
-
-    const amountToProcess = Number(repayAmount);
-    if (isNaN(amountToProcess) || amountToProcess <= 0) {
-        toast.error("Please enter a valid repayment amount.");
-        return;
-    }
-
-    if (!targetAccountId) {
-        toast.error("Please select the account where funds were received.");
-        return;
-    }
-
-    setProcessingAction(true);
-
-    let remaining = amountToProcess;
-    let penPaid = 0;
-    let intPaid = 0;
-    let prinPaid = 0;
-
-    const currentPenalty = loan.penalty_outstanding || 0;
-    
-    if (currentPenalty > 0) {
-        if (remaining >= currentPenalty) {
-            penPaid = currentPenalty;
-            remaining -= penPaid;
-        } else {
-            penPaid = remaining;
-            remaining = 0;
-        }
-    }
-
-    if (remaining > 0 && loan.interest_outstanding > 0) {
-        if (remaining >= loan.interest_outstanding) {
-            intPaid = loan.interest_outstanding;
-            remaining -= intPaid;
-        } else {
-            intPaid = remaining;
-            remaining = 0;
-        }
-    }
-    
-    if (remaining > 0) {
-        prinPaid = remaining;
-    }
-
-    const newPenOutstanding = Math.max(0, currentPenalty - penPaid);
-    const newIntOutstanding = Math.max(0, loan.interest_outstanding - intPaid);
-    const newPrinOutstanding = Math.max(0, loan.principal_outstanding - prinPaid);
-    
-    const isCompleted = newPrinOutstanding <= 0.01 && newIntOutstanding <= 0.01 && newPenOutstanding <= 0.01;
-
-    try {
-      // 1. Record Repayment
-      const { data: rData, error: rError } = await supabase.from('repayments').insert([{
-        loan_id: loan.id,
-        amount_paid: amountToProcess,
-        principal_paid: prinPaid,
-        interest_paid: intPaid,
-        penalty_paid: penPaid,
-        payment_date: new Date().toISOString().split('T')[0],
-        recorded_by: profile.id
-      }]).select().single();
-
-      if (rError) throw new Error(rError.message);
-
-      // 2. Record Institutional Inflow (Double Entry)
-      await supabase.from('fund_transactions').insert([{
-          to_account_id: targetAccountId,
-          amount: amountToProcess,
-          type: 'repayment',
-          description: `Loan repayment from ${loan.borrowers?.full_name}`,
-          reference_id: loan.id,
-          recorded_by: profile.id
-      }]);
-
-      // 3. Update Loan Balances
-      const { error: lError } = await supabase
-        .from('loans')
-        .update({
-            penalty_outstanding: newPenOutstanding,
-            interest_outstanding: newIntOutstanding,
-            principal_outstanding: newPrinOutstanding,
-            status: isCompleted ? 'completed' : 'active'
-        })
-        .eq('id', loan.id);
-      
-      if (lError) throw new Error(lError.message);
-
-      if (isCompleted) {
-          await addNote('Loan fully repaid and marked as Completed.', true);
-          await logAudit('Loan Completed', { total_paid: amountToProcess });
-          toast.success('Loan fully repaid!');
-      } else {
-          await addNote(`Repayment of ${formatCurrency(amountToProcess)} recorded.`, true);
-          await logAudit('Repayment Recorded', { amount: amountToProcess });
-          toast.success('Repayment recorded');
-      }
-
-      setShowRepayModal(false);
-      setRepayAmount(0);
-      setTargetAccountId('');
-      fetchData();
-      
-      if (rData) {
-          setTimeout(() => {
-              if (window.confirm("Repayment recorded. Would you like to download the receipt?")) {
-                  generateReceiptPDF(loan, rData, profile.full_name);
-              }
-          }, 500);
-      }
-
-    } catch (error: any) {
-      console.error("Repayment failed:", error);
-      toast.error(`Failed to record repayment: ${error.message || 'Unknown error'}`);
-    } finally {
-      setProcessingAction(false);
-    }
+  const logAudit = async (action: string, details: any) => {
+      if (!profile || !id) return;
+      await supabase.from('audit_logs').insert({
+          user_id: profile.id,
+          action,
+          entity_type: 'loan',
+          entity_id: id,
+          details
+      });
   };
 
   const handlePostNote = async (e: React.FormEvent) => {
@@ -845,262 +204,412 @@ export const LoanDetails: React.FC = () => {
     toast.success('Note added');
   };
 
-  const handleRecordVisit = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!loan || !profile) return;
+  const handleAnalyzeLoan = async () => {
+    setShowAIModal(true);
+    if (aiAnalysis) return;
+    setAnalyzing(true);
+    try {
+        const insights = await analyzeFinancialData({
+            loan,
+            repayments: repayments.slice(0, 10),
+            notes: notes.filter(n => !n.is_system).slice(0, 5),
+            visitations: visitations.slice(0, 3)
+        });
+        setAiAnalysis(insights.join('\n\n'));
+        if (loan?.status === 'pending') {
+            const risk = await assessLoanRisk(loan);
+            setRiskAssessment(risk);
+        }
+    } catch (e: any) {
+        console.error("AI Error:", e);
+        setAiAnalysis(`Failed to generate analysis.`);
+    } finally {
+        setAnalyzing(false);
+    }
+  };
+
+  const handleRepayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loan || !profile || !targetAccountId) return;
+    setProcessingAction(true);
+    try {
+        const amount = Number(repayAmount);
+        // Logic for distribution (Penalty -> Interest -> Principal)
+        let remaining = amount;
+        const penPaid = Math.min(remaining, loan.penalty_outstanding || 0);
+        remaining -= penPaid;
+        const intPaid = Math.min(remaining, loan.interest_outstanding);
+        remaining -= intPaid;
+        const prinPaid = remaining;
+
+        const { data: rData, error: rError } = await supabase.from('repayments').insert([{
+            loan_id: loan.id,
+            amount_paid: amount,
+            principal_paid: prinPaid,
+            interest_paid: intPaid,
+            penalty_paid: penPaid,
+            payment_date: new Date().toISOString().split('T')[0],
+            recorded_by: profile.id
+        }]).select().single();
+
+        if (rError) throw rError;
+
+        await supabase.from('fund_transactions').insert([{
+            to_account_id: targetAccountId,
+            amount: amount,
+            type: 'repayment',
+            description: `Loan repayment from ${loan.borrowers?.full_name}`,
+            reference_id: loan.id,
+            recorded_by: profile.id
+        }]);
+
+        const isCompleted = (loan.principal_outstanding - prinPaid) <= 0.01;
+        await supabase.from('loans').update({
+            penalty_outstanding: Math.max(0, (loan.penalty_outstanding || 0) - penPaid),
+            interest_outstanding: Math.max(0, loan.interest_outstanding - intPaid),
+            principal_outstanding: Math.max(0, loan.principal_outstanding - prinPaid),
+            status: isCompleted ? 'completed' : 'active'
+        }).eq('id', loan.id);
+
+        toast.success('Repayment recorded');
+        setShowRepayModal(false);
+        fetchData();
+        if (rData) generateReceiptPDF(loan, rData, profile.full_name);
+    } catch (e: any) {
+        toast.error(e.message);
+    } finally {
+        setProcessingAction(false);
+    }
+  };
+
+  const handleApproveLoan = async () => {
+      if (!loan || !targetAccountId) return;
       setProcessingAction(true);
-
       try {
-          let imagePath = null;
-          if (visitImageBlob) {
-              const fileName = `visit_${loan.id}_${Date.now()}.jpg`;
-              const { data, error } = await supabase.storage.from('loan-documents').upload(`${loan.id}/${fileName}`, visitImageBlob);
-              if (error) throw error;
-              imagePath = data.path;
-          }
-
-          const { error } = await supabase.from('visitations').insert({
-              loan_id: loan.id,
-              officer_id: profile.id,
-              visit_date: visitDate,
-              notes: visitNote,
-              image_path: imagePath,
-              location_lat: visitLocation?.lat,
-              location_long: visitLocation?.lng
-          });
-
-          if (error) throw error;
-
-          const locationText = visitLocation ? ' (with Geotag)' : '';
-          await addNote(`Official Client Visitation recorded on ${visitDate}${locationText}.`, true);
-          await logAudit('Field Visit Recorded', { date: visitDate, geotagged: !!visitLocation });
-          
-          toast.success('Visitation recorded');
-          setShowVisitModal(false);
-          setVisitNote('');
-          setVisitImageBlob(null);
-          setVisitLocation(null);
-          fetchVisitations();
-          fetchNotes();
-      } catch (error) {
-          console.error(error);
-          toast.error('Failed to record visitation');
+          await supabase.from('loans').update({ status: 'active' }).eq('id', loan.id);
+          await supabase.from('fund_transactions').insert([{
+              from_account_id: targetAccountId,
+              amount: loan.principal_amount,
+              type: 'disbursement',
+              description: `Loan disbursement to ${loan.borrowers?.full_name}`,
+              reference_id: loan.id,
+              recorded_by: profile?.id
+          }]);
+          await addNote(`Loan Approved and Disbursed. ${decisionReason}`, true);
+          toast.success('Loan approved');
+          setShowApproveModal(false);
+          fetchData();
+      } catch (e) {
+          toast.error('Approval failed');
       } finally {
           setProcessingAction(false);
       }
   };
 
-  const handleDelete = async () => {
-      if (!loan) return;
-      if (!window.confirm("Are you sure you want to permanently delete this application?")) return;
-      
-      try {
-          const { error } = await supabase.from('loans').delete().eq('id', loan.id);
-          if (error) throw error;
-          await logAudit('Loan Application Deleted', { borrower: loan.borrowers?.full_name });
-          toast.success('Application deleted');
-          navigate('/loans');
-      } catch (error) {
-          console.error(error);
-          toast.error('Failed to delete application');
-      }
-  };
+  if (loading || !loan) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
 
-  const handleEdit = () => {
-      if (!loan) return;
-      navigate(`/loans/edit/${loan.id}`);
-  };
-
-  const handleExportRepayments = () => {
-      if (!loan || repayments.length === 0) return;
-      const data = repayments.map(r => ({
-          Date: new Date(r.payment_date).toLocaleDateString(),
-          Total_Paid: r.amount_paid,
-          Principal: r.principal_paid,
-          Interest: r.interest_paid,
-          Penalty: r.penalty_paid
-      }));
-      exportToCSV(data, `Repayments_${loan.borrowers?.full_name.replace(/\s+/g, '_')}`);
-  };
-
-  const handleDownloadStatement = () => {
-      if (!loan) return;
-      generateStatementPDF(loan, repayments);
-  };
-
-  const openDecisionModal = (type: 'approve' | 'reject' | 'reassess') => {
-      setDecisionReason('');
-      setSendToChat(false);
-      if (type === 'approve') setShowApproveModal(true);
-      if (type === 'reject') setShowRejectModal(true);
-      if (type === 'reassess') setShowReassessModal(true);
-  }
-
-  if (loading || !loan) return <div className="p-4">Loading details...</div>;
-
-  // Role-Based Logic
   const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
-  const isOwner = profile?.id === loan.officer_id || effectiveRoles.includes('admin');
-  
-  const isPending = loan.status === 'pending';
-  const isReassess = loan.status === 'reassess';
-  const isRejected = loan.status === 'rejected';
+  const isOwner = profile?.id === loan.officer_id;
+
+  const totalOwed = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+  const progress = loan.total_payable > 0 ? ((loan.total_payable - totalOwed) / loan.total_payable) * 100 : 0;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
          <button onClick={() => navigate('/loans')} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back to List
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Portfolio
          </button>
-         <div className="flex flex-wrap gap-2 justify-end">
-            <button
-                onClick={handleAnalyzeLoan}
-                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center"
-            >
-                <Sparkles className="h-4 w-4 mr-1" /> Smart Analysis
+         <div className="flex flex-wrap gap-2">
+            <button onClick={handleAnalyzeLoan} className="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-xl text-sm font-bold border border-indigo-100 flex items-center hover:bg-indigo-100 transition-all">
+                <Sparkles className="h-4 w-4 mr-2" /> AI Analysis
             </button>
-
-            <button 
-                onClick={handleDownloadStatement}
-                className="bg-white hover:bg-gray-50 text-indigo-600 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-indigo-200 flex items-center"
-            >
-                <FileText className="h-4 w-4 mr-1" /> Download Statement
-            </button>
-
-            <button 
-                onClick={() => window.print()}
-                className="bg-white hover:bg-gray-50 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-gray-300 flex items-center"
-            >
-                <Printer className="h-4 w-4 mr-1" /> Print View
-            </button>
-
-            {(isPending || isRejected || isReassess) && isOwner && (
-                <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                    <button 
-                        onClick={handleDelete}
-                        className="text-red-600 hover:text-red-800 px-3 py-2 text-sm font-medium flex items-center"
-                        title="Delete Application"
-                    >
-                        <Trash2 className="h-4 w-4 mr-1" /> Delete
-                    </button>
-                    <button 
-                        onClick={handleEdit}
-                        className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-gray-300 flex items-center"
-                    >
-                        <Edit className="h-4 w-4 mr-1" /> Edit
-                    </button>
-                </div>
-            )}
-
-            {isReassess && isOwner && (
-                <button 
-                    onClick={handleResubmit}
-                    disabled={processingAction}
-                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                >
-                    <Send className="h-4 w-4 mr-1" /> Resubmit for Approval
+            {loan.status === 'active' && (isAccountant || isOfficer) && (
+                <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-green-100 hover:bg-green-700 transition-all">
+                    Record Repayment
                 </button>
             )}
-            
-            {isExecutive && (
-                <button 
-                    onClick={() => setShowReassignModal(true)}
-                    className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center border border-gray-300"
-                >
-                    <User className="h-4 w-4 mr-1" /> Reassign
+            {loan.status === 'pending' && isExecutive && (
+                <button onClick={() => setShowApproveModal(true)} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-800 transition-all">
+                    Approve & Disburse
                 </button>
             )}
-
-            {(isPending || isReassess) && isExecutive && (
-                <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                     <button 
-                        onClick={() => openDecisionModal('reassess')}
-                        className="bg-purple-50 hover:bg-purple-100 text-purple-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-purple-200 flex items-center"
-                    >
-                        <RefreshCw className="h-4 w-4 mr-1" /> Reassess
-                    </button>
-                     <button 
-                        onClick={() => openDecisionModal('reject')}
-                        className="bg-white hover:bg-red-50 text-red-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200 flex items-center"
-                    >
-                        <ThumbsDown className="h-4 w-4 mr-1" /> Reject
-                    </button>
-                    <button 
-                        onClick={() => openDecisionModal('approve')}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                    >
-                        <ThumbsUp className="h-4 w-4 mr-1" /> Approve
-                    </button>
-                </div>
-            )}
-
-            {loan.status === 'active' && (
-                <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                    {isExecutive && (
-                        <button 
-                            onClick={() => setShowRestructureModal(true)}
-                            className="bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-orange-200 flex items-center"
-                        >
-                            <RefreshCw className="h-4 w-4 mr-1" /> Restructure
-                        </button>
-                    )}
-                    {isAccountant && (
-                        <>
-                            <button 
-                                onClick={() => setShowWaiveModal(true)}
-                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-amber-200 flex items-center"
-                            >
-                                <Eraser className="h-4 w-4 mr-1" /> Waive
-                            </button>
-                            <button 
-                                onClick={() => setShowPenaltyModal(true)}
-                                className="bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md shadow-sm text-sm font-medium border border-red-200"
-                            >
-                                + Late Fee
-                            </button>
-                        </>
-                    )}
-                    {(isAccountant || isOfficer) && (
-                        <button 
-                            onClick={() => setShowRepayModal(true)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md shadow-sm text-sm font-medium"
-                        >
-                            Record Repayment
-                        </button>
-                    )}
-                </div>
-            )}
-
-            {loan.status === 'active' && (
-                <div className="flex space-x-2 border-l pl-2 border-gray-300">
-                    {isOfficer && (
-                        <button
-                            onClick={() => setShowVisitModal(true)}
-                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                        >
-                            <MapPin className="h-4 w-4 mr-1" /> Visit
-                        </button>
-                    )}
-                    
-                    {isExecutive && (
-                        <button
-                            onClick={() => { setDecisionReason(''); setShowDefaultModal(true); }}
-                            className="bg-gray-800 hover:bg-gray-900 text-white px-3 py-2 rounded-md shadow-sm text-sm font-medium flex items-center"
-                            title="Mark as Bad Debt"
-                        >
-                            <AlertOctagon className="h-4 w-4 mr-1" /> Default
-                        </button>
-                    )}
-                </div>
-            )}
+            <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
+                <Printer className="h-5 w-5 text-gray-600" />
+            </button>
          </div>
       </div>
 
-      {/* ... rest of the component (summary cards, tabs, etc.) */}
+      {/* Header Summary */}
+      <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="bg-indigo-900 p-8 text-white">
+              <div className="flex flex-col md:flex-row justify-between gap-8">
+                  <div>
+                      <div className="flex items-center gap-3 mb-2">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                              loan.status === 'active' ? 'bg-blue-500/20 border-blue-400 text-blue-100' : 
+                              loan.status === 'completed' ? 'bg-green-500/20 border-green-400 text-green-100' : 
+                              'bg-yellow-500/20 border-yellow-400 text-yellow-100'
+                          }`}>
+                              {loan.status}
+                          </span>
+                          <span className="text-indigo-300 text-xs font-medium">Loan ID: {loan.id.slice(0, 8).toUpperCase()}</span>
+                      </div>
+                      <h1 className="text-3xl font-bold">{loan.borrowers?.full_name}</h1>
+                      <p className="text-indigo-200 mt-1 flex items-center text-sm">
+                          <User className="h-4 w-4 mr-2" /> Managed by {loan.users?.full_name}
+                      </p>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
+                      <div>
+                          <p className="text-[10px] uppercase tracking-widest text-indigo-300 font-bold mb-1">Principal</p>
+                          <p className="text-xl font-bold">{formatCurrency(loan.principal_amount)}</p>
+                      </div>
+                      <div>
+                          <p className="text-[10px] uppercase tracking-widest text-indigo-300 font-bold mb-1">Outstanding</p>
+                          <p className="text-xl font-bold text-red-300">{formatCurrency(totalOwed)}</p>
+                      </div>
+                      <div className="hidden sm:block">
+                          <p className="text-[10px] uppercase tracking-widest text-indigo-300 font-bold mb-1">Repayment Progress</p>
+                          <div className="flex items-center gap-3">
+                              <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
+                                  <div className="h-full bg-green-400" style={{ width: `${progress}%` }}></div>
+                              </div>
+                              <span className="text-sm font-bold">{progress.toFixed(0)}%</span>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
 
-      {/* Repayment Modal */}
+          {/* Tabs Navigation */}
+          <div className="flex border-b border-gray-100 bg-gray-50/50 overflow-x-auto no-scrollbar">
+              {(['overview', 'client', 'documents', 'visitations', 'notes'] as DetailTab[]).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-6 py-4 text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap ${
+                        activeTab === tab ? 'border-b-2 border-indigo-600 text-indigo-600 bg-white' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                  >
+                      {tab}
+                  </button>
+              ))}
+          </div>
+
+          <div className="p-8">
+              {activeTab === 'overview' && (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+                      <div className="lg:col-span-2 space-y-8">
+                          <div>
+                              <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center">
+                                  <History className="h-4 w-4 mr-2 text-indigo-600" />
+                                  Repayment History
+                              </h3>
+                              <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+                                  <table className="min-w-full divide-y divide-gray-100">
+                                      <thead className="bg-gray-50">
+                                          <tr>
+                                              <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase">Date</th>
+                                              <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Amount</th>
+                                              <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Principal</th>
+                                              <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Interest</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-50">
+                                          {repayments.length === 0 ? (
+                                              <tr><td colSpan={4} className="px-6 py-8 text-center text-xs text-gray-400 italic">No repayments recorded yet.</td></tr>
+                                          ) : (
+                                              repayments.map(r => (
+                                                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
+                                                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">{new Date(r.payment_date).toLocaleDateString()}</td>
+                                                      <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-bold text-green-600">{formatCurrency(r.amount_paid)}</td>
+                                                      <td className="px-6 py-4 whitespace-nowrap text-right text-xs text-gray-500">{formatCurrency(r.principal_paid)}</td>
+                                                      <td className="px-6 py-4 whitespace-nowrap text-right text-xs text-gray-500">{formatCurrency(r.interest_paid)}</td>
+                                                  </tr>
+                                              ))
+                                          )}
+                                      </tbody>
+                                  </table>
+                              </div>
+                          </div>
+                      </div>
+                      <div className="space-y-6">
+                          <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Loan Terms</h4>
+                              <div className="space-y-4">
+                                  <div className="flex justify-between text-sm">
+                                      <span className="text-gray-500">Interest Rate</span>
+                                      <span className="font-bold text-gray-900">{loan.interest_rate}% / month</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                      <span className="text-gray-500">Interest Type</span>
+                                      <span className="font-bold text-gray-900 capitalize">{loan.interest_type}</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm">
+                                      <span className="text-gray-500">Term Length</span>
+                                      <span className="font-bold text-gray-900">{loan.term_months} Months</span>
+                                  </div>
+                                  <div className="flex justify-between text-sm pt-4 border-t border-gray-200">
+                                      <span className="text-gray-500">Monthly Installment</span>
+                                      <span className="font-bold text-indigo-600">{formatCurrency(loan.monthly_installment)}</span>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              )}
+
+              {activeTab === 'client' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                      <div className="space-y-8">
+                          <div>
+                              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-3 mb-6">Personal Information</h3>
+                              <div className="space-y-6">
+                                  <div className="flex items-start">
+                                      <div className="p-2 bg-indigo-50 rounded-lg mr-4"><User className="h-5 w-5 text-indigo-600" /></div>
+                                      <div>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Full Name</p>
+                                          <p className="text-sm font-bold text-gray-900">{loan.borrowers?.full_name}</p>
+                                      </div>
+                                  </div>
+                                  <div className="flex items-start">
+                                      <div className="p-2 bg-indigo-50 rounded-lg mr-4"><Phone className="h-5 w-5 text-indigo-600" /></div>
+                                      <div>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Phone Number</p>
+                                          <p className="text-sm font-bold text-gray-900">{loan.borrowers?.phone || 'N/A'}</p>
+                                      </div>
+                                  </div>
+                                  <div className="flex items-start">
+                                      <div className="p-2 bg-indigo-50 rounded-lg mr-4"><Home className="h-5 w-5 text-indigo-600" /></div>
+                                      <div>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Residence Address</p>
+                                          <p className="text-sm font-bold text-gray-900">{loan.borrowers?.address || 'N/A'}</p>
+                                      </div>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                      <div className="space-y-8">
+                          <div>
+                              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-3 mb-6">Employment & Business</h3>
+                              <div className="flex items-start">
+                                  <div className="p-2 bg-indigo-50 rounded-lg mr-4"><Building2 className="h-5 w-5 text-indigo-600" /></div>
+                                  <div>
+                                      <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Workplace / Business Address</p>
+                                      <p className="text-sm font-bold text-gray-900">{loan.borrowers?.employment || 'N/A'}</p>
+                                  </div>
+                              </div>
+                          </div>
+                          <Link to={`/borrowers/${loan.borrower_id}`} className="inline-flex items-center text-indigo-600 font-bold text-sm hover:underline">
+                              View Full Client Profile <ChevronRight className="h-4 w-4 ml-1" />
+                          </Link>
+                      </div>
+                  </div>
+              )}
+
+              {activeTab === 'documents' && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+                      {documents.length === 0 ? (
+                          <div className="col-span-full text-center py-16 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+                              <FileImage className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                              <p className="text-sm text-gray-500 font-medium">No documents uploaded for this loan.</p>
+                          </div>
+                      ) : (
+                          documents.map(doc => (
+                              <div key={doc.id} onClick={() => setViewImage(documentUrls[doc.id])} className="relative aspect-square rounded-2xl border border-gray-100 overflow-hidden cursor-pointer group hover:border-indigo-500 transition-all shadow-sm">
+                                  <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 flex items-center justify-center transition-all">
+                                      <ZoomIn className="text-white opacity-0 group-hover:opacity-100 h-8 w-8" />
+                                  </div>
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm text-[10px] text-white p-3 truncate font-bold uppercase tracking-wider">
+                                      {doc.type.replace('_', ' ')}
+                                  </div>
+                              </div>
+                          ))
+                      )}
+                  </div>
+              )}
+
+              {activeTab === 'visitations' && (
+                  <div className="space-y-6">
+                      <div className="flex justify-between items-center">
+                          <h3 className="text-sm font-bold text-gray-900">Field Visitation Records</h3>
+                          {isOfficer && (
+                              <button onClick={() => setShowVisitModal(true)} className="text-xs bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition-all">
+                                  Record New Visit
+                              </button>
+                          )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {visitations.length === 0 ? (
+                              <div className="col-span-full text-center py-16 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+                                  <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                                  <p className="text-sm text-gray-500 font-medium">No field visits recorded yet.</p>
+                              </div>
+                          ) : (
+                              visitations.map(v => (
+                                  <div key={v.id} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex gap-6">
+                                      {v.image_path && (
+                                          <div onClick={() => setViewImage(visitationUrls[v.id])} className="h-24 w-24 rounded-xl overflow-hidden shrink-0 cursor-pointer border border-gray-100">
+                                              <img src={visitationUrls[v.id]} className="h-full w-full object-cover" alt="Visit" />
+                                          </div>
+                                      )}
+                                      <div className="flex-1 min-w-0">
+                                          <div className="flex justify-between items-start mb-2">
+                                              <p className="text-xs font-bold text-gray-900">{new Date(v.visit_date).toLocaleDateString()}</p>
+                                              {v.location_lat && (
+                                                  <span className="text-[8px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase border border-green-100 flex items-center">
+                                                      <Locate className="h-2 w-2 mr-1" /> Geotagged
+                                                  </span>
+                                              )}
+                                          </div>
+                                          <p className="text-xs text-gray-600 leading-relaxed line-clamp-3 mb-3">{v.notes}</p>
+                                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">By {v.users?.full_name}</p>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                      </div>
+                  </div>
+              )}
+
+              {activeTab === 'notes' && (
+                  <div className="space-y-8">
+                      <form onSubmit={handlePostNote} className="flex gap-3">
+                          <input 
+                            type="text" 
+                            placeholder="Add a note or update..." 
+                            className="flex-1 bg-gray-50 border-none rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                            value={newNote}
+                            onChange={e => setNewNote(e.target.value)}
+                          />
+                          <button type="submit" className="bg-indigo-600 text-white p-3 rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                              <Send className="h-5 w-5" />
+                          </button>
+                      </form>
+                      <div className="space-y-4">
+                          {notes.map(note => (
+                              <div key={note.id} className={`p-5 rounded-2xl border ${note.is_system ? 'bg-gray-50 border-gray-100' : 'bg-white border-gray-100 shadow-sm'}`}>
+                                  <div className="flex justify-between items-start mb-2">
+                                      <div className="flex items-center gap-2">
+                                          {note.is_system ? <ShieldCheck className="h-3.5 w-3.5 text-indigo-600" /> : <User className="h-3.5 w-3.5 text-gray-400" />}
+                                          <span className="text-xs font-bold text-gray-900">{note.is_system ? 'System Audit' : note.users?.full_name}</span>
+                                      </div>
+                                      <span className="text-[10px] text-gray-400 font-medium">{new Date(note.created_at).toLocaleString()}</span>
+                                  </div>
+                                  <p className={`text-sm leading-relaxed ${note.is_system ? 'text-gray-500 italic' : 'text-gray-700'}`}>{note.content}</p>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              )}
+          </div>
+      </div>
+
+      {/* Modals */}
       {showRepayModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1111,33 +620,18 @@ export const LoanDetails: React.FC = () => {
                   <form onSubmit={handleRepayment} className="p-8 space-y-5">
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received (MK)</label>
-                          <input 
-                            required 
-                            type="number" 
-                            min="1" 
-                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" 
-                            placeholder="0.00" 
-                            value={repayAmount} 
-                            onChange={e => setRepayAmount(Number(e.target.value))} 
-                          />
+                          <input required type="number" min="1" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={repayAmount} onChange={e => setRepayAmount(Number(e.target.value))} />
                           <p className="mt-1 text-[10px] text-gray-400 italic">Installment due: {formatCurrency(loan.monthly_installment)}</p>
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Deposit Into Account</label>
-                          <select 
-                            required 
-                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 bg-white"
-                            value={targetAccountId}
-                            onChange={e => setTargetAccountId(e.target.value)}
-                          >
+                          <select required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 bg-white" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
                               <option value="">-- Select Account --</option>
-                              {accounts.map(acc => (
-                                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
-                              ))}
+                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>)}
                           </select>
                       </div>
                       <div className="pt-4">
-                          <button type="submit" disabled={processingAction} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 disabled:bg-gray-400 transition-all shadow-lg shadow-green-100 active:scale-[0.98]">
+                          <button type="submit" disabled={processingAction || !targetAccountId} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 disabled:bg-gray-400 transition-all shadow-lg shadow-green-100 active:scale-[0.98]">
                               {processingAction ? 'Processing...' : 'Confirm & Record Payment'}
                           </button>
                       </div>
@@ -1146,7 +640,6 @@ export const LoanDetails: React.FC = () => {
           </div>
       )}
 
-      {/* Approval Modal */}
       {showApproveModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1156,36 +649,18 @@ export const LoanDetails: React.FC = () => {
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-                          <p className="text-xs text-indigo-700 leading-relaxed">
-                              Approving this loan will mark it as <strong>Active</strong> and record an institutional disbursement of <strong>{formatCurrency(loan.principal_amount)}</strong>.
-                          </p>
+                          <p className="text-xs text-indigo-700 leading-relaxed">Approving this loan will mark it as <strong>Active</strong> and record an institutional disbursement of <strong>{formatCurrency(loan.principal_amount)}</strong>.</p>
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Disburse From Account</label>
-                          <select 
-                            required 
-                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                            value={targetAccountId}
-                            onChange={e => setTargetAccountId(e.target.value)}
-                          >
+                          <select required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
                               <option value="">-- Select Source Account --</option>
-                              {accounts.map(acc => (
-                                  <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
-                              ))}
+                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>)}
                           </select>
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Approval Note (Optional)</label>
-                          <textarea 
-                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" 
-                            placeholder="Add instructions for the officer..." 
-                            value={decisionReason} 
-                            onChange={e => setDecisionReason(e.target.value)} 
-                          />
-                      </div>
-                      <div className="flex items-center">
-                          <input type="checkbox" id="chat-approve" className="rounded text-indigo-600" checked={sendToChat} onChange={e => setSendToChat(e.target.checked)} />
-                          <label htmlFor="chat-approve" className="ml-2 text-xs text-gray-600">Notify officer via Direct Message</label>
+                          <textarea className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" placeholder="Add instructions for the officer..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
                       </div>
                       <div className="pt-4">
                           <button onClick={handleApproveLoan} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
@@ -1197,7 +672,13 @@ export const LoanDetails: React.FC = () => {
           </div>
       )}
 
-      {/* ... rest of the component modals */}
+      {/* Image Viewer */}
+      {viewImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4" onClick={() => setViewImage(null)}>
+            <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"><X className="h-6 w-6" /></button>
+            <img src={viewImage} alt="Full View" className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" />
+        </div>
+      )}
     </div>
   );
 };
