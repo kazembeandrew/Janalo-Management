@@ -8,7 +8,8 @@ import { generateReceiptPDF } from '@/utils/export';
 import { 
     ArrowLeft, User, Phone, MapPin, Building2, FileText, 
     MessageSquare, Send, Receipt, ThumbsUp, Printer, RefreshCw, 
-    ChevronRight, ZoomIn, X, Clock, CheckCircle2, AlertCircle, Landmark, Home, History
+    ChevronRight, ZoomIn, X, Clock, CheckCircle2, AlertCircle, Landmark, 
+    RotateCcw, Ban
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -29,10 +30,11 @@ export const LoanDetails: React.FC = () => {
   const [loading, setLoading] = useState(true);
   
   // UI State
-  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
   const [viewImage, setViewImage] = useState<string | null>(null);
   const [showRepayModal, setShowRepayModal] = useState(false);
   const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showReassessModal, setShowReassessModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
   
   // Form States
@@ -209,6 +211,50 @@ export const LoanDetails: React.FC = () => {
       }
   };
 
+  const handleReassessLoan = async () => {
+      if (!loan || !decisionReason.trim()) return;
+      setProcessingAction(true);
+      try {
+          await supabase.from('loans').update({ status: 'reassess' }).eq('id', loan.id);
+          await supabase.from('loan_notes').insert([{
+              loan_id: id,
+              user_id: profile?.id,
+              content: `Application sent back for reassessment. Reason: ${decisionReason}`,
+              is_system: true
+          }]);
+
+          toast.success('Sent for reassessment');
+          setShowReassessModal(false);
+          fetchData();
+      } catch (e) {
+          toast.error('Action failed');
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
+  const handleRejectLoan = async () => {
+      if (!loan || !decisionReason.trim()) return;
+      setProcessingAction(true);
+      try {
+          await supabase.from('loans').update({ status: 'rejected' }).eq('id', loan.id);
+          await supabase.from('loan_notes').insert([{
+              loan_id: id,
+              user_id: profile?.id,
+              content: `Application Rejected. Reason: ${decisionReason}`,
+              is_system: true
+          }]);
+
+          toast.success('Application rejected');
+          setShowRejectModal(false);
+          fetchData();
+      } catch (e) {
+          toast.error('Action failed');
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
   if (loading || !loan) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
 
   const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
@@ -223,16 +269,24 @@ export const LoanDetails: React.FC = () => {
          <button onClick={() => navigate('/loans')} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to Portfolio
          </button>
-         <div className="flex gap-2">
+         <div className="flex flex-wrap gap-2">
             {loan.status === 'active' && (isAccountant || isOfficer) && (
                 <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
                     Record Repayment
                 </button>
             )}
             {loan.status === 'pending' && isExecutive && (
-                <button onClick={() => setShowApproveModal(true)} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all">
-                    Approve & Disburse
-                </button>
+                <>
+                    <button onClick={() => setShowReassessModal(true)} className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-100 transition-all flex items-center">
+                        <RotateCcw className="h-4 w-4 mr-1.5" /> Reassess
+                    </button>
+                    <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
+                        <Ban className="h-4 w-4 mr-1.5" /> Reject
+                    </button>
+                    <button onClick={() => setShowApproveModal(true)} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center">
+                        <ThumbsUp className="h-4 w-4 mr-1.5" /> Approve & Disburse
+                    </button>
+                </>
             )}
             <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
                 <Printer className="h-5 w-5 text-gray-600" />
@@ -253,27 +307,29 @@ export const LoanDetails: React.FC = () => {
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
                           loan.status === 'active' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
                           loan.status === 'completed' ? 'bg-green-50 text-green-700 border-green-100' : 
-                          'bg-yellow-50 text-yellow-700 border-yellow-100'
+                          loan.status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
+                          loan.status === 'reassess' ? 'bg-purple-50 text-purple-700 border-purple-100' :
+                          'bg-red-50 text-red-700 border-red-100'
                       }`}>
                           {loan.status}
                       </span>
                   </div>
-                  <div className="p-6 grid grid-cols-2 sm:grid-cols-4 gap-6">
-                      <div>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Principal</p>
-                          <p className="text-lg font-bold text-gray-900">{formatCurrency(loan.principal_amount)}</p>
+                  <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-6 gap-x-4">
+                      <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Principal</p>
+                          <p className="text-lg font-bold text-gray-900 truncate">{formatCurrency(loan.principal_amount)}</p>
                       </div>
-                      <div>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Outstanding</p>
-                          <p className="text-lg font-bold text-red-600">{formatCurrency(totalOwed)}</p>
+                      <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Outstanding</p>
+                          <p className="text-lg font-bold text-red-600 truncate">{formatCurrency(totalOwed)}</p>
                       </div>
-                      <div>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Installment</p>
-                          <p className="text-lg font-bold text-indigo-600">{formatCurrency(loan.monthly_installment)}</p>
+                      <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Installment</p>
+                          <p className="text-lg font-bold text-indigo-600 truncate">{formatCurrency(loan.monthly_installment)}</p>
                       </div>
-                      <div>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1">Term</p>
-                          <p className="text-lg font-bold text-gray-900">{loan.term_months} Months</p>
+                      <div className="min-w-0">
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Term</p>
+                          <p className="text-lg font-bold text-gray-900 truncate">{loan.term_months} Months</p>
                       </div>
                   </div>
               </div>
@@ -425,7 +481,7 @@ export const LoanDetails: React.FC = () => {
           </div>
       </div>
 
-      {/* Modals (Repay & Approve) */}
+      {/* Modals */}
       {showRepayModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -473,9 +529,63 @@ export const LoanDetails: React.FC = () => {
                               {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>)}
                           </select>
                       </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Approval Note (Optional)</label>
+                          <textarea className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" placeholder="Add any final comments..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
+                      </div>
                       <div className="pt-4">
                           <button onClick={handleApproveLoan} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
                               {processingAction ? 'Processing...' : 'Confirm Approval'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showReassessModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-purple-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><RotateCcw className="mr-3 h-6 w-6 text-purple-200" /> Send for Reassessment</h3>
+                      <button onClick={() => setShowReassessModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-purple-200" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                          <p className="text-xs text-purple-700 leading-relaxed">This will return the application to the loan officer. Please specify what needs to be corrected or verified.</p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Instructions for Officer</label>
+                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 h-32 resize-none" placeholder="e.g. Please verify the guarantor's employment status..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
+                      </div>
+                      <div className="pt-4">
+                          <button onClick={handleReassessLoan} disabled={processingAction || !decisionReason.trim()} className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-400 transition-all shadow-lg shadow-purple-100">
+                              {processingAction ? 'Processing...' : 'Confirm Reassessment'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {showRejectModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><Ban className="mr-3 h-6 w-6 text-red-200" /> Reject Application</h3>
+                      <button onClick={() => setShowRejectModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                          <p className="text-xs text-red-700 leading-relaxed">Are you sure you want to reject this application? This action is permanent and will be logged in the audit trail.</p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Reason for Rejection</label>
+                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 h-32 resize-none" placeholder="e.g. Insufficient collateral value..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
+                      </div>
+                      <div className="pt-4">
+                          <button onClick={handleRejectLoan} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100">
+                              {processingAction ? 'Processing...' : 'Confirm Rejection'}
                           </button>
                       </div>
                   </div>
