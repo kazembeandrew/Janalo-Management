@@ -102,10 +102,10 @@ export const Accounts: React.FC = () => {
 
       try {
           const coreAccounts = [
-              { name: 'Share Capital', category: 'equity', code: 'CAPITAL' },
-              { name: 'Main Bank Account', category: 'asset', code: 'BANK' },
-              { name: 'Petty Cash', category: 'asset', code: 'CASH' },
-              { name: 'Retained Earnings', category: 'equity', code: 'EQUITY' }
+              { name: 'Share Capital', category: 'equity', code: 'CAPITAL', type: 'equity' },
+              { name: 'Main Bank Account', category: 'asset', code: 'BANK', type: 'bank' },
+              { name: 'Petty Cash', category: 'asset', code: 'CASH', type: 'cash' },
+              { name: 'Retained Earnings', category: 'equity', code: 'EQUITY', type: 'equity' }
           ];
 
           // Check which accounts are missing
@@ -130,7 +130,7 @@ export const Accounts: React.FC = () => {
                 name: acc.name,
                 account_category: acc.category,
                 account_code: acc.code,
-                type: acc.code.toLowerCase(),
+                type: acc.type,
                 balance: 0,
                 is_system_account: true
             })));
@@ -152,13 +152,18 @@ export const Accounts: React.FC = () => {
       if (!profile) return;
       setIsProcessing(true);
       try {
+          // Map code to a valid type string for the DB constraint
+          const validTypes = ['bank', 'cash', 'mobile', 'equity', 'liability', 'operational', 'capital'];
+          const suggestedType = accountForm.code.toLowerCase();
+          const finalType = validTypes.includes(suggestedType) ? suggestedType : accountForm.category;
+
           const { data: newAcc, error } = await supabase
             .from('internal_accounts')
             .insert([{
                 name: accountForm.name,
                 account_category: accountForm.category,
                 account_code: accountForm.code,
-                type: accountForm.code.toLowerCase(),
+                type: finalType,
                 account_number: accountForm.account_number,
                 bank_name: accountForm.bank_name,
                 balance: 0
@@ -539,7 +544,7 @@ export const Accounts: React.FC = () => {
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
-                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayFundAmount} onChange={e => handleFundAmountChange(e.target.value)} />
+                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={displayFundAmount} onChange={e => handleFundAmountChange(e.target.value)} />
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Description</label>
