@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
-import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download } from 'lucide-react';
+import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, AlertTriangle, TrendingUp } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -22,7 +22,6 @@ export const Loans: React.FC = () => {
   useEffect(() => {
     fetchLoans();
 
-    // Realtime subscription for the loan list
     const channel = supabase
       .channel('loans-list-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
@@ -33,7 +32,6 @@ export const Loans: React.FC = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, filter, page]);
 
   const handleFilterChange = (newFilter: string) => {
@@ -101,6 +99,13 @@ export const Loans: React.FC = () => {
     }
   };
 
+  const isOverdue = (loan: Loan) => {
+      if (loan.status !== 'active') return false;
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      return new Date(loan.updated_at) < thirtyDaysAgo;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -153,7 +158,7 @@ export const Loans: React.FC = () => {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Term</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recovery</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th scope="col" className="relative px-6 py-3">
                   <span className="sr-only">View</span>
@@ -174,37 +179,56 @@ export const Loans: React.FC = () => {
                     <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</td>
                 </tr>
               ) : (
-                loans.map((loan) => (
-                  <tr key={loan.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{loan.borrowers?.full_name}</div>
-                      <div className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {formatCurrency(loan.principal_amount)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                      {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {loan.term_months} Months ({loan.interest_type})
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(loan.status)}`}>
-                        {loan.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
-                        {loan.status === 'reassess' ? 'Reassess' : loan.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
-                        {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
-                            ? 'Review' 
-                            : 'Details'} 
-                        <ChevronRight className="ml-1 h-4 w-4" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))
+                loans.map((loan) => {
+                  const recovery = ((Number(loan.principal_amount) - Number(loan.principal_outstanding)) / Number(loan.principal_amount)) * 100;
+                  const overdue = isOverdue(loan);
+
+                  return (
+                    <tr key={loan.id} className={`hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                            <div>
+                                <div className="text-sm font-medium text-gray-900">{loan.borrowers?.full_name}</div>
+                                <div className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()}</div>
+                            </div>
+                            {overdue && (
+                                <div className="ml-3 text-red-600" title="Overdue (30d+)">
+                                    <AlertTriangle className="h-4 w-4" />
+                                </div>
+                            )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {formatCurrency(loan.principal_amount)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                        {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                            <div className="w-16 bg-gray-100 rounded-full h-1.5">
+                                <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${recovery}%` }} />
+                            </div>
+                            <span className="text-[10px] font-bold text-gray-400">{recovery.toFixed(0)}%</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(loan.status)}`}>
+                          {loan.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                          {loan.status === 'reassess' ? 'Reassess' : loan.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
+                          {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
+                              ? 'Review' 
+                              : 'Details'} 
+                          <ChevronRight className="ml-1 h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

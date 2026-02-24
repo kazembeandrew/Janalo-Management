@@ -4,12 +4,13 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
 import { formatCurrency, formatNumberWithCommas, parseFormattedNumber, calculateRepaymentDistribution } from '@/utils/finance';
-import { generateReceiptPDF } from '@/utils/export';
+import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, User, Phone, MapPin, Building2, 
     ThumbsUp, Printer, RefreshCw, 
     ChevronRight, X, Landmark, 
-    RotateCcw, Ban, Receipt
+    RotateCcw, Ban, Receipt, FileText, Download,
+    TrendingUp
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -119,7 +120,6 @@ export const LoanDetails: React.FC = () => {
   };
 
   const handleRepayAmountChange = (value: string) => {
-    // Remove non-numeric characters except decimal point
     const cleaned = value.replace(/[^0-9.]/g, '');
     setDisplayRepayAmount(cleaned);
     setRepayAmount(parseFloat(cleaned) || 0);
@@ -223,11 +223,20 @@ export const LoanDetails: React.FC = () => {
       }
   };
 
+  const handleDownloadStatement = () => {
+      if (!loan) return;
+      generateStatementPDF(loan, repayments);
+      toast.success("Statement generated");
+  };
+
   if (loading || !loan) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
 
   const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
+
+  const principalPaid = Number(loan.principal_amount) - Number(loan.principal_outstanding);
+  const recoveryPercent = (principalPaid / Number(loan.principal_amount)) * 100;
 
   return (
     <div className="space-y-6">
@@ -236,6 +245,12 @@ export const LoanDetails: React.FC = () => {
             <ArrowLeft className="h-4 w-4 mr-1" /> Back to Portfolio
          </button>
          <div className="flex flex-wrap gap-2">
+            <button 
+                onClick={handleDownloadStatement}
+                className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all flex items-center"
+            >
+                <Download className="h-4 w-4 mr-1.5 text-indigo-600" /> Statement
+            </button>
             {loan.status === 'active' && (isAccountant || isOfficer) && (
                 <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
                     Record Repayment
@@ -262,6 +277,26 @@ export const LoanDetails: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-gray-900 flex items-center">
+                          <TrendingUp className="h-4 w-4 mr-2 text-indigo-600" />
+                          Repayment Progress
+                      </h3>
+                      <span className="text-xs font-bold text-indigo-600">{recoveryPercent.toFixed(1)}% Recovered</span>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                      <div 
+                        className="bg-indigo-600 h-full transition-all duration-1000 ease-out" 
+                        style={{ width: `${recoveryPercent}%` }}
+                      />
+                  </div>
+                  <div className="flex justify-between mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                      <span>Disbursed: {formatCurrency(loan.principal_amount)}</span>
+                      <span>Outstanding: {formatCurrency(loan.principal_outstanding)}</span>
+                  </div>
+              </div>
+
               <LoanSummaryCard 
                 principalAmount={loan.principal_amount}
                 totalPayable={loan.total_payable}
@@ -383,7 +418,7 @@ export const LoanDetails: React.FC = () => {
                           <textarea className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" placeholder="Add any final comments..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
                       </div>
                       <div className="pt-4">
-                          <button onClick={() => handleStatusUpdate('active', decisionReason, targetAccountId)} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
+                          <button onClick={() => handleStatusUpdate('active', decisionReason, targetAccountId)} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200">
                               {processingAction ? 'Processing...' : 'Confirm Approval'}
                           </button>
                       </div>
