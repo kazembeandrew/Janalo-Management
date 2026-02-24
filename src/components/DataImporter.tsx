@@ -27,7 +27,7 @@ export const DataImporter: React.FC = () => {
 
   const downloadTemplate = (type: 'loans' | 'repayments') => {
     const headers = type === 'loans' 
-      ? [['Borrower Name', 'Principal Amount', 'Interest Rate (%)', 'Term (Months)', 'Disbursement Date (YYYY-MM-DD)']]
+      ? [['Reference Number', 'Borrower Name', 'Principal Amount', 'Interest Rate (%)', 'Term (Months)', 'Disbursement Date (YYYY-MM-DD)']]
       : [['Borrower Name', 'Amount Paid', 'Payment Date (YYYY-MM-DD)']];
     
     const ws = XLSX.utils.aoa_to_sheet(headers);
@@ -48,10 +48,6 @@ export const DataImporter: React.FC = () => {
     setImportResults(null);
 
     try {
-      // Archive file to Document Center
-      const path = `system/import_${Date.now()}_${file.name}`;
-      await supabase.storage.from('loan-documents').upload(path, file);
-
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const sheetName = workbook.SheetNames[0];
@@ -98,7 +94,7 @@ export const DataImporter: React.FC = () => {
       }
 
       setPreview({ headers, rows, type, matchedBorrowers });
-      toast.success(`File archived and parsed. Detected ${rows.length} records.`);
+      toast.success(`File parsed. Detected ${rows.length} records.`);
     } catch (error: any) {
       console.error('Parse error:', error);
       toast.error('Failed to parse file.');
@@ -146,19 +142,29 @@ export const DataImporter: React.FC = () => {
         }
 
         if (preview.type === 'loans') {
+          const principal = Number(row['Principal Amount']) || 0;
+          const rate = Number(row['Interest Rate (%)']) || 0;
+          const term = Number(row['Term (Months)']) || 0;
+          const interest = principal * (rate / 100) * term;
+          const total = principal + interest;
+          
+          // Generate a reference if missing
+          const ref = row['Reference Number'] || `IMP-${Date.now().toString().slice(-6)}-${success}`;
+
           const { error } = await supabase.from('loans').insert([{
+            reference_no: String(ref).toUpperCase(),
             borrower_id: borrowerId,
             officer_id: profile.id,
-            principal_amount: Number(row['Principal Amount']) || 0,
-            interest_rate: Number(row['Interest Rate (%)']) || 0,
-            term_months: Number(row['Term (Months)']) || 0,
+            principal_amount: principal,
+            interest_rate: rate,
+            term_months: term,
             disbursement_date: row['Disbursement Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
             interest_type: 'flat',
             status: 'pending',
-            principal_outstanding: Number(row['Principal Amount']) || 0,
-            interest_outstanding: (Number(row['Principal Amount']) * (Number(row['Interest Rate (%)']) / 100) * Number(row['Term (Months)'])),
-            total_payable: Number(row['Principal Amount']) + (Number(row['Principal Amount']) * (Number(row['Interest Rate (%)']) / 100) * Number(row['Term (Months)'])),
-            monthly_installment: (Number(row['Principal Amount']) + (Number(row['Principal Amount']) * (Number(row['Interest Rate (%)']) / 100) * Number(row['Term (Months)']))) / Number(row['Term (Months)'])
+            principal_outstanding: principal,
+            interest_outstanding: interest,
+            total_payable: total,
+            monthly_installment: total / (term || 1)
           }]);
 
           if (error) errors.push(`Loan error for ${borrowerName}: ${error.message}`);
