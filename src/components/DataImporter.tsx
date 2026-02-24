@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { analyzeImportData, ImportMapping } from '@/services/importService';
-import { FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2, ArrowRight, Table2 } from 'lucide-react';
+import { FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2, ArrowRight, Table2, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface ParsedRow {
@@ -23,7 +23,7 @@ export const DataImporter: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [isImporting, setIsImporting] = useState(false);
-  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[]; createdBorrowers: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,7 +98,7 @@ export const DataImporter: React.FC = () => {
 
       setPreview({
         headers,
-        rows: rows.slice(0, 10),
+        rows: rows, // Show all rows in state, but we'll only preview first 10 in UI
         detectedType: mappings.type,
         mappings,
         matchedBorrowers
@@ -119,18 +119,43 @@ export const DataImporter: React.FC = () => {
     setIsImporting(true);
     const errors: string[] = [];
     let success = 0;
+    let createdBorrowers = 0;
+    const currentMatchedBorrowers = { ...preview.matchedBorrowers };
 
     try {
-      if (preview.detectedType === 'loans') {
-        for (const row of preview.rows) {
-          const borrowerName = row[preview.mappings.borrowerName || ''];
-          const borrowerId = preview.matchedBorrowers[borrowerName];
+      for (const row of preview.rows) {
+        const borrowerName = String(row[preview.mappings.borrowerName || ''] || '').trim();
+        if (!borrowerName) {
+          errors.push(`Row ${success + errors.length + 1}: Missing borrower name`);
+          continue;
+        }
 
-          if (!borrowerId) {
-            errors.push(`Borrower "${borrowerName}" not found in system`);
+        let borrowerId = currentMatchedBorrowers[borrowerName];
+
+        // Auto-create borrower if not found
+        if (!borrowerId) {
+          const { data: newBorrower, error: createError } = await supabase
+            .from('borrowers')
+            .insert([{
+              full_name: borrowerName,
+              created_by: profile.id,
+              address: 'Imported Record',
+              phone: 'N/A'
+            }])
+            .select()
+            .single();
+
+          if (createError) {
+            errors.push(`Failed to create borrower "${borrowerName}": ${createError.message}`);
             continue;
           }
 
+          borrowerId = newBorrower.id;
+          currentMatchedBorrowers[borrowerName] = borrowerId;
+          createdBorrowers++;
+        }
+
+        if (preview.detectedType === 'loans') {
           const { error } = await supabase.rpc('create_loan_with_journal', {
             p_borrower_id: borrowerId,
             p_officer_id: profile.id,
@@ -146,17 +171,7 @@ export const DataImporter: React.FC = () => {
           } else {
             success++;
           }
-        }
-      } else if (preview.detectedType === 'repayments') {
-        for (const row of preview.rows) {
-          const borrowerName = row[preview.mappings.borrowerName || ''];
-          const borrowerId = preview.matchedBorrowers[borrowerName];
-
-          if (!borrowerId) {
-            errors.push(`Borrower "${borrowerName}" not found in system`);
-            continue;
-          }
-
+        } else if (preview.detectedType === 'repayments') {
           // Find active loan for borrower
           const { data: loans } = await supabase
             .from('loans')
@@ -185,9 +200,12 @@ export const DataImporter: React.FC = () => {
         }
       }
 
-      setImportResults({ success, errors });
+      setImportResults({ success, errors, createdBorrowers });
       if (success > 0) {
         toast.success(`Successfully imported ${success} records`);
+      }
+      if (createdBorrowers > 0) {
+        toast.success(`Created ${createdBorrowers} new borrower profiles`);
       }
       if (errors.length > 0) {
         toast.error(`${errors.length} records failed to import`);
@@ -244,7 +262,7 @@ export const DataImporter: React.FC = () => {
                   Preview: {preview.detectedType === 'loans' ? 'Loan Data' : preview.detectedType === 'repayments' ? 'Repayment Data' : 'Unknown Data'}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1">
-                  Showing first 10 rows. {preview.matchedBorrowers ? Object.keys(preview.matchedBorrowers).length : 0} borrowers matched.
+                  Showing first 10 rows. Missing borrowers will be created automatically.
                 </p>
               </div>
               <button
@@ -279,11 +297,16 @@ export const DataImporter: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {preview.rows.map((row, rowIdx) => (
+                {preview.rows.slice(0, 10).map((row, rowIdx) => (
                   <tr key={rowIdx} className="hover:bg-gray-50">
                     {preview.headers.map((header, colIdx) => (
                       <td key={colIdx} className="px-4 py-2 text-gray-900 whitespace-nowrap">
                         {String(row[header] ?? '')}
+                        {preview.mappings.borrowerName === header && !preview.matchedBorrowers[String(row[header] || '').trim()] && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                            <UserPlus className="h-2 w-2 mr-1" /> New
+                          </span>
+                        )}
                       </td>
                     ))}
                   </tr>
@@ -306,18 +329,29 @@ export const DataImporter: React.FC = () => {
               <h3 className={`font-semibold ${importResults.errors.length === 0 ? 'text-green-900' : 'text-amber-900'}`}>
                 Import Complete
               </h3>
-              <p className={`text-sm mt-1 ${importResults.errors.length === 0 ? 'text-green-700' : 'text-amber-700'}`}>
-                Successfully imported {importResults.success} records.
-                {importResults.errors.length > 0 && ` ${importResults.errors.length} records had errors.`}
-              </p>
+              <div className="mt-1 space-y-1">
+                <p className={`text-sm ${importResults.errors.length === 0 ? 'text-green-700' : 'text-amber-700'}`}>
+                  Successfully imported {importResults.success} records.
+                </p>
+                {importResults.createdBorrowers > 0 && (
+                  <p className="text-sm text-indigo-700 font-medium">
+                    Created {importResults.createdBorrowers} new borrower profiles.
+                  </p>
+                )}
+                {importResults.errors.length > 0 && (
+                  <p className="text-sm text-amber-700">
+                    {importResults.errors.length} records had errors.
+                  </p>
+                )}
+              </div>
               {importResults.errors.length > 0 && (
                 <div className="mt-3 bg-white rounded-lg p-3 max-h-40 overflow-y-auto">
                   <ul className="space-y-1 text-xs text-red-600">
-                    {importResults.errors.slice(0, 5).map((error, idx) => (
+                    {importResults.errors.slice(0, 10).map((error, idx) => (
                       <li key={idx}>• {error}</li>
                     ))}
-                    {importResults.errors.length > 5 && (
-                      <li className="text-gray-500">... and {importResults.errors.length - 5} more errors</li>
+                    {importResults.errors.length > 10 && (
+                      <li className="text-gray-500">... and {importResults.errors.length - 10} more errors</li>
                     )}
                   </ul>
                 </div>
