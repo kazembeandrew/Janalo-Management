@@ -33,18 +33,22 @@ export const SystemSettings: React.FC = () => {
   }, []);
 
   const fetchPendingReset = async () => {
-      const { data } = await supabase
-        .from('audit_logs')
-        .select('*, users!user_id(full_name)')
-        .eq('action', 'SYSTEM_RESET_REQUESTED')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (data && !data.details?.executed) {
-          setPendingRequest(data);
-      } else {
-          setPendingRequest(null);
+      try {
+          const { data } = await supabase
+            .from('audit_logs')
+            .select('*, users!user_id(full_name)')
+            .eq('action', 'SYSTEM_RESET_REQUESTED')
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          const latest = data?.[0];
+          if (latest && !latest.details?.executed && !latest.details?.cancelled) {
+              setPendingRequest(latest);
+          } else {
+              setPendingRequest(null);
+          }
+      } catch (err) {
+          console.error("Pending reset fetch error:", err);
       }
   };
 
@@ -373,7 +377,7 @@ export const SystemSettings: React.FC = () => {
                                       <span className="text-[10px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded">Awaiting 2nd Auth</span>
                                   </div>
                                   <p className="text-xs text-gray-600 mb-4">
-                                      Requested by <strong>{pendingRequest.users?.full_name}</strong>.
+                                      Requested by <strong>{pendingRequest.users?.full_name || 'Administrator'}</strong>.
                                       Must be authorized by a <strong>different</strong> admin in the Oversight Queue.
                                   </p>
                                   <button 

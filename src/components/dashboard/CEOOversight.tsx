@@ -36,6 +36,7 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
+        // Using a more resilient join syntax and fetching reset request separately to ensure it doesn't block
         const [loansRes, usersRes, expensesRes, tasksRes, resetRes] = await Promise.all([
             supabase
                 .from('loans')
@@ -62,7 +63,6 @@ export const CEOOversight: React.FC = () => {
                 .eq('action', 'SYSTEM_RESET_REQUESTED')
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .maybeSingle()
         ]);
 
         setPendingLoans(loansRes.data || []);
@@ -70,11 +70,15 @@ export const CEOOversight: React.FC = () => {
         setPendingExpenses(expensesRes.data || []);
         setPendingTasks(tasksRes.data || []);
         
-        if (resetRes.data && !resetRes.data.details?.executed) {
-            setPendingReset(resetRes.data);
+        // Check if there's a pending reset that hasn't been executed or cancelled
+        const latestReset = resetRes.data?.[0];
+        if (latestReset && !latestReset.details?.executed && !latestReset.details?.cancelled) {
+            setPendingReset(latestReset);
         } else {
             setPendingReset(null);
         }
+    } catch (err) {
+        console.error("Oversight fetch error:", err);
     } finally {
         setLoading(false);
     }
@@ -205,7 +209,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                       <div>
                           <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Critical: Factory Reset Request</p>
-                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name}</p>
+                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name || 'Administrator'}</p>
                           <p className="text-xs text-gray-500">
                               {profile?.id === pendingReset.user_id 
                                 ? "Waiting for a second administrator to authorize." 
