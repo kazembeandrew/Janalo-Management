@@ -48,7 +48,7 @@ export const DataImporter: React.FC = () => {
 
   const downloadTemplate = (type: 'loans' | 'repayments') => {
     const headers = type === 'loans' 
-      ? [['Name', 'Phones', 'Occupation', 'Loan', 'Date Disbursed', 'Term', 'Interest']]
+      ? [['Reference', 'Name', 'Phones', 'Occupation', 'Loan', 'Date Disbursed', 'Term', 'Interest']]
       : [['Borrower Name', 'Amount Paid', 'Payment Date (YYYY-MM-DD)']];
     
     const ws = XLSX.utils.aoa_to_sheet(headers);
@@ -142,6 +142,10 @@ export const DataImporter: React.FC = () => {
     const currentMatchedBorrowers = { ...preview.matchedBorrowers };
 
     try {
+      // Pre-fetch existing references to prevent duplicates in this batch
+      const { data: existingLoans } = await supabase.from('loans').select('reference_no');
+      const existingRefs = new Set(existingLoans?.map(l => String(l.reference_no || '').toUpperCase()) || []);
+
       for (const row of preview.rows) {
         const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
         const borrowerName = String(row[nameKey] || '').trim();
@@ -149,6 +153,7 @@ export const DataImporter: React.FC = () => {
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
+        // 1. Handle Borrower (Find or Create)
         if (!borrowerId) {
           const { data: existing } = await supabase
             .from('borrowers')
@@ -183,7 +188,15 @@ export const DataImporter: React.FC = () => {
           }
         }
 
+        // 2. Handle Loan or Repayment
         if (preview.type === 'loans') {
+          const ref = String(row['Reference'] || '').toUpperCase().trim();
+          
+          if (ref && existingRefs.has(ref)) {
+              errors.push(`Skipped: Loan reference "${ref}" already exists for ${borrowerName}.`);
+              continue;
+          }
+
           const principal = Number(row['Loan']) || 0;
           const rate = Number(row['Interest']) || 0;
           const term = Number(row['Term']) || 0;
@@ -195,8 +208,10 @@ export const DataImporter: React.FC = () => {
 
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
+          const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
 
           const { error: loanError } = await supabase.from('loans').insert([{
+            reference_no: finalRef,
             borrower_id: borrowerId,
             officer_id: selectedOfficerId,
             principal_amount: principal,
@@ -215,8 +230,10 @@ export const DataImporter: React.FC = () => {
               errors.push(`Loan error for ${borrowerName}: ${loanError.message}`);
           } else {
               success++;
+              if (ref) existingRefs.add(ref);
           }
         } else {
+          // Repayment Import
           const { data: activeLoans } = await supabase
             .from('loans')
             .select('*')
@@ -240,7 +257,7 @@ export const DataImporter: React.FC = () => {
           const { error: repayError } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
-              principal_paid: amount * 0.8, 
+              principal_paid: amount * 0.8, // Default split for imports if not specified
               interest_paid: amount * 0.2,
               payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
               recorded_by: selectedOfficerId
