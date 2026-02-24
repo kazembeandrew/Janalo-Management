@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { 
@@ -27,7 +27,10 @@ import {
   CalendarDays,
   Settings,
   FileSpreadsheet,
-  FolderOpen
+  FolderOpen,
+  Search,
+  ChevronRight,
+  Hash
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -35,8 +38,15 @@ import { ToastProvider } from './ToastProvider';
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, effectiveRoles, signOut } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [counts, setCounts] = useState({ inbox: 0, loans: 0 });
+  
+  // Global Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{borrowers: any[], loans: any[]}>({ borrowers: [], loans: [] });
+  const [isSearching, setIsSearching] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchCounts();
@@ -47,19 +57,52 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchCounts())
       .subscribe();
 
+    const handleClickOutside = (e: MouseEvent) => {
+        if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+            setSearchQuery('');
+        }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       supabase.removeChannel(channel);
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
   useEffect(() => {
       fetchCounts();
+      setSearchQuery(''); // Clear search on navigation
   }, [location.pathname]);
+
+  useEffect(() => {
+      const delayDebounce = setTimeout(() => {
+          if (searchQuery.trim().length > 1) {
+              performGlobalSearch();
+          } else {
+              setSearchResults({ borrowers: [], loans: [] });
+          }
+      }, 300);
+      return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
 
   const fetchCounts = async () => {
       if (!profile) return;
       const { data } = await supabase.rpc('get_notification_counts');
       if (data) setCounts(data);
+  };
+
+  const performGlobalSearch = async () => {
+      setIsSearching(true);
+      try {
+          const [bRes, lRes] = await Promise.all([
+              supabase.from('borrowers').select('id, full_name').ilike('full_name', `%${searchQuery}%`).limit(5),
+              supabase.from('loans').select('id, reference_no, borrowers(full_name)').or(`reference_no.ilike.%${searchQuery}%, borrowers.full_name.ilike.%${searchQuery}%`).limit(5)
+          ]);
+          setSearchResults({ borrowers: bRes.data || [], loans: lRes.data || [] });
+      } finally {
+          setIsSearching(false);
+      }
   };
 
   const navigation = [
@@ -151,14 +194,73 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white shadow-sm z-10">
-            <div className="flex items-center">
+        <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white shadow-sm z-40">
+            <div className="flex items-center flex-1">
                 <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700 mr-4">
                     <Menu className="h-6 w-6" />
                 </button>
-                <span className="font-bold text-gray-900 hidden md:block">Janalo Enterprises Management System</span>
-                <span className="font-bold text-gray-900 md:hidden">Janalo</span>
+                
+                {/* Global Search Bar */}
+                <div className="relative max-w-md w-full hidden sm:block" ref={searchRef}>
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <input 
+                        type="text"
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all"
+                        placeholder="Search clients or loan references..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    
+                    {searchQuery.trim().length > 1 && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="p-2 max-h-96 overflow-y-auto custom-scrollbar">
+                                {isSearching ? (
+                                    <div className="p-4 text-center text-xs text-gray-400 font-bold uppercase tracking-widest">Searching...</div>
+                                ) : searchResults.borrowers.length === 0 && searchResults.loans.length === 0 ? (
+                                    <div className="p-4 text-center text-xs text-gray-400">No matches found</div>
+                                ) : (
+                                    <>
+                                        {searchResults.borrowers.length > 0 && (
+                                            <div className="mb-2">
+                                                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Clients</p>
+                                                {searchResults.borrowers.map(b => (
+                                                    <button key={b.id} onClick={() => navigate(`/borrowers/${b.id}`)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-50 rounded-xl transition-colors group">
+                                                        <div className="flex items-center">
+                                                            <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs mr-3">{b.full_name.charAt(0)}</div>
+                                                            <span className="text-sm font-bold text-gray-700">{b.full_name}</span>
+                                                        </div>
+                                                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-400" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {searchResults.loans.length > 0 && (
+                                            <div>
+                                                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loans</p>
+                                                {searchResults.loans.map(l => (
+                                                    <button key={l.id} onClick={() => navigate(`/loans/${l.id}`)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-50 rounded-xl transition-colors group">
+                                                        <div className="flex items-center">
+                                                            <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs mr-3"><Hash className="h-4 w-4" /></div>
+                                                            <div className="text-left">
+                                                                <span className="text-sm font-bold text-gray-700 block">{l.reference_no}</span>
+                                                                <span className="text-[10px] text-gray-400 font-medium">{l.borrowers?.full_name}</span>
+                                                            </div>
+                                                        </div>
+                                                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-400" />
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
+            
             <div className="flex items-center space-x-4">
                 <NotificationBell />
                 <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">

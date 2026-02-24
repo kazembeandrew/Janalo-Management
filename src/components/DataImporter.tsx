@@ -40,7 +40,6 @@ export const DataImporter: React.FC = () => {
       
       if (data) {
           setOfficers(data);
-          // Default to current user if they are an officer
           if (profile?.role === 'loan_officer') {
               setSelectedOfficerId(profile.id);
           }
@@ -107,7 +106,6 @@ export const DataImporter: React.FC = () => {
 
       const matchedBorrowers: { [key: string]: string } = {};
       if (borrowerNames.size > 0) {
-        // Case-insensitive matching is handled by fetching all and mapping in JS for reliability
         const { data: borrowers } = await supabase
           .from('borrowers')
           .select('id, full_name');
@@ -144,6 +142,10 @@ export const DataImporter: React.FC = () => {
     const currentMatchedBorrowers = { ...preview.matchedBorrowers };
 
     try {
+      // Pre-fetch existing references to prevent duplicates in this batch
+      const { data: existingLoans } = await supabase.from('loans').select('reference_no');
+      const existingRefs = new Set(existingLoans?.map(l => l.reference_no.toUpperCase()) || []);
+
       for (const row of preview.rows) {
         const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
         const borrowerName = String(row[nameKey] || '').trim();
@@ -151,7 +153,7 @@ export const DataImporter: React.FC = () => {
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
-        // Create borrower if they don't exist (Double check case-insensitively)
+        // Create borrower if they don't exist
         if (!borrowerId) {
           const { data: existing } = await supabase
             .from('borrowers')
@@ -187,16 +189,23 @@ export const DataImporter: React.FC = () => {
         }
 
         if (preview.type === 'loans') {
+          const ref = String(row['Reference'] || '').toUpperCase().trim();
+          
+          if (ref && existingRefs.has(ref)) {
+              errors.push(`Skipped: Loan reference "${ref}" already exists in system.`);
+              continue;
+          }
+
           const principal = Number(row['Loan']) || 0;
           const rate = Number(row['Interest']) || 0;
           const term = Number(row['Term']) || 0;
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
           
-          const ref = row['Reference'] || `IMP-${Date.now().toString().slice(-6)}-${success}`;
+          const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
 
           const { error } = await supabase.from('loans').insert([{
-            reference_no: String(ref).toUpperCase().trim(),
+            reference_no: finalRef,
             borrower_id: borrowerId,
             officer_id: selectedOfficerId,
             principal_amount: principal,
@@ -211,8 +220,12 @@ export const DataImporter: React.FC = () => {
             monthly_installment: total / (term || 1)
           }]);
 
-          if (error) errors.push(`Loan error for ${borrowerName}: ${error.message}`);
-          else success++;
+          if (error) {
+              errors.push(`Loan error for ${borrowerName}: ${error.message}`);
+          } else {
+              success++;
+              if (ref) existingRefs.add(ref);
+          }
         } else {
           // Repayment Import
           const { data: activeLoans } = await supabase
