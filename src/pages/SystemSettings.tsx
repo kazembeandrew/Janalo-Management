@@ -35,7 +35,7 @@ export const SystemSettings: React.FC = () => {
   const fetchPendingReset = async () => {
       const { data } = await supabase
         .from('audit_logs')
-        .select('*, users(full_name)')
+        .select('*, users!user_id(full_name)')
         .eq('action', 'SYSTEM_RESET_REQUESTED')
         .order('created_at', { ascending: false })
         .limit(1)

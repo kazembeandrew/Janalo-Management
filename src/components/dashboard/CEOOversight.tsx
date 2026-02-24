@@ -7,7 +7,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const CEOOversight: React.FC = () => {
-  const { effectiveRoles } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const navigate = useNavigate();
   const [pendingLoans, setPendingLoans] = useState<any[]>([]);
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
@@ -58,7 +58,7 @@ export const CEOOversight: React.FC = () => {
                 .order('created_at', { ascending: false }),
             supabase
                 .from('audit_logs')
-                .select('*, users(full_name)')
+                .select('*, users!user_id(full_name)')
                 .eq('action', 'SYSTEM_RESET_REQUESTED')
                 .order('created_at', { ascending: false })
                 .limit(1)
@@ -81,10 +81,9 @@ export const CEOOversight: React.FC = () => {
   };
 
   const logAudit = async (action: string, type: string, id: string, details: any) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!profile) return;
       await supabase.from('audit_logs').insert({
-          user_id: user.id,
+          user_id: profile.id,
           action,
           entity_type: type,
           entity_id: id,
@@ -140,10 +139,9 @@ export const CEOOversight: React.FC = () => {
   };
 
   const handleExecuteReset = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !pendingReset) return;
+      if (!profile || !pendingReset) return;
 
-      if (user.id === pendingReset.user_id) {
+      if (profile.id === pendingReset.user_id) {
           toast.error("Dual Authorization Required: A different administrator must authorize this reset.");
           return;
       }
@@ -157,7 +155,7 @@ export const CEOOversight: React.FC = () => {
 
           await supabase
             .from('audit_logs')
-            .update({ details: { ...pendingReset.details, executed: true, authorized_by: user.id } })
+            .update({ details: { ...pendingReset.details, executed: true, authorized_by: profile.id } })
             .eq('id', pendingReset.id);
 
           toast.success("System reset successful.");
@@ -208,17 +206,23 @@ export const CEOOversight: React.FC = () => {
                       <div>
                           <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Critical: Factory Reset Request</p>
                           <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name}</p>
-                          <p className="text-xs text-gray-500">Requires 2nd Authorization to execute.</p>
+                          <p className="text-xs text-gray-500">
+                              {profile?.id === pendingReset.user_id 
+                                ? "Waiting for a second administrator to authorize." 
+                                : "Requires your authorization to execute."}
+                          </p>
                       </div>
                   </div>
-                  <button 
-                    onClick={handleExecuteReset}
-                    disabled={isProcessing}
-                    className="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition-all flex items-center"
-                  >
-                      {isProcessing ? <RefreshCw className="h-3 w-3 animate-spin mr-2" /> : <Check className="h-3 w-3 mr-2" />}
-                      Authorize & Execute
-                  </button>
+                  {profile?.id !== pendingReset.user_id && (
+                      <button 
+                        onClick={handleExecuteReset}
+                        disabled={isProcessing}
+                        className="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition-all flex items-center"
+                      >
+                          {isProcessing ? <RefreshCw className="h-3 w-3 animate-spin mr-2" /> : <Check className="h-3 w-3 mr-2" />}
+                          Authorize & Execute
+                      </button>
+                  )}
               </div>
           )}
 
