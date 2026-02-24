@@ -48,6 +48,10 @@ export const DataImporter: React.FC = () => {
     setImportResults(null);
 
     try {
+      // Archive file to Document Center
+      const path = `system/import_${Date.now()}_${file.name}`;
+      await supabase.storage.from('loan-documents').upload(path, file);
+
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
       const sheetName = workbook.SheetNames[0];
@@ -69,13 +73,11 @@ export const DataImporter: React.FC = () => {
         return obj;
       });
 
-      // Determine type based on fixed headers
       let type: 'loans' | 'repayments' = 'loans';
       if (headers.includes('Amount Paid') || headers.includes('Payment Date (YYYY-MM-DD)')) {
           type = 'repayments';
       }
 
-      // Match borrower names to existing records
       const borrowerNames = new Set<string>();
       rows.forEach(row => {
         if (row['Borrower Name']) {
@@ -95,17 +97,11 @@ export const DataImporter: React.FC = () => {
         });
       }
 
-      setPreview({
-        headers,
-        rows,
-        type,
-        matchedBorrowers
-      });
-
-      toast.success(`File parsed. Detected ${rows.length} ${type} records.`);
+      setPreview({ headers, rows, type, matchedBorrowers });
+      toast.success(`File archived and parsed. Detected ${rows.length} records.`);
     } catch (error: any) {
       console.error('Parse error:', error);
-      toast.error('Failed to parse file. Please use the provided templates.');
+      toast.error('Failed to parse file.');
     } finally {
       setIsProcessing(false);
     }
@@ -127,7 +123,6 @@ export const DataImporter: React.FC = () => {
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
-        // Auto-create borrower if not found
         if (!borrowerId) {
           const { data: newBorrower, error: createError } = await supabase
             .from('borrowers')
@@ -169,7 +164,6 @@ export const DataImporter: React.FC = () => {
           if (error) errors.push(`Loan error for ${borrowerName}: ${error.message}`);
           else success++;
         } else {
-          // Repayments logic (simplified for bulk import)
           const { data: activeLoans } = await supabase.from('loans').select('*').eq('borrower_id', borrowerId).eq('status', 'active').limit(1);
           
           if (!activeLoans || activeLoans.length === 0) {
@@ -183,7 +177,7 @@ export const DataImporter: React.FC = () => {
           const { error } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
-              principal_paid: amount * 0.8, // Simplified distribution for bulk import
+              principal_paid: amount * 0.8,
               interest_paid: amount * 0.2,
               payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
               recorded_by: profile.id
@@ -310,11 +304,6 @@ export const DataImporter: React.FC = () => {
               </tbody>
             </table>
           </div>
-          {preview.rows.length > 10 && (
-              <div className="p-4 bg-gray-50 text-center border-t border-gray-100">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase">And {preview.rows.length - 10} more rows...</p>
-              </div>
-          )}
         </div>
       )}
 
@@ -342,27 +331,7 @@ export const DataImporter: React.FC = () => {
                     <p className="text-xl font-bold text-red-600">{importResults.errors.length}</p>
                 </div>
               </div>
-              
-              {importResults.errors.length > 0 && (
-                <div className="mt-6 bg-white rounded-xl p-4 max-h-40 overflow-y-auto custom-scrollbar border border-amber-100">
-                  <p className="text-[10px] font-bold text-red-500 uppercase mb-2">Error Log</p>
-                  <ul className="space-y-1.5 text-xs text-gray-600">
-                    {importResults.errors.map((error, idx) => (
-                      <li key={idx} className="flex items-start">
-                          <span className="text-red-400 mr-2">•</span>
-                          {error}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              
-              <button 
-                onClick={() => setImportResults(null)}
-                className="mt-6 text-sm font-bold text-indigo-600 hover:underline"
-              >
-                  Import another file
-              </button>
+              <button onClick={() => setImportResults(null)} className="mt-6 text-sm font-bold text-indigo-600 hover:underline">Import another file</button>
             </div>
           </div>
         </div>

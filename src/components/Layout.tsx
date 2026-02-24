@@ -28,7 +28,8 @@ import {
   Target,
   CalendarDays,
   Settings,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FolderOpen
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -78,6 +79,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Statements', href: '/statements', icon: Scale, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer', 'accountant'] },
     { name: 'Data Import', href: '/import', icon: FileSpreadsheet, roles: ['admin', 'accountant'] },
+    { name: 'Document Center', href: '/documents', icon: FolderOpen, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
