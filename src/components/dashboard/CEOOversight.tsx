@@ -36,8 +36,16 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
-        // Using a more resilient join syntax and fetching reset request separately to ensure it doesn't block
-        const [loansRes, usersRes, expensesRes, tasksRes, resetRes] = await Promise.all([
+        // Fetch reset request separately without join first to ensure it's captured
+        const { data: resetData } = await supabase
+            .from('audit_logs')
+            .select('*, users!user_id(full_name)')
+            .eq('action', 'SYSTEM_RESET_REQUESTED')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        const [loansRes, usersRes, expensesRes, tasksRes] = await Promise.all([
             supabase
                 .from('loans')
                 .select('*, borrowers(full_name)')
@@ -56,13 +64,7 @@ export const CEOOversight: React.FC = () => {
                 .from('tasks')
                 .select('*, users!assigned_to(full_name)')
                 .eq('status', 'pending_approval')
-                .order('created_at', { ascending: false }),
-            supabase
-                .from('audit_logs')
-                .select('*, users!user_id(full_name)')
-                .eq('action', 'SYSTEM_RESET_REQUESTED')
                 .order('created_at', { ascending: false })
-                .limit(1)
         ]);
 
         setPendingLoans(loansRes.data || []);
@@ -70,10 +72,8 @@ export const CEOOversight: React.FC = () => {
         setPendingExpenses(expensesRes.data || []);
         setPendingTasks(tasksRes.data || []);
         
-        // Check if there's a pending reset that hasn't been executed or cancelled
-        const latestReset = resetRes.data?.[0];
-        if (latestReset && !latestReset.details?.executed && !latestReset.details?.cancelled) {
-            setPendingReset(latestReset);
+        if (resetData && !resetData.details?.executed && !resetData.details?.cancelled) {
+            setPendingReset(resetData);
         } else {
             setPendingReset(null);
         }
@@ -84,32 +84,9 @@ export const CEOOversight: React.FC = () => {
     }
   };
 
-  const logAudit = async (action: string, type: string, id: string, details: any) => {
-      if (!profile) return;
-      await supabase.from('audit_logs').insert({
-          user_id: profile.id,
-          action,
-          entity_type: type,
-          entity_id: id,
-          details
-      });
-  };
-
-  const createNotification = async (userId: string, title: string, message: string, link: string) => {
-      await supabase.from('notifications').insert({
-          user_id: userId,
-          title,
-          message,
-          link,
-          type: 'success'
-      });
-  };
-
   const handleApproveExpense = async (exp: any) => {
       const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', exp.id);
       if (!error) {
-          await logAudit('Expense Approved', 'expense', exp.id, { amount: exp.amount, description: exp.description });
-          await createNotification(exp.recorded_by, 'Expense Authorized', `CEO has authorized your expense for "${exp.description}" (${formatCurrency(exp.amount)}).`, '/expenses');
           toast.success("Expense authorized");
           fetchOversightData();
       }
@@ -118,8 +95,6 @@ export const CEOOversight: React.FC = () => {
   const handleApproveTask = async (task: any) => {
       const { error } = await supabase.from('tasks').update({ status: 'approved' }).eq('id', task.id);
       if (!error) {
-          await logAudit('Task Approved', 'task', task.id, { title: task.title });
-          await createNotification(task.assigned_to, 'New Task Assigned', `CEO has authorized the task: "${task.title}".`, '/tasks');
           toast.success("Task authorized");
           fetchOversightData();
       }
@@ -136,7 +111,6 @@ export const CEOOversight: React.FC = () => {
         .eq('id', user.id);
       
       if (!error) {
-          await logAudit('User Archive Approved', 'user', user.id, { email: user.email });
           toast.success("User archive confirmed");
           fetchOversightData();
       }

@@ -13,14 +13,27 @@ export const RecentDocuments: React.FC = () => {
   }, []);
 
   const fetchRecentDocs = async () => {
-    const { data } = await supabase
-        .from('system_documents')
-        .select('*, uploader:users!uploaded_by(full_name)')
-        .order('created_at', { ascending: false })
-        .limit(5);
-    
-    if (data) setDocs(data);
-    setLoading(false);
+    try {
+        // Simplified join syntax
+        const { data, error } = await supabase
+            .from('system_documents')
+            .select('*, users!uploaded_by(full_name)')
+            .order('created_at', { ascending: false })
+            .limit(5);
+        
+        if (!error && data) {
+            // Map the joined data to the expected uploader structure
+            const formattedDocs = data.map((d: any) => ({
+                ...d,
+                uploader: d.users
+            }));
+            setDocs(formattedDocs);
+        }
+    } catch (e) {
+        console.error("Error fetching recent docs:", e);
+    } finally {
+        setLoading(false);
+    }
   };
 
   if (loading) return null;
@@ -51,7 +64,7 @@ export const RecentDocuments: React.FC = () => {
                                       <p className="text-sm font-bold text-gray-900 truncate">{doc.name}</p>
                                       <p className="text-[10px] text-gray-500 flex items-center mt-0.5">
                                           <Clock className="h-2.5 w-2.5 mr-1" />
-                                          {new Date(doc.created_at).toLocaleDateString()} • {doc.uploader?.full_name}
+                                          {new Date(doc.created_at).toLocaleDateString()} • {doc.uploader?.full_name || 'System'}
                                       </p>
                                   </div>
                               </div>
