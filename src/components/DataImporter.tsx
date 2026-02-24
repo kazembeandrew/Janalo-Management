@@ -27,7 +27,7 @@ export const DataImporter: React.FC = () => {
 
   const downloadTemplate = (type: 'loans' | 'repayments') => {
     const headers = type === 'loans' 
-      ? [['Reference Number', 'Borrower Name', 'Principal Amount', 'Interest Rate (%)', 'Term (Months)', 'Disbursement Date (YYYY-MM-DD)']]
+      ? [['Reference', 'Name', 'Phones', 'Occupation', 'Loan', 'Date Disbursed', 'Term', 'Interest']]
       : [['Borrower Name', 'Amount Paid', 'Payment Date (YYYY-MM-DD)']];
     
     const ws = XLSX.utils.aoa_to_sheet(headers);
@@ -70,14 +70,17 @@ export const DataImporter: React.FC = () => {
       });
 
       let type: 'loans' | 'repayments' = 'loans';
+      // Detect type based on headers
       if (headers.includes('Amount Paid') || headers.includes('Payment Date (YYYY-MM-DD)')) {
           type = 'repayments';
       }
 
       const borrowerNames = new Set<string>();
+      const nameKey = type === 'loans' ? 'Name' : 'Borrower Name';
+      
       rows.forEach(row => {
-        if (row['Borrower Name']) {
-          borrowerNames.add(String(row['Borrower Name']).trim());
+        if (row[nameKey]) {
+          borrowerNames.add(String(row[nameKey]).trim());
         }
       });
 
@@ -114,19 +117,22 @@ export const DataImporter: React.FC = () => {
 
     try {
       for (const row of preview.rows) {
-        const borrowerName = String(row['Borrower Name'] || '').trim();
+        const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
+        const borrowerName = String(row[nameKey] || '').trim();
         if (!borrowerName) continue;
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
+        // Create borrower if they don't exist
         if (!borrowerId) {
           const { data: newBorrower, error: createError } = await supabase
             .from('borrowers')
             .insert([{
               full_name: borrowerName,
               created_by: profile.id,
-              address: 'Imported Record',
-              phone: 'N/A'
+              address: preview.type === 'loans' ? 'Imported Record' : 'N/A',
+              phone: preview.type === 'loans' ? String(row['Phones'] || 'N/A') : 'N/A',
+              employment: preview.type === 'loans' ? String(row['Occupation'] || 'N/A') : 'N/A'
             }])
             .select()
             .single();
@@ -142,23 +148,22 @@ export const DataImporter: React.FC = () => {
         }
 
         if (preview.type === 'loans') {
-          const principal = Number(row['Principal Amount']) || 0;
-          const rate = Number(row['Interest Rate (%)']) || 0;
-          const term = Number(row['Term (Months)']) || 0;
+          const principal = Number(row['Loan']) || 0;
+          const rate = Number(row['Interest']) || 0;
+          const term = Number(row['Term']) || 0;
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
           
-          // Generate a reference if missing
-          const ref = row['Reference Number'] || `IMP-${Date.now().toString().slice(-6)}-${success}`;
+          const ref = row['Reference'] || `IMP-${Date.now().toString().slice(-6)}-${success}`;
 
           const { error } = await supabase.from('loans').insert([{
-            reference_no: String(ref).toUpperCase(),
+            reference_no: String(ref).toUpperCase().trim(),
             borrower_id: borrowerId,
             officer_id: profile.id,
             principal_amount: principal,
             interest_rate: rate,
             term_months: term,
-            disbursement_date: row['Disbursement Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
+            disbursement_date: row['Date Disbursed'] || new Date().toISOString().split('T')[0],
             interest_type: 'flat',
             status: 'pending',
             principal_outstanding: principal,
@@ -170,7 +175,13 @@ export const DataImporter: React.FC = () => {
           if (error) errors.push(`Loan error for ${borrowerName}: ${error.message}`);
           else success++;
         } else {
-          const { data: activeLoans } = await supabase.from('loans').select('*').eq('borrower_id', borrowerId).eq('status', 'active').limit(1);
+          // Repayment Import
+          const { data: activeLoans } = await supabase
+            .from('loans')
+            .select('*')
+            .eq('borrower_id', borrowerId)
+            .eq('status', 'active')
+            .limit(1);
           
           if (!activeLoans || activeLoans.length === 0) {
               errors.push(`No active loan for ${borrowerName}`);
@@ -183,7 +194,7 @@ export const DataImporter: React.FC = () => {
           const { error } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
-              principal_paid: amount * 0.8,
+              principal_paid: amount * 0.8, // Simplified split for bulk import
               interest_paid: amount * 0.2,
               payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
               recorded_by: profile.id
@@ -295,16 +306,19 @@ export const DataImporter: React.FC = () => {
               <tbody className="divide-y divide-gray-100">
                 {preview.rows.slice(0, 10).map((row, rowIdx) => (
                   <tr key={rowIdx} className="hover:bg-gray-50 transition-colors">
-                    {preview.headers.map((header, colIdx) => (
-                      <td key={colIdx} className="px-6 py-3 text-gray-700 whitespace-nowrap">
-                        {String(row[header] ?? '')}
-                        {header === 'Borrower Name' && !preview.matchedBorrowers[String(row[header] || '').trim()] && (
-                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase">
-                            <UserPlus className="h-2 w-2 mr-1" /> New Client
-                          </span>
-                        )}
-                      </td>
-                    ))}
+                    {preview.headers.map((header, colIdx) => {
+                      const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
+                      return (
+                        <td key={colIdx} className="px-6 py-3 text-gray-700 whitespace-nowrap">
+                          {String(row[header] ?? '')}
+                          {header === nameKey && !preview.matchedBorrowers[String(row[header] || '').trim()] && (
+                            <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase">
+                              <UserPlus className="h-2 w-2 mr-1" /> New Client
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
@@ -337,6 +351,15 @@ export const DataImporter: React.FC = () => {
                     <p className="text-xl font-bold text-red-600">{importResults.errors.length}</p>
                 </div>
               </div>
+              {importResults.errors.length > 0 && (
+                  <div className="mt-4 p-4 bg-white/30 rounded-xl border border-white/20">
+                      <p className="text-xs font-bold text-gray-700 uppercase mb-2">Error Log:</p>
+                      <ul className="text-[10px] text-red-700 space-y-1 list-disc pl-4">
+                          {importResults.errors.slice(0, 5).map((err, i) => <li key={i}>{err}</li>)}
+                          {importResults.errors.length > 5 && <li>...and {importResults.errors.length - 5} more errors</li>}
+                      </ul>
+                  </div>
+              )}
               <button onClick={() => setImportResults(null)} className="mt-6 text-sm font-bold text-indigo-600 hover:underline">Import another file</button>
             </div>
           </div>
