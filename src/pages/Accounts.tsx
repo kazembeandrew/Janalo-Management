@@ -105,6 +105,7 @@ export const Accounts: React.FC = () => {
                 name: accountForm.name,
                 account_category: accountForm.category,
                 account_code: accountForm.code,
+                type: accountForm.code.toLowerCase(), // Added required 'type' column
                 account_number: accountForm.account_number,
                 bank_name: accountForm.bank_name,
                 balance: 0
