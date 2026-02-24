@@ -1,8 +1,8 @@
-import React, { useState, useRef, ChangeEvent } from 'react';
+import React, { useState, useRef, useEffect, ChangeEvent } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2, ArrowRight, Table2, UserPlus, Download } from 'lucide-react';
+import { FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2, ArrowRight, Table2, UserPlus, Download, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 interface ParsedRow {
@@ -18,12 +18,34 @@ interface ImportPreview {
 
 export const DataImporter: React.FC = () => {
   const { profile } = useAuth();
+  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
+  const [selectedOfficerId, setSelectedOfficerId] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[]; createdBorrowers: number } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+      fetchOfficers();
+  }, []);
+
+  const fetchOfficers = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('id, full_name')
+        .eq('role', 'loan_officer')
+        .eq('is_active', true);
+      
+      if (data) {
+          setOfficers(data);
+          // Default to current user if they are an officer
+          if (profile?.role === 'loan_officer') {
+              setSelectedOfficerId(profile.id);
+          }
+      }
+  };
 
   const downloadTemplate = (type: 'loans' | 'repayments') => {
     const headers = type === 'loans' 
@@ -60,7 +82,7 @@ export const DataImporter: React.FC = () => {
         return;
       }
 
-      const headers = jsonData[0] as string[];
+      const headers = (jsonData[0] as string[]).map(h => String(h).trim());
       const rows = jsonData.slice(1).map(row => {
         const obj: ParsedRow = {};
         headers.forEach((header, idx) => {
@@ -70,7 +92,6 @@ export const DataImporter: React.FC = () => {
       });
 
       let type: 'loans' | 'repayments' = 'loans';
-      // Detect type based on headers
       if (headers.includes('Amount Paid') || headers.includes('Payment Date (YYYY-MM-DD)')) {
           type = 'repayments';
       }
@@ -86,13 +107,16 @@ export const DataImporter: React.FC = () => {
 
       const matchedBorrowers: { [key: string]: string } = {};
       if (borrowerNames.size > 0) {
+        // Case-insensitive matching is handled by fetching all and mapping in JS for reliability
         const { data: borrowers } = await supabase
           .from('borrowers')
-          .select('id, full_name')
-          .in('full_name', Array.from(borrowerNames));
+          .select('id, full_name');
         
-        borrowers?.forEach(b => {
-          matchedBorrowers[b.full_name] = b.id;
+        const nameMap = new Map(borrowers?.map(b => [b.full_name.toLowerCase(), b.id]));
+        
+        borrowerNames.forEach(name => {
+            const id = nameMap.get(name.toLowerCase());
+            if (id) matchedBorrowers[name] = id;
         });
       }
 
@@ -108,6 +132,10 @@ export const DataImporter: React.FC = () => {
 
   const handleImport = async () => {
     if (!preview || !profile) return;
+    if (!selectedOfficerId) {
+        toast.error("Please select a Loan Officer to assign these records to.");
+        return;
+    }
 
     setIsImporting(true);
     const errors: string[] = [];
@@ -123,28 +151,39 @@ export const DataImporter: React.FC = () => {
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
-        // Create borrower if they don't exist
+        // Create borrower if they don't exist (Double check case-insensitively)
         if (!borrowerId) {
-          const { data: newBorrower, error: createError } = await supabase
+          const { data: existing } = await supabase
             .from('borrowers')
-            .insert([{
-              full_name: borrowerName,
-              created_by: profile.id,
-              address: preview.type === 'loans' ? 'Imported Record' : 'N/A',
-              phone: preview.type === 'loans' ? String(row['Phones'] || 'N/A') : 'N/A',
-              employment: preview.type === 'loans' ? String(row['Occupation'] || 'N/A') : 'N/A'
-            }])
-            .select()
-            .single();
+            .select('id')
+            .ilike('full_name', borrowerName)
+            .maybeSingle();
+          
+          if (existing) {
+              borrowerId = existing.id;
+              currentMatchedBorrowers[borrowerName] = borrowerId;
+          } else {
+              const { data: newBorrower, error: createError } = await supabase
+                .from('borrowers')
+                .insert([{
+                  full_name: borrowerName,
+                  created_by: selectedOfficerId,
+                  address: 'Imported Record',
+                  phone: preview.type === 'loans' ? String(row['Phones'] || 'N/A') : 'N/A',
+                  employment: preview.type === 'loans' ? String(row['Occupation'] || 'N/A') : 'N/A'
+                }])
+                .select()
+                .single();
 
-          if (createError) {
-            errors.push(`Failed to create borrower "${borrowerName}": ${createError.message}`);
-            continue;
+              if (createError) {
+                errors.push(`Failed to create borrower "${borrowerName}": ${createError.message}`);
+                continue;
+              }
+
+              borrowerId = newBorrower.id;
+              currentMatchedBorrowers[borrowerName] = borrowerId;
+              createdBorrowers++;
           }
-
-          borrowerId = newBorrower.id;
-          currentMatchedBorrowers[borrowerName] = borrowerId;
-          createdBorrowers++;
         }
 
         if (preview.type === 'loans') {
@@ -159,7 +198,7 @@ export const DataImporter: React.FC = () => {
           const { error } = await supabase.from('loans').insert([{
             reference_no: String(ref).toUpperCase().trim(),
             borrower_id: borrowerId,
-            officer_id: profile.id,
+            officer_id: selectedOfficerId,
             principal_amount: principal,
             interest_rate: rate,
             term_months: term,
@@ -194,10 +233,10 @@ export const DataImporter: React.FC = () => {
           const { error } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
-              principal_paid: amount * 0.8, // Simplified split for bulk import
+              principal_paid: amount * 0.8, 
               interest_paid: amount * 0.2,
               payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
-              recorded_by: profile.id
+              recorded_by: selectedOfficerId
           }]);
 
           if (error) errors.push(`Repayment error for ${borrowerName}: ${error.message}`);
@@ -234,6 +273,23 @@ export const DataImporter: React.FC = () => {
                   <p className="text-[10px] text-gray-500 uppercase font-bold">Excel Format</p>
               </div>
           </button>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+          <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center">
+              <UserCheck className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+              Assign Imported Data To Officer
+          </label>
+          <select 
+            className="w-full bg-gray-50 border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+            value={selectedOfficerId}
+            onChange={(e) => setSelectedOfficerId(e.target.value)}
+          >
+              <option value="">-- Select Target Loan Officer --</option>
+              {officers.map(o => (
+                  <option key={o.id} value={o.id}>{o.full_name}</option>
+              ))}
+          </select>
       </div>
 
       <div
@@ -281,7 +337,7 @@ export const DataImporter: React.FC = () => {
             </div>
             <button
               onClick={handleImport}
-              disabled={isImporting}
+              disabled={isImporting || !selectedOfficerId}
               className="inline-flex items-center px-6 py-2.5 bg-indigo-900 hover:bg-indigo-800 disabled:bg-gray-300 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200"
             >
               {isImporting ? (
@@ -308,10 +364,11 @@ export const DataImporter: React.FC = () => {
                   <tr key={rowIdx} className="hover:bg-gray-50 transition-colors">
                     {preview.headers.map((header, colIdx) => {
                       const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
+                      const isNew = header === nameKey && !preview.matchedBorrowers[String(row[header] || '').trim()];
                       return (
                         <td key={colIdx} className="px-6 py-3 text-gray-700 whitespace-nowrap">
                           {String(row[header] ?? '')}
-                          {header === nameKey && !preview.matchedBorrowers[String(row[header] || '').trim()] && (
+                          {isNew && (
                             <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase">
                               <UserPlus className="h-2 w-2 mr-1" /> New Client
                             </span>
