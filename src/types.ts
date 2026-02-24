@@ -6,6 +6,8 @@ export type LoanStatus = 'active' | 'completed' | 'defaulted' | 'pending' | 'rej
 
 export type ApprovalStatus = 'pending_approval' | 'approved' | 'rejected';
 
+export type DocumentCategory = 'financial' | 'hr' | 'operational' | 'general' | 'template';
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -19,6 +21,26 @@ export interface UserProfile {
   delegation_start?: string | null;
   delegation_end?: string | null;
   revocation_reason?: string | null;
+}
+
+export interface SystemDocument {
+    id: string;
+    name: string;
+    storage_path: string;
+    category: DocumentCategory;
+    file_type: string;
+    file_size: number;
+    uploaded_by: string;
+    created_at: string;
+    uploader?: {
+        full_name: string;
+    };
+}
+
+export interface DocumentPermission {
+    id: string;
+    document_id: string;
+    role: UserRole;
 }
 
 export interface InternalAccount {

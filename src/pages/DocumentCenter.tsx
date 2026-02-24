@@ -1,56 +1,67 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { SystemDocument, DocumentCategory, UserRole } from '@/types';
 import { 
     FolderOpen, FileText, FileSpreadsheet, Download, 
     Eye, Trash2, Search, Filter, RefreshCw, 
-    Upload, X, Clock, User, ChevronRight, File
+    Upload, X, Clock, User, ChevronRight, File,
+    ShieldCheck, Check, Lock, Globe, Shield
 } from 'lucide-react';
 import { ExcelViewer } from '@/components/ExcelViewer';
 import toast from 'react-hot-toast';
 
-interface SystemFile {
-    name: string;
-    id: string;
-    updated_at: string;
-    created_at: string;
-    metadata: {
-        size: number;
-        mimetype: string;
-    };
-}
-
 export const DocumentCenter: React.FC = () => {
-  const { profile } = useAuth();
-  const [files, setFiles] = useState<SystemFile[]>([]);
+  const { profile, effectiveRoles } = useAuth();
+  const [files, setFiles] = useState<SystemDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'all' | 'excel' | 'pdf'>('all');
+  const [activeCategory, setActiveCategory] = useState<DocumentCategory | 'all'>('all');
   
-  // Viewer State
+  // Modals
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<SystemDocument | null>(null);
   const [viewingExcel, setViewingExcel] = useState<{url: string, name: string} | null>(null);
   const [viewingPdf, setViewingPdf] = useState<{url: string, name: string} | null>(null);
   
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+      name: '',
+      category: 'general' as DocumentCategory,
+      file: null as File | null
+  });
+
+  // Permissions State
+  const [filePermissions, setFilePermissions] = useState<UserRole[]>([]);
+
+  const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
+  const isHR = effectiveRoles.includes('hr');
+  const isAccountant = effectiveRoles.includes('accountant');
+  const canUpload = isCEO || isHR || isAccountant;
+  const canManagePermissions = isCEO || isHR;
 
   useEffect(() => {
     fetchFiles();
-  }, []);
+  }, [activeCategory]);
 
   const fetchFiles = async () => {
     setLoading(true);
     try {
-        const { data, error } = await supabase.storage
-            .from('loan-documents')
-            .list('system', {
-                limit: 100,
-                offset: 0,
-                sortBy: { column: 'created_at', order: 'desc' }
-            });
+        // Fetch from database table which respects RLS
+        let query = supabase
+            .from('system_documents')
+            .select('*, uploader:users!uploaded_by(full_name)')
+            .order('created_at', { ascending: false });
         
+        if (activeCategory !== 'all') {
+            query = query.eq('category', activeCategory);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
-        setFiles(data as any || []);
+        setFiles(data || []);
     } catch (e) {
         console.error(e);
     } finally {
@@ -58,19 +69,41 @@ export const DocumentCenter: React.FC = () => {
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+  const handleFileUpload = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!uploadForm.file || !profile) return;
 
       setIsUploading(true);
       try {
+          const file = uploadForm.file;
           const path = `system/${Date.now()}_${file.name}`;
-          const { error } = await supabase.storage
+          
+          // 1. Upload to Storage
+          const { error: storageError } = await supabase.storage
             .from('loan-documents')
             .upload(path, file);
           
-          if (error) throw error;
-          toast.success("File uploaded to Document Center");
+          if (storageError) throw storageError;
+
+          // 2. Insert into Database
+          const { data: doc, error: dbError } = await supabase
+            .from('system_documents')
+            .insert({
+                name: uploadForm.name || file.name,
+                storage_path: path,
+                category: uploadForm.category,
+                file_type: file.type,
+                file_size: file.size,
+                uploaded_by: profile.id
+            })
+            .select()
+            .single();
+          
+          if (dbError) throw dbError;
+
+          toast.success("Document uploaded successfully");
+          setShowUploadModal(false);
+          setUploadForm({ name: '', category: 'general', file: null });
           fetchFiles();
       } catch (e: any) {
           toast.error("Upload failed: " + e.message);
@@ -79,45 +112,71 @@ export const DocumentCenter: React.FC = () => {
       }
   };
 
-  const handleDelete = async (fileName: string) => {
-      if (!window.confirm("Are you sure you want to delete this file?")) return;
+  const handleDelete = async (file: SystemDocument) => {
+      if (!window.confirm("Are you sure you want to delete this document?")) return;
       
       try {
-          const { error } = await supabase.storage
-            .from('loan-documents')
-            .remove([`system/${fileName}`]);
+          // Delete from storage
+          await supabase.storage.from('loan-documents').remove([file.storage_path]);
+          // Delete from DB (cascade will handle permissions)
+          await supabase.from('system_documents').delete().eq('id', file.id);
           
-          if (error) throw error;
-          toast.success("File removed");
+          toast.success("Document removed");
           fetchFiles();
       } catch (e: any) {
           toast.error("Delete failed");
       }
   };
 
-  const handleView = async (file: SystemFile) => {
+  const handleView = async (file: SystemDocument) => {
       const { data } = supabase.storage
         .from('loan-documents')
-        .getPublicUrl(`system/${file.name}`);
+        .getPublicUrl(file.storage_path);
       
-      if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.csv')) {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv')) {
           setViewingExcel({ url: data.publicUrl, name: file.name });
-      } else if (file.name.toLowerCase().endsWith('.pdf')) {
+      } else if (name.endsWith('.pdf')) {
           setViewingPdf({ url: data.publicUrl, name: file.name });
       } else {
           window.open(data.publicUrl, '_blank');
       }
   };
 
-  const filteredFiles = files.filter(f => {
-      const matchesSearch = f.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const isExcel = f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls') || f.name.toLowerCase().endsWith('.csv');
-      const isPdf = f.name.toLowerCase().endsWith('.pdf');
+  const openPermissions = async (file: SystemDocument) => {
+      setSelectedFile(file);
+      const { data } = await supabase
+        .from('document_permissions')
+        .select('role')
+        .eq('document_id', file.id);
       
-      if (activeTab === 'excel') return matchesSearch && isExcel;
-      if (activeTab === 'pdf') return matchesSearch && isPdf;
-      return matchesSearch;
-  });
+      setFilePermissions(data?.map(p => p.role as UserRole) || []);
+      setShowPermissionsModal(true);
+  };
+
+  const togglePermission = async (role: UserRole) => {
+      if (!selectedFile) return;
+
+      const hasPermission = filePermissions.includes(role);
+      if (hasPermission) {
+          await supabase
+            .from('document_permissions')
+            .delete()
+            .eq('document_id', selectedFile.id)
+            .eq('role', role);
+          setFilePermissions(prev => prev.filter(r => r !== role));
+      } else {
+          await supabase
+            .from('document_permissions')
+            .insert({ document_id: selectedFile.id, role });
+          setFilePermissions(prev => [...prev, role]);
+      }
+      toast.success(`Permissions updated for ${role.replace('_', ' ')}`);
+  };
+
+  const filteredFiles = files.filter(f => 
+      f.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const formatSize = (bytes: number) => {
       if (bytes === 0) return '0 B';
@@ -135,15 +194,16 @@ export const DocumentCenter: React.FC = () => {
                 <FolderOpen className="h-6 w-6 mr-2 text-indigo-600" />
                 Document Center
             </h1>
-            <p className="text-sm text-gray-500">Centralized storage for imports, reports, and system templates.</p>
+            <p className="text-sm text-gray-500">Secure institutional storage with role-based access control.</p>
         </div>
-        <div className="flex gap-2">
-            <label className="cursor-pointer inline-flex items-center px-4 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95">
-                {isUploading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                Upload File
-                <input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} />
-            </label>
-        </div>
+        {canUpload && (
+            <button 
+                onClick={() => setShowUploadModal(true)}
+                className="inline-flex items-center px-4 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95"
+            >
+                <Upload className="h-4 w-4 mr-2" /> Upload Document
+            </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
@@ -151,7 +211,7 @@ export const DocumentCenter: React.FC = () => {
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
                   <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Search Files</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Search Repository</label>
                       <div className="relative">
                           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                           <input 
@@ -165,40 +225,31 @@ export const DocumentCenter: React.FC = () => {
                   </div>
 
                   <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">File Type</label>
+                      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Categories</label>
                       <div className="space-y-1">
-                          <button 
-                            onClick={() => setActiveTab('all')}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
-                          >
-                              <div className="flex items-center"><File className="h-4 w-4 mr-2" /> All Files</div>
-                              <span className="text-[10px] font-bold opacity-50">{files.length}</span>
-                          </button>
-                          <button 
-                            onClick={() => setActiveTab('excel')}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'excel' ? 'bg-green-50 text-green-700' : 'text-gray-500 hover:bg-gray-50'}`}
-                          >
-                              <div className="flex items-center"><FileSpreadsheet className="h-4 w-4 mr-2" /> Spreadsheets</div>
-                              <span className="text-[10px] font-bold opacity-50">{files.filter(f => f.name.endsWith('.xlsx') || f.name.endsWith('.csv')).length}</span>
-                          </button>
-                          <button 
-                            onClick={() => setActiveTab('pdf')}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeTab === 'pdf' ? 'bg-red-50 text-red-700' : 'text-gray-500 hover:bg-gray-50'}`}
-                          >
-                              <div className="flex items-center"><FileText className="h-4 w-4 mr-2" /> PDF Documents</div>
-                              <span className="text-[10px] font-bold opacity-50">{files.filter(f => f.name.endsWith('.pdf')).length}</span>
-                          </button>
+                          {(['all', 'financial', 'hr', 'operational', 'general', 'template'] as const).map(cat => (
+                              <button 
+                                key={cat}
+                                onClick={() => setActiveCategory(cat)}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all capitalize ${activeCategory === cat ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                              >
+                                  {cat}
+                                  <span className="text-[10px] font-bold opacity-50">
+                                      {cat === 'all' ? files.length : files.filter(f => f.category === cat).length}
+                                  </span>
+                              </button>
+                          ))}
                       </div>
                   </div>
               </div>
 
               <div className="bg-indigo-900 p-6 rounded-2xl text-white shadow-xl">
                   <h3 className="font-bold mb-2 flex items-center">
-                      <Clock className="h-4 w-4 mr-2 text-indigo-300" />
-                      Auto-Archive
+                      <ShieldCheck className="h-4 w-4 mr-2 text-indigo-300" />
+                      Access Control
                   </h3>
                   <p className="text-xs text-indigo-200 leading-relaxed">
-                      Every file uploaded via the <strong>Data Importer</strong> is automatically saved here for audit and historical reference.
+                      Documents are restricted by default. HR and CEO can grant access to specific roles using the <strong>Permissions</strong> tool.
                   </p>
               </div>
           </div>
@@ -211,8 +262,8 @@ export const DocumentCenter: React.FC = () => {
                           <thead className="bg-gray-50">
                               <tr>
                                   <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">File Name</th>
-                                  <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">Size</th>
-                                  <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">Modified</th>
+                                  <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">Category</th>
+                                  <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">Uploaded By</th>
                                   <th className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider">Actions</th>
                               </tr>
                           </thead>
@@ -220,7 +271,7 @@ export const DocumentCenter: React.FC = () => {
                               {loading ? (
                                   <tr><td colSpan={4} className="px-6 py-12 text-center"><RefreshCw className="h-6 w-6 animate-spin mx-auto text-indigo-600" /></td></tr>
                               ) : filteredFiles.length === 0 ? (
-                                  <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500 italic">No files found in this folder.</td></tr>
+                                  <tr><td colSpan={4} className="px-6 py-12 text-center text-gray-500 italic">No accessible documents found.</td></tr>
                               ) : (
                                   filteredFiles.map(file => {
                                       const isExcel = file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.csv');
@@ -234,17 +285,19 @@ export const DocumentCenter: React.FC = () => {
                                                           {isExcel ? <FileSpreadsheet className="h-5 w-5" /> : isPdf ? <FileText className="h-5 w-5" /> : <File className="h-5 w-5" />}
                                                       </div>
                                                       <div className="min-w-0">
-                                                          <p className="text-sm font-bold text-gray-900 truncate max-w-xs">{file.name.split('_').slice(1).join('_') || file.name}</p>
-                                                          <p className="text-[10px] text-gray-400 font-medium uppercase">{file.metadata.mimetype}</p>
+                                                          <p className="text-sm font-bold text-gray-900 truncate max-w-xs">{file.name}</p>
+                                                          <p className="text-[10px] text-gray-400 font-medium uppercase">{formatSize(file.file_size)}</p>
                                                       </div>
                                                   </div>
                                               </td>
-                                              <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500 font-medium">
-                                                  {formatSize(file.metadata.size)}
+                                              <td className="px-6 py-4 whitespace-nowrap">
+                                                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-700 uppercase border border-gray-200">
+                                                      {file.category}
+                                                  </span>
                                               </td>
                                               <td className="px-6 py-4 whitespace-nowrap">
-                                                  <p className="text-xs text-gray-900 font-medium">{new Date(file.created_at).toLocaleDateString()}</p>
-                                                  <p className="text-[10px] text-gray-400">{new Date(file.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                                                  <p className="text-xs text-gray-900 font-medium">{file.uploader?.full_name || 'System'}</p>
+                                                  <p className="text-[10px] text-gray-400">{new Date(file.created_at).toLocaleDateString()}</p>
                                               </td>
                                               <td className="px-6 py-4 whitespace-nowrap text-right">
                                                   <div className="flex justify-end gap-2">
@@ -255,13 +308,24 @@ export const DocumentCenter: React.FC = () => {
                                                       >
                                                           <Eye className="h-4 w-4" />
                                                       </button>
-                                                      <button 
-                                                        onClick={() => handleDelete(file.name)}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
-                                                        title="Delete"
-                                                      >
-                                                          <Trash2 className="h-4 w-4" />
-                                                      </button>
+                                                      {canManagePermissions && (
+                                                          <button 
+                                                            onClick={() => openPermissions(file)}
+                                                            className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                                                            title="Manage Permissions"
+                                                          >
+                                                              <ShieldCheck className="h-4 w-4" />
+                                                          </button>
+                                                      )}
+                                                      {(isCEO || file.uploaded_by === profile?.id) && (
+                                                          <button 
+                                                            onClick={() => handleDelete(file)}
+                                                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+                                                            title="Delete"
+                                                          >
+                                                              <Trash2 className="h-4 w-4" />
+                                                          </button>
+                                                      )}
                                                   </div>
                                               </td>
                                           </tr>
@@ -275,16 +339,114 @@ export const DocumentCenter: React.FC = () => {
           </div>
       </div>
 
-      {/* Excel Viewer Modal */}
-      {viewingExcel && (
-          <ExcelViewer 
-            url={viewingExcel.url} 
-            fileName={viewingExcel.name} 
-            onClose={() => setViewingExcel(null)} 
-          />
+      {/* Upload Modal */}
+      {showUploadModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><Upload className="mr-3 h-6 w-6 text-indigo-300" /> Upload Document</h3>
+                      <button onClick={() => setShowUploadModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <form onSubmit={handleFileUpload} className="p-8 space-y-5">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Document Name</label>
+                          <input 
+                            required
+                            type="text"
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                            placeholder="e.g. Q1 Financial Report"
+                            value={uploadForm.name}
+                            onChange={e => setUploadForm({...uploadForm, name: e.target.value})}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+                          <select 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                            value={uploadForm.category}
+                            onChange={e => setUploadForm({...uploadForm, category: e.target.value as DocumentCategory})}
+                            disabled={isAccountant} // Accountant is locked to financial
+                          >
+                              {isAccountant ? (
+                                  <option value="financial">Financial</option>
+                              ) : (
+                                  <>
+                                      <option value="general">General</option>
+                                      <option value="financial">Financial</option>
+                                      <option value="hr">HR / Personnel</option>
+                                      <option value="operational">Operational</option>
+                                      <option value="template">System Template</option>
+                                  </>
+                              )}
+                          </select>
+                          {isAccountant && <p className="mt-1 text-[10px] text-indigo-600 font-bold">Accountants can only upload financial documents.</p>}
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Select File</label>
+                          <input 
+                            required
+                            type="file"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                            onChange={e => setUploadForm({...uploadForm, file: e.target.files?.[0] || null})}
+                          />
+                      </div>
+                      <div className="pt-4">
+                          <button 
+                            type="submit"
+                            disabled={isUploading || !uploadForm.file}
+                            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
+                          >
+                              {isUploading ? 'Uploading...' : 'Upload to Repository'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
       )}
 
-      {/* PDF Viewer Modal */}
+      {/* Permissions Modal */}
+      {showPermissionsModal && selectedFile && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-amber-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><ShieldCheck className="mr-3 h-6 w-6 text-amber-200" /> Access Permissions</h3>
+                      <button onClick={() => setShowPermissionsModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-amber-200" /></button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1">Managing Access For</p>
+                          <p className="text-sm font-bold text-gray-900 truncate">{selectedFile.name}</p>
+                      </div>
+
+                      <div className="space-y-3">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Grant Access To Roles:</p>
+                          {(['loan_officer', 'accountant', 'hr', 'ceo'] as UserRole[]).map(role => (
+                              <button 
+                                key={role}
+                                onClick={() => togglePermission(role)}
+                                className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all ${filePermissions.includes(role) ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-100 text-gray-500 hover:border-indigo-200'}`}
+                              >
+                                  <div className="flex items-center">
+                                      {filePermissions.includes(role) ? <Check className="h-4 w-4 mr-3" /> : <Lock className="h-4 w-4 mr-3 opacity-30" />}
+                                      <span className="text-sm font-bold capitalize">{role.replace('_', ' ')}</span>
+                                  </div>
+                                  {filePermissions.includes(role) && <span className="text-[10px] font-bold uppercase">Authorized</span>}
+                              </button>
+                          ))}
+                      </div>
+
+                      <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                          <p className="text-[10px] text-gray-500 leading-relaxed italic">
+                              Note: Administrators and the original uploader always have access to this document.
+                          </p>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Viewers */}
+      {viewingExcel && <ExcelViewer url={viewingExcel.url} fileName={viewingExcel.name} onClose={() => setViewingExcel(null)} />}
       {viewingPdf && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -293,9 +455,7 @@ export const DocumentCenter: React.FC = () => {
                           <FileText className="h-5 w-5 text-indigo-300 mr-3" />
                           <h3 className="font-bold text-white text-sm">{viewingPdf.name}</h3>
                       </div>
-                      <button onClick={() => setViewingPdf(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
-                          <X className="h-5 w-5 text-indigo-300" />
-                      </button>
+                      <button onClick={() => setViewingPdf(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <iframe src={viewingPdf.url} className="flex-1 w-full border-none" title="PDF Viewer" />
               </div>
