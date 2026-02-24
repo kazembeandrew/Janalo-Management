@@ -17,7 +17,7 @@ export const CEOOversight: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const isAdmin = effectiveRoles.includes('admin');
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
 
   useEffect(() => {
     fetchOversightData();
@@ -123,13 +123,12 @@ export const CEOOversight: React.FC = () => {
   };
 
   const handleApproveUser = async (user: any) => {
-      if (!isAdmin) return;
       const { error } = await supabase
         .from('users')
         .update({ 
             is_active: false, 
             deletion_status: 'approved',
-            revocation_reason: 'Archiving approved by Admin'
+            revocation_reason: 'Archiving approved by Executive'
         })
         .eq('id', user.id);
       
@@ -141,7 +140,6 @@ export const CEOOversight: React.FC = () => {
   };
 
   const handleExecuteReset = async () => {
-      if (!isAdmin) return;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !pendingReset) return;
 
@@ -172,10 +170,10 @@ export const CEOOversight: React.FC = () => {
   };
 
   const totalPending = pendingLoans.length + 
-                       (isAdmin ? pendingUsers.length : 0) + 
+                       pendingUsers.length + 
                        pendingExpenses.length + 
                        pendingTasks.length + 
-                       (isAdmin && pendingReset ? 1 : 0);
+                       (pendingReset ? 1 : 0);
 
   if (loading && totalPending === 0) return null;
 
@@ -200,8 +198,8 @@ export const CEOOversight: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Pending Reset (Admin Only) */}
-          {isAdmin && pendingReset && (
+          {/* Pending Reset */}
+          {pendingReset && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm flex items-center justify-between md:col-span-2 animate-pulse">
                   <div className="flex items-center">
                       <div className="p-2 bg-red-100 rounded-lg mr-4">
@@ -278,15 +276,15 @@ export const CEOOversight: React.FC = () => {
                       </div>
                   </div>
                   <div className="flex gap-2">
-                      <button onClick={() => handleApproveTask(task)} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                      <button onClick={() => handleApproveTask(task)} className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all">
                           <Check className="h-4 w-4" />
                       </button>
                   </div>
               </div>
           ))}
 
-          {/* Pending User Deletions (Admin Only) */}
-          {isAdmin && pendingUsers.map(user => (
+          {/* Pending User Deletions */}
+          {pendingUsers.map(user => (
               <div key={user.id} className="bg-white border border-red-100 rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-red-200 transition-colors">
                   <div className="flex items-center">
                       <div className="p-2 bg-red-50 rounded-lg mr-4">

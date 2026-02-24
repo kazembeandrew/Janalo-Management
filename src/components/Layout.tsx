@@ -151,10 +151,20 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="md:hidden flex items-center justify-between px-4 h-16 bg-white shadow-sm z-10">
-            <button onClick={() => setIsMobileMenuOpen(true)} className="text-gray-500 hover:text-gray-700"><Menu className="h-6 w-6" /></button>
-            <span className="font-bold text-gray-900">Janalo Enterprises</span>
-            <NotificationBell />
+        <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white shadow-sm z-10">
+            <div className="flex items-center">
+                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700 mr-4">
+                    <Menu className="h-6 w-6" />
+                </button>
+                <span className="font-bold text-gray-900 hidden md:block">Janalo Enterprises Management System</span>
+                <span className="font-bold text-gray-900 md:hidden">Janalo</span>
+            </div>
+            <div className="flex items-center space-x-4">
+                <NotificationBell />
+                <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
+                    {profile?.full_name?.charAt(0)}
+                </div>
+            </div>
         </header>
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8">{children}</main>
       </div>
