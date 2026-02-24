@@ -2,25 +2,40 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Loan } from '@/types';
+import { Loan, InternalAccount } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
-import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, AlertTriangle, TrendingUp, Hash } from 'lucide-react';
+import { 
+    Plus, Filter, ChevronRight, Clock, ChevronLeft, 
+    Download, AlertTriangle, TrendingUp, Hash, 
+    CheckSquare, Square, ThumbsUp, X, RefreshCw, Landmark
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const ITEMS_PER_PAGE = 10;
 
 export const Loans: React.FC = () => {
-  const { profile } = useAuth();
+  const { profile, effectiveRoles } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   
+  // Selection & Bulk Action State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [accounts, setAccounts] = useState<InternalAccount[]>([]);
+  const [targetAccountId, setTargetAccountId] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+
   // Pagination State
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+
   useEffect(() => {
     fetchLoans();
+    if (isExec) fetchAccounts();
 
     const channel = supabase
       .channel('loans-list-updates')
@@ -34,9 +49,15 @@ export const Loans: React.FC = () => {
     };
   }, [profile, filter, page]);
 
+  const fetchAccounts = async () => {
+      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
+      if (data) setAccounts(data);
+  };
+
   const handleFilterChange = (newFilter: string) => {
       setFilter(newFilter);
       setPage(1);
+      setSelectedIds(new Set());
   };
 
   const fetchLoans = async () => {
@@ -73,6 +94,81 @@ export const Loans: React.FC = () => {
     }
   };
 
+  const toggleSelect = (id: string) => {
+      const newSelected = new Set(selectedIds);
+      if (newSelected.has(id)) newSelected.delete(id);
+      else newSelected.add(id);
+      setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+      const pendingLoans = loans.filter(l => l.status === 'pending');
+      if (selectedIds.size === pendingLoans.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(pendingLoans.map(l => l.id)));
+      }
+  };
+
+  const handleBulkApprove = async () => {
+      if (selectedIds.size === 0 || !targetAccountId || !profile) return;
+      
+      setIsProcessing(true);
+      const ids = Array.from(selectedIds);
+      const selectedLoans = loans.filter(l => ids.includes(l.id));
+      
+      try {
+          // 1. Update Statuses
+          const { error: statusError } = await supabase
+            .from('loans')
+            .update({ status: 'active' })
+            .in('id', ids);
+          
+          if (statusError) throw statusError;
+
+          // 2. Record Disbursements & Notes
+          for (const loan of selectedLoans) {
+              // Record Fund Transaction
+              await supabase.from('fund_transactions').insert([{
+                  from_account_id: targetAccountId,
+                  amount: loan.principal_amount,
+                  type: 'disbursement',
+                  description: `Bulk disbursement to ${loan.borrowers?.full_name}`,
+                  reference_id: loan.id,
+                  recorded_by: profile.id
+              }]);
+
+              // Add System Note
+              await supabase.from('loan_notes').insert([{
+                  loan_id: loan.id,
+                  user_id: profile.id,
+                  content: `Approved via bulk action. Disbursed from ${accounts.find(a => a.id === targetAccountId)?.name}.`,
+                  is_system: true
+              }]);
+
+              // Audit Log
+              await supabase.from('audit_logs').insert({
+                  user_id: profile.id,
+                  action: 'Bulk Loan Approval',
+                  entity_type: 'loan',
+                  entity_id: loan.id,
+                  details: { amount: loan.principal_amount }
+              });
+          }
+
+          toast.success(`Successfully approved and disbursed ${ids.length} loans.`);
+          setShowApproveModal(false);
+          setSelectedIds(new Set());
+          setTargetAccountId('');
+          fetchLoans();
+      } catch (error: any) {
+          console.error(error);
+          toast.error('Bulk approval failed: ' + error.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   const handleExport = () => {
       const exportData = loans.map(l => ({
           Reference: l.reference_no,
@@ -107,8 +203,10 @@ export const Loans: React.FC = () => {
       return new Date(loan.updated_at) < thirtyDaysAgo;
   };
 
+  const pendingCount = loans.filter(l => l.status === 'pending').length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Loan Portfolio</h1>
@@ -135,27 +233,39 @@ export const Loans: React.FC = () => {
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden flex flex-col min-h-[500px]">
-        <div className="p-4 border-b border-gray-200 flex items-center space-x-4">
-            <Filter className="h-5 w-5 text-gray-400" />
-            <select
-                value={filter}
-                onChange={(e) => handleFilterChange(e.target.value)}
-                className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-            >
-                <option value="all">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="pending">Pending Approval</option>
-                <option value="reassess">Under Reassessment</option>
-                <option value="completed">Completed</option>
-                <option value="defaulted">Defaulted</option>
-                <option value="rejected">Rejected</option>
-            </select>
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+            <div className="flex items-center space-x-4 flex-1">
+                <Filter className="h-5 w-5 text-gray-400" />
+                <select
+                    value={filter}
+                    onChange={(e) => handleFilterChange(e.target.value)}
+                    className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                >
+                    <option value="all">All Statuses</option>
+                    <option value="active">Active</option>
+                    <option value="pending">Pending Approval</option>
+                    <option value="reassess">Under Reassessment</option>
+                    <option value="completed">Completed</option>
+                    <option value="defaulted">Defaulted</option>
+                    <option value="rejected">Rejected</option>
+                </select>
+            </div>
+            {isExec && filter === 'pending' && pendingCount > 0 && (
+                <button
+                    onClick={toggleSelectAll}
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center"
+                >
+                    {selectedIds.size === pendingCount ? <CheckSquare className="h-4 w-4 mr-1.5" /> : <Square className="h-4 w-4 mr-1.5" />}
+                    {selectedIds.size === pendingCount ? 'Deselect All' : 'Select All Pending'}
+                </button>
+            )}
         </div>
 
         <div className="overflow-x-auto flex-1">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                {isExec && filter === 'pending' && <th className="px-6 py-3 w-10"></th>}
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower / Ref</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
@@ -169,7 +279,7 @@ export const Loans: React.FC = () => {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
                         <div className="flex justify-center">
                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
                         </div>
@@ -177,15 +287,28 @@ export const Loans: React.FC = () => {
                 </tr>
               ) : loans.length === 0 ? (
                 <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</td>
+                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</td>
                 </tr>
               ) : (
                 loans.map((loan) => {
                   const recovery = ((Number(loan.principal_amount) - Number(loan.principal_outstanding)) / Number(loan.principal_amount)) * 100;
                   const overdue = isOverdue(loan);
+                  const isSelected = selectedIds.has(loan.id);
 
                   return (
-                    <tr key={loan.id} className={`hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''}`}>
+                    <tr key={loan.id} className={`hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                      {isExec && filter === 'pending' && (
+                          <td className="px-6 py-4">
+                              {loan.status === 'pending' && (
+                                  <button 
+                                    onClick={() => toggleSelect(loan.id)}
+                                    className={`p-1 rounded transition-all ${isSelected ? 'text-indigo-600' : 'text-gray-300 hover:text-gray-400'}`}
+                                  >
+                                      {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                                  </button>
+                              )}
+                          </td>
+                      )}
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                             <div>
@@ -289,6 +412,80 @@ export const Loans: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 animate-in slide-in-from-bottom-8 duration-300">
+              <div className="bg-indigo-900 text-white rounded-2xl shadow-2xl p-4 flex items-center justify-between border border-white/10 backdrop-blur-md">
+                  <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-indigo-300">
+                          {selectedIds.size}
+                      </div>
+                      <div>
+                          <p className="text-sm font-bold">Applications Selected</p>
+                          <p className="text-[10px] text-indigo-300 uppercase font-bold tracking-wider">Bulk Approval Ready</p>
+                      </div>
+                  </div>
+                  <div className="flex gap-2">
+                      <button 
+                        onClick={() => setShowApproveModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-900 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all"
+                      >
+                          <ThumbsUp className="h-3.5 w-3.5" /> Approve All
+                      </button>
+                      <button 
+                        onClick={() => setSelectedIds(new Set())}
+                        className="p-2 text-indigo-300 hover:text-white transition-colors"
+                      >
+                          <X className="h-5 w-5" />
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Bulk Approval Modal */}
+      {showApproveModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><ThumbsUp className="mr-3 h-6 w-6 text-indigo-300" /> Bulk Authorization</h3>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <div className="p-8 space-y-6">
+                      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                          <p className="text-xs text-indigo-700 leading-relaxed">
+                              You are authorizing <strong>{selectedIds.size}</strong> loan applications. 
+                              Total disbursement: <strong>{formatCurrency(loans.filter(l => selectedIds.has(l.id)).reduce((sum, l) => sum + Number(l.principal_amount), 0))}</strong>.
+                          </p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Disburse From Account</label>
+                          <select 
+                            required 
+                            className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                            value={targetAccountId}
+                            onChange={e => setTargetAccountId(e.target.value)}
+                          >
+                              <option value="">-- Select Source Account --</option>
+                              {accounts.map(acc => (
+                                  <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>
+                              ))}
+                          </select>
+                      </div>
+                      <div className="pt-4">
+                          <button 
+                            onClick={handleBulkApprove} 
+                            disabled={isProcessing || !targetAccountId} 
+                            className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
+                          >
+                              {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin mx-auto" /> : 'Confirm Bulk Approval'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
