@@ -8,7 +8,8 @@ import {
     Landmark, Wallet, ArrowUpRight, ArrowDownLeft, Plus, 
     Search, History, RefreshCw, Landmark as BankIcon, 
     Coins, ShieldCheck, ArrowRightLeft, Download, Filter,
-    TrendingUp, AlertCircle, X, CheckCircle2, Calculator
+    TrendingUp, AlertCircle, X, CheckCircle2, Calculator,
+    Wand2, ShieldAlert
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -94,6 +95,46 @@ export const Accounts: React.FC = () => {
       setFundForm({ ...fundForm, amount: numeric });
   };
 
+  const handleInitializeSystem = async () => {
+      if (!isAccountant || !profile) return;
+      setIsProcessing(true);
+      const loadingToast = toast.loading("Initializing chart of accounts...");
+
+      try {
+          const coreAccounts = [
+              { name: 'Share Capital', category: 'equity', code: 'CAPITAL' },
+              { name: 'Main Bank Account', category: 'asset', code: 'BANK' },
+              { name: 'Petty Cash', category: 'asset', code: 'CASH' },
+              { name: 'Retained Earnings', category: 'equity', code: 'EQUITY' }
+          ];
+
+          for (const acc of coreAccounts) {
+              const { data: existing } = await supabase
+                .from('internal_accounts')
+                .select('id')
+                .eq('account_code', acc.code)
+                .maybeSingle();
+              
+              if (!existing) {
+                  await supabase.from('internal_accounts').insert({
+                      name: acc.name,
+                      account_category: acc.category,
+                      account_code: acc.code,
+                      type: acc.code.toLowerCase(),
+                      balance: 0
+                  });
+              }
+          }
+
+          toast.success("System accounts initialized", { id: loadingToast });
+          fetchData();
+      } catch (e: any) {
+          toast.error(e.message, { id: loadingToast });
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
   const handleCreateAccount = async (e: React.FormEvent) => {
       e.preventDefault();
       if (!profile) return;
@@ -116,12 +157,11 @@ export const Accounts: React.FC = () => {
           if (error) throw error;
 
           if (Number(accountForm.initial_balance) > 0) {
-              // Find Share Capital account for the credit side
               const { data: capitalAcc } = await supabase
                 .from('internal_accounts')
                 .select('id')
                 .eq('account_code', 'CAPITAL')
-                .maybeSingle(); // Use maybeSingle to avoid 406 error if not found
+                .maybeSingle();
 
               if (capitalAcc) {
                   await postJournalEntry(
@@ -135,7 +175,7 @@ export const Accounts: React.FC = () => {
                       profile.id
                   );
               } else {
-                  toast.error("Account created, but initial balance could not be posted because no 'CAPITAL' account exists yet.");
+                  toast.error("Account created, but initial balance skipped because no 'CAPITAL' account exists.");
               }
           }
 
@@ -170,14 +210,13 @@ export const Accounts: React.FC = () => {
                   profile.id
               );
           } else {
-              // Capital Injection
               const { data: capitalAcc } = await supabase
                 .from('internal_accounts')
                 .select('id')
                 .eq('account_code', 'CAPITAL')
                 .maybeSingle();
 
-              if (!capitalAcc) throw new Error("System 'Share Capital' account (code: CAPITAL) not found. Please create it first.");
+              if (!capitalAcc) throw new Error("System 'Share Capital' account (code: CAPITAL) not found. Please use 'Quick Setup' or create it manually.");
 
               await postJournalEntry(
                   'injection',
@@ -203,6 +242,8 @@ export const Accounts: React.FC = () => {
       }
   };
 
+  const hasCapitalAccount = accounts.some(a => a.account_code === 'CAPITAL');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -212,6 +253,15 @@ export const Accounts: React.FC = () => {
         </div>
         {isAccountant && (
             <div className="flex flex-wrap gap-2">
+                {!hasCapitalAccount && (
+                    <button
+                        onClick={handleInitializeSystem}
+                        disabled={isProcessing}
+                        className="inline-flex items-center px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-amber-100"
+                    >
+                        <Wand2 className="h-4 w-4 mr-2" /> Quick Setup
+                    </button>
+                )}
                 <button
                     onClick={() => setShowFundModal(true)}
                     className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
@@ -227,6 +277,19 @@ export const Accounts: React.FC = () => {
             </div>
         )}
       </div>
+
+      {!hasCapitalAccount && isAccountant && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start shadow-sm">
+              <ShieldAlert className="h-5 w-5 text-amber-600 mr-3 shrink-0 mt-0.5" />
+              <div>
+                  <h4 className="text-sm font-bold text-amber-800">System Accounts Missing</h4>
+                  <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                      The mandatory <strong>Share Capital</strong> account is missing. You cannot record injections or initial balances without it. 
+                      Click <strong>Quick Setup</strong> above to automatically create the standard chart of accounts.
+                  </p>
+              </div>
+          </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
