@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
 import { ShieldCheck, UserX, Banknote, Check, X, AlertCircle, ArrowRight, Receipt, ClipboardList, TrendingUp, ShieldAlert, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/utils/finance';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const CEOOversight: React.FC = () => {
+  const { effectiveRoles } = useAuth();
   const navigate = useNavigate();
   const [pendingLoans, setPendingLoans] = useState<any[]>([]);
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
@@ -14,6 +16,8 @@ export const CEOOversight: React.FC = () => {
   const [pendingReset, setPendingReset] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  const isAdmin = effectiveRoles.includes('admin');
 
   useEffect(() => {
     fetchOversightData();
@@ -119,12 +123,13 @@ export const CEOOversight: React.FC = () => {
   };
 
   const handleApproveUser = async (user: any) => {
+      if (!isAdmin) return;
       const { error } = await supabase
         .from('users')
         .update({ 
             is_active: false, 
             deletion_status: 'approved',
-            revocation_reason: 'Archiving approved by CEO'
+            revocation_reason: 'Archiving approved by Admin'
         })
         .eq('id', user.id);
       
@@ -136,6 +141,7 @@ export const CEOOversight: React.FC = () => {
   };
 
   const handleExecuteReset = async () => {
+      if (!isAdmin) return;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !pendingReset) return;
 
@@ -151,7 +157,6 @@ export const CEOOversight: React.FC = () => {
           const { error } = await supabase.rpc('wipe_all_data');
           if (error) throw error;
 
-          // Mark the request as executed
           await supabase
             .from('audit_logs')
             .update({ details: { ...pendingReset.details, executed: true, authorized_by: user.id } })
@@ -166,7 +171,11 @@ export const CEOOversight: React.FC = () => {
       }
   };
 
-  const totalPending = pendingLoans.length + pendingUsers.length + pendingExpenses.length + pendingTasks.length + (pendingReset ? 1 : 0);
+  const totalPending = pendingLoans.length + 
+                       (isAdmin ? pendingUsers.length : 0) + 
+                       pendingExpenses.length + 
+                       pendingTasks.length + 
+                       (isAdmin && pendingReset ? 1 : 0);
 
   if (loading && totalPending === 0) return null;
 
@@ -183,7 +192,7 @@ export const CEOOversight: React.FC = () => {
       <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-bold text-gray-900 flex items-center">
               <ShieldCheck className="h-5 w-5 mr-2 text-indigo-600" />
-              CEO Oversight Queue
+              Oversight Queue
           </h3>
           <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded-full uppercase">
               {totalPending} Pending Actions
@@ -191,8 +200,8 @@ export const CEOOversight: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Pending Reset (Highest Priority) */}
-          {pendingReset && (
+          {/* Pending Reset (Admin Only) */}
+          {isAdmin && pendingReset && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm flex items-center justify-between md:col-span-2 animate-pulse">
                   <div className="flex items-center">
                       <div className="p-2 bg-red-100 rounded-lg mr-4">
@@ -255,7 +264,7 @@ export const CEOOversight: React.FC = () => {
               </div>
           ))}
 
-          {/* Pending Tasks / Allocations */}
+          {/* Pending Tasks */}
           {pendingTasks.map(task => (
               <div key={task.id} className="bg-white border border-blue-100 rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-blue-200 transition-colors">
                   <div className="flex items-center">
@@ -276,8 +285,8 @@ export const CEOOversight: React.FC = () => {
               </div>
           ))}
 
-          {/* Pending User Deletions */}
-          {pendingUsers.map(user => (
+          {/* Pending User Deletions (Admin Only) */}
+          {isAdmin && pendingUsers.map(user => (
               <div key={user.id} className="bg-white border border-red-100 rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-red-200 transition-colors">
                   <div className="flex items-center">
                       <div className="p-2 bg-red-50 rounded-lg mr-4">

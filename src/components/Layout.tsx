@@ -34,7 +34,7 @@ import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
 
 interface LayoutProps {
-  children: React.ReactNode;
+  children: React.Node;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -86,8 +86,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
-    { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin', 'ceo'] },
-    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin', 'ceo'] },
+    { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin'] },
+    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
   ];
 
