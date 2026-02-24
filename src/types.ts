@@ -14,6 +14,7 @@ export interface UserProfile {
   is_active: boolean;
   deletion_status?: 'pending' | 'approved' | 'none' | 'pending_approval';
   created_at: string;
+  updated_at?: string;
   delegated_role?: UserRole | null;
   delegation_start?: string | null;
   delegation_end?: string | null;
