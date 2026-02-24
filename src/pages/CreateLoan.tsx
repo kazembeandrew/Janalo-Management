@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
-import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle } from 'lucide-react';
+import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle, Hash } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
 
@@ -20,6 +20,7 @@ export const CreateLoan: React.FC = () => {
   
   // Form State
   const [formData, setFormData] = useState({
+    reference_no: '',
     borrower_id: '',
     principal_amount: 1000,
     interest_rate: 5, 
@@ -113,6 +114,7 @@ export const CreateLoan: React.FC = () => {
 
     try {
       const loanData = {
+        reference_no: formData.reference_no.toUpperCase().trim(),
         officer_id: profile.id,
         borrower_id: formData.borrower_id,
         principal_amount: formData.principal_amount,
@@ -241,28 +243,47 @@ export const CreateLoan: React.FC = () => {
            <div className="p-6 sm:p-8">
                {currentStep === 'borrower' && (
                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                       <h3 className="text-lg font-medium text-gray-900">Select Borrower</h3>
-                       <div>
-                           <label className="block text-sm font-medium text-gray-700">Client Name</label>
-                           <select 
-                               required
-                               className={`mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg ${existingLoanError ? 'border-red-500 ring-red-500' : ''}`}
-                               value={formData.borrower_id}
-                               onChange={e => handleBorrowerChange(e.target.value)}
-                           >
-                               <option value="">-- Select Client --</option>
-                               {borrowers.map(b => (
-                                   <option key={b.id} value={b.id}>{b.full_name}</option>
-                               ))}
-                           </select>
-                           {existingLoanError ? (
-                               <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
-                                   <AlertTriangle className="h-5 w-5 text-red-500 mr-2 shrink-0" />
-                                   <p className="text-sm text-red-700 font-medium">{existingLoanError}</p>
+                       <h3 className="text-lg font-medium text-gray-900">Loan Identification</h3>
+                       <div className="grid grid-cols-1 gap-6">
+                           <div>
+                               <label className="block text-sm font-medium text-gray-700">Reference Number (from Form)</label>
+                               <div className="mt-1 relative rounded-md shadow-sm">
+                                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                       <Hash className="h-4 w-4 text-gray-400" />
+                                   </div>
+                                   <input
+                                       type="text"
+                                       required
+                                       className="block w-full pl-10 border border-gray-300 rounded-lg py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm uppercase"
+                                       placeholder="e.g. JN26011097"
+                                       value={formData.reference_no}
+                                       onChange={e => setFormData({...formData, reference_no: e.target.value})}
+                                   />
                                </div>
-                           ) : (
-                               <p className="mt-2 text-xs text-gray-500">If the client is not listed, please register them in the Borrowers section first.</p>
-                           )}
+                               <p className="mt-2 text-xs text-gray-500 italic">Enter the unique reference number written on the physical application form.</p>
+                           </div>
+                           <div>
+                               <label className="block text-sm font-medium text-gray-700">Select Borrower</label>
+                               <select 
+                                   required
+                                   className={`mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg ${existingLoanError ? 'border-red-500 ring-red-500' : ''}`}
+                                   value={formData.borrower_id}
+                                   onChange={e => handleBorrowerChange(e.target.value)}
+                               >
+                                   <option value="">-- Select Client --</option>
+                                   {borrowers.map(b => (
+                                       <option key={b.id} value={b.id}>{b.full_name}</option>
+                                   ))}
+                               </select>
+                               {existingLoanError ? (
+                                   <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
+                                       <AlertTriangle className="h-5 w-5 text-red-500 mr-2 shrink-0" />
+                                       <p className="text-sm text-red-700 font-medium">{existingLoanError}</p>
+                                   </div>
+                               ) : (
+                                   <p className="mt-2 text-xs text-gray-500">If the client is not listed, please register them in the Borrowers section first.</p>
+                               )}
+                           </div>
                        </div>
                    </div>
                )}
@@ -346,6 +367,8 @@ export const CreateLoan: React.FC = () => {
                        <h3 className="text-lg font-medium text-gray-900">Final Review</h3>
                        <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-100">
                            <div className="grid grid-cols-2 gap-y-4 text-sm">
+                               <div className="text-indigo-600">Reference No</div>
+                               <div className="font-bold text-indigo-900 uppercase">{formData.reference_no}</div>
                                <div className="text-indigo-600">Borrower</div>
                                <div className="font-bold text-indigo-900">{borrowers.find(b => b.id === formData.borrower_id)?.full_name}</div>
                                <div className="text-indigo-600">Principal</div>
@@ -382,7 +405,7 @@ export const CreateLoan: React.FC = () => {
                
                <button
                    type="button"
-                   disabled={loading || (currentStep === 'borrower' && (!formData.borrower_id || !!existingLoanError))}
+                   disabled={loading || (currentStep === 'borrower' && (!formData.borrower_id || !formData.reference_no || !!existingLoanError))}
                    onClick={() => {
                        if (currentStep === 'borrower') setCurrentStep('terms');
                        else if (currentStep === 'terms') setCurrentStep('documents');

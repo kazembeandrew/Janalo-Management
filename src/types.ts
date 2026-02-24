@@ -114,6 +114,7 @@ export interface Borrower {
 
 export interface Loan {
   id: string;
+  reference_no: string;
   borrower_id: string;
   officer_id: string;
   principal_amount: number;

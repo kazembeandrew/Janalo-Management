@@ -298,6 +298,7 @@ export const LoanDetails: React.FC = () => {
               </div>
 
               <LoanSummaryCard 
+                referenceNo={loan.reference_no}
                 principalAmount={loan.principal_amount}
                 totalPayable={loan.total_payable}
                 termMonths={loan.term_months}

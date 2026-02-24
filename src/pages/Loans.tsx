@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Loan } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
-import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Plus, Filter, ChevronRight, Clock, ChevronLeft, Download, AlertTriangle, TrendingUp, Hash } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -75,6 +75,7 @@ export const Loans: React.FC = () => {
 
   const handleExport = () => {
       const exportData = loans.map(l => ({
+          Reference: l.reference_no,
           Borrower: l.borrowers?.full_name,
           Principal: l.principal_amount,
           Outstanding: l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0),
@@ -155,7 +156,7 @@ export const Loans: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Borrower / Ref</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Recovery</th>
@@ -188,8 +189,10 @@ export const Loans: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                             <div>
-                                <div className="text-sm font-medium text-gray-900">{loan.borrowers?.full_name}</div>
-                                <div className="text-xs text-gray-500">{new Date(loan.created_at).toLocaleDateString()}</div>
+                                <div className="text-sm font-bold text-gray-900">{loan.borrowers?.full_name}</div>
+                                <div className="text-[10px] text-indigo-600 font-bold flex items-center mt-0.5">
+                                    <Hash className="h-2.5 w-2.5 mr-0.5" /> {loan.reference_no || 'NO REF'}
+                                </div>
                             </div>
                             {overdue && (
                                 <div className="ml-3 text-red-600" title="Overdue (30d+)">

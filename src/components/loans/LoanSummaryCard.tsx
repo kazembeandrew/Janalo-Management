@@ -1,9 +1,10 @@
 import React from 'react';
-import { Receipt } from 'lucide-react';
+import { Receipt, Hash } from 'lucide-react';
 import { formatCurrency } from '@/utils/finance';
 import { LoanStatus } from '@/types';
 
 interface LoanSummaryCardProps {
+  referenceNo?: string;
   principalAmount: number;
   totalPayable: number;
   termMonths: number;
@@ -12,6 +13,7 @@ interface LoanSummaryCardProps {
 }
 
 export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({ 
+  referenceNo,
   principalAmount, 
   totalPayable, 
   termMonths, 
@@ -33,10 +35,15 @@ export const LoanSummaryCard: React.FC<LoanSummaryCardProps> = ({
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
       <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-        <h3 className="font-bold text-gray-900 flex items-center">
-          <Receipt className="h-4 w-4 mr-2 text-indigo-600" />
-          Loan Summary
-        </h3>
+        <div className="flex items-center">
+            <Receipt className="h-4 w-4 mr-2 text-indigo-600" />
+            <h3 className="font-bold text-gray-900">Loan Summary</h3>
+            {referenceNo && (
+                <span className="ml-3 px-2 py-0.5 bg-indigo-50 text-indigo-700 text-[10px] font-bold rounded border border-indigo-100 flex items-center">
+                    <Hash className="h-2.5 w-2.5 mr-1" /> {referenceNo}
+                </span>
+            )}
+        </div>
         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${getStatusColor(status)}`}>
           {status}
         </span>
