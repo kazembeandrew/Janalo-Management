@@ -37,10 +37,19 @@ export interface SystemDocument {
     };
 }
 
-export interface DocumentPermission {
+export interface Visitation {
     id: string;
-    document_id: string;
-    role: UserRole;
+    loan_id: string;
+    officer_id: string;
+    visit_date: string;
+    notes: string;
+    location_lat?: number;
+    location_long?: number;
+    image_path?: string;
+    created_at: string;
+    users?: {
+        full_name: string;
+    };
 }
 
 export interface InternalAccount {

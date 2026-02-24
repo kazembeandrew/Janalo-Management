@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
+import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
 import { formatCurrency, formatNumberWithCommas, parseFormattedNumber, calculateRepaymentDistribution } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
@@ -10,7 +10,7 @@ import {
     ThumbsUp, Printer, RefreshCw, 
     ChevronRight, X, Landmark, 
     RotateCcw, Ban, Receipt, FileText, Download,
-    TrendingUp
+    TrendingUp, Camera, Navigation
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -19,6 +19,9 @@ import { LoanSummaryCard } from '@/components/loans/LoanSummaryCard';
 import { LoanDocumentsList } from '@/components/loans/LoanDocumentsList';
 import { LoanRepaymentHistory } from '@/components/loans/LoanRepaymentHistory';
 import { LoanNotesSection } from '@/components/loans/LoanNotesSection';
+import { LoanVisitations } from '@/components/loans/LoanVisitations';
+import { DocumentUpload } from '@/components/DocumentUpload';
+import { MapPicker } from '@/components/MapPicker';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,8 +33,10 @@ export const LoanDetails: React.FC = () => {
   const [repayments, setRepayments] = useState<Repayment[]>([]);
   const [notes, setNotes] = useState<LoanNote[]>([]);
   const [documents, setDocuments] = useState<LoanDocument[]>([]);
+  const [visitations, setVisitations] = useState<Visitation[]>([]);
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
+  const [visitImageUrls, setVisitImageUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   
   // UI State
@@ -40,6 +45,8 @@ export const LoanDetails: React.FC = () => {
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [showReassessModal, setShowReassessModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showVisitModal, setShowVisitModal] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
   
   // Form States
@@ -48,6 +55,14 @@ export const LoanDetails: React.FC = () => {
   const [targetAccountId, setTargetAccountId] = useState('');
   const [newNote, setNewNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
+  
+  // Visit Form State
+  const [visitForm, setVisitForm] = useState({
+      notes: '',
+      lat: null as number | null,
+      lng: null as number | null,
+      imageBlob: null as Blob | null
+  });
 
   useEffect(() => {
     fetchData();
@@ -70,15 +85,17 @@ export const LoanDetails: React.FC = () => {
       if (loanError) throw loanError;
       setLoan(loanData);
 
-      const [repayRes, noteRes, docRes] = await Promise.all([
+      const [repayRes, noteRes, docRes, visitRes] = await Promise.all([
         supabase.from('repayments').select('*').eq('loan_id', id).order('payment_date', { ascending: false }),
         supabase.from('loan_notes').select('*, users(full_name)').eq('loan_id', id).order('created_at', { ascending: false }),
-        supabase.from('loan_documents').select('*').eq('loan_id', id)
+        supabase.from('loan_documents').select('*').eq('loan_id', id),
+        supabase.from('visitations').select('*, users(full_name)').eq('loan_id', id).order('visit_date', { ascending: false })
       ]);
 
       setRepayments(repayRes.data || []);
       setNotes(noteRes.data || []);
       setDocuments(docRes.data || []);
+      setVisitations(visitRes.data || []);
       
       if (docRes.data) {
           const urlMap: {[key: string]: string} = {};
@@ -87,6 +104,17 @@ export const LoanDetails: React.FC = () => {
               if (data) urlMap[doc.id] = data.publicUrl;
           }
           setDocumentUrls(urlMap);
+      }
+
+      if (visitRes.data) {
+          const vUrlMap: {[key: string]: string} = {};
+          for (const v of visitRes.data) {
+              if (v.image_path) {
+                  const { data } = supabase.storage.from('loan-documents').getPublicUrl(v.image_path);
+                  if (data) vUrlMap[v.id] = data.publicUrl;
+              }
+          }
+          setVisitImageUrls(vUrlMap);
       }
     } catch (error) {
       console.error(error);
@@ -117,6 +145,46 @@ export const LoanDetails: React.FC = () => {
         fetchData();
         toast.success('Note added');
     }
+  };
+
+  const handleLogVisit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!profile || !id) return;
+      setProcessingAction(true);
+
+      try {
+          let imagePath = null;
+          if (visitForm.imageBlob) {
+              const fileName = `visit_${Date.now()}.jpg`;
+              const path = `${id}/${fileName}`;
+              const { data, error: uploadError } = await supabase.storage
+                .from('loan-documents')
+                .upload(path, visitForm.imageBlob);
+              if (uploadError) throw uploadError;
+              imagePath = data.path;
+          }
+
+          const { error } = await supabase.from('visitations').insert({
+              loan_id: id,
+              officer_id: profile.id,
+              notes: visitForm.notes,
+              location_lat: visitForm.lat,
+              location_long: visitForm.lng,
+              image_path: imagePath,
+              visit_date: new Date().toISOString().split('T')[0]
+          });
+
+          if (error) throw error;
+
+          toast.success("Field visit logged");
+          setShowVisitModal(false);
+          setVisitForm({ notes: '', lat: null, lng: null, imageBlob: null });
+          fetchData();
+      } catch (e: any) {
+          toast.error(e.message);
+      } finally {
+          setProcessingAction(false);
+      }
   };
 
   const handleRepayAmountChange = (value: string) => {
@@ -251,6 +319,11 @@ export const LoanDetails: React.FC = () => {
             >
                 <Download className="h-4 w-4 mr-1.5 text-indigo-600" /> Statement
             </button>
+            {loan.status === 'active' && isOfficer && (
+                <button onClick={() => setShowVisitModal(true)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
+                    <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
+                </button>
+            )}
             {loan.status === 'active' && (isAccountant || isOfficer) && (
                 <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
                     Record Repayment
@@ -304,6 +377,12 @@ export const LoanDetails: React.FC = () => {
                 termMonths={loan.term_months}
                 interestType={loan.interest_type}
                 status={loan.status}
+              />
+
+              <LoanVisitations 
+                visitations={visitations}
+                imageUrls={visitImageUrls}
+                onViewImage={setViewImage}
               />
 
               <LoanDocumentsList 
@@ -367,6 +446,68 @@ export const LoanDetails: React.FC = () => {
       </div>
 
       {/* Modals */}
+      {showVisitModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><MapPin className="mr-3 h-6 w-6 text-indigo-300" /> Log Field Visit</h3>
+                      <button onClick={() => setShowVisitModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                  </div>
+                  <form onSubmit={handleLogVisit} className="p-8 space-y-5">
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Visit Notes</label>
+                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-24 resize-none" placeholder="Describe the purpose and outcome of the visit..." value={visitForm.notes} onChange={e => setVisitForm({...visitForm, notes: e.target.value})} />
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Location Tag</label>
+                              <button 
+                                type="button" 
+                                onClick={() => setShowMapPicker(true)}
+                                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border transition-all ${visitForm.lat ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}
+                              >
+                                  {visitForm.lat ? <><Check className="h-3.5 w-3.5" /> Tagged</> : <><Navigation className="h-3.5 w-3.5" /> Pin GPS</>}
+                              </button>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Site Photo</label>
+                              <div className="relative">
+                                  <input 
+                                    type="file" 
+                                    accept="image/*" 
+                                    capture="environment"
+                                    className="hidden" 
+                                    id="visit-photo"
+                                    onChange={e => setVisitForm({...visitForm, imageBlob: e.target.files?.[0] || null})}
+                                  />
+                                  <label 
+                                    htmlFor="visit-photo"
+                                    className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border cursor-pointer transition-all ${visitForm.imageBlob ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}
+                                  >
+                                      {visitForm.imageBlob ? <><Check className="h-3.5 w-3.5" /> Captured</> : <><Camera className="h-3.5 w-3.5" /> Take Photo</>}
+                                  </label>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div className="pt-4">
+                          <button type="submit" disabled={processingAction} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">
+                              {processingAction ? 'Saving...' : 'Save Visit Log'}
+                          </button>
+                      </div>
+                  </form>
+              </div>
+          </div>
+      )}
+
+      {showMapPicker && (
+          <MapPicker 
+            onSelect={(lat, lng) => { setVisitForm({...visitForm, lat, lng}); setShowMapPicker(false); }}
+            onClose={() => setShowMapPicker(false)}
+          />
+      )}
+
       {showRepayModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
