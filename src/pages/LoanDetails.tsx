@@ -10,7 +10,7 @@ import {
     ThumbsUp, Printer, RefreshCw, 
     ChevronRight, X, Landmark, 
     RotateCcw, Ban, Receipt, FileText, Download,
-    TrendingUp, Camera, Navigation
+    TrendingUp, Camera, Navigation, Check
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
