@@ -26,7 +26,9 @@ import {
   Landmark,
   Scale,
   Target,
-  CalendarDays
+  CalendarDays,
+  Settings,
+  FileSpreadsheet
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
@@ -70,11 +72,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
     { name: 'Repayments', href: '/repayments', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Global Schedule', href: '/schedule', icon: CalendarDays, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Repayment Schedule', href: '/schedule', icon: CalendarDays, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Accounts', href: '/accounts', icon: Landmark, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Budgets', href: '/budgets', icon: Target, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Statements', href: '/statements', icon: Scale, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer', 'accountant'] },
+    { name: 'Data Import', href: '/import', icon: FileSpreadsheet, roles: ['admin', 'accountant'] },
     { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
@@ -84,6 +87,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin', 'ceo'] },
+    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin', 'ceo'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
   ];
 

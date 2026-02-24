@@ -37,7 +37,11 @@ export const FinancialStatements: React.FC = () => {
   const fetchStatements = async () => {
     setLoading(true);
     try {
-        // 1. Check if period is closed
+        const [year, monthNum] = period.split('-').map(Number);
+        const startStr = `${period}-01`;
+        const nextMonthDate = new Date(year, monthNum, 1);
+        const endStr = nextMonthDate.toISOString().substring(0, 10);
+
         const { data: closedData } = await supabase
             .from('closed_periods')
             .select('*')
@@ -46,23 +50,22 @@ export const FinancialStatements: React.FC = () => {
         
         setIsClosed(!!closedData);
 
-        // 2. Fetch Income (Interest + Penalties)
+        // 1. INCOME STATEMENT DATA
         const { data: repayments } = await supabase
             .from('repayments')
             .select('interest_paid, penalty_paid')
-            .gte('payment_date', `${period}-01`)
-            .lte('payment_date', `${period}-31`);
+            .gte('payment_date', startStr)
+            .lt('payment_date', endStr);
         
         const interestIncome = repayments?.reduce((sum, r) => sum + Number(r.interest_paid), 0) || 0;
         const penaltyIncome = repayments?.reduce((sum, r) => sum + Number(r.penalty_paid), 0) || 0;
 
-        // 3. Fetch Expenses
         const { data: expenses } = await supabase
             .from('expenses')
             .select('amount, category')
             .eq('status', 'approved')
-            .gte('date', `${period}-01`)
-            .lte('date', `${period}-31`);
+            .gte('date', startStr)
+            .lt('date', endStr);
         
         const expenseCategories = expenses?.reduce((acc: any, e) => {
             acc[e.category] = (acc[e.category] || 0) + Number(e.amount);
@@ -70,6 +73,7 @@ export const FinancialStatements: React.FC = () => {
         }, {}) || {};
 
         const totalExpenses = Object.values(expenseCategories).reduce((sum: any, a: any) => sum + a, 0) as number;
+        const netProfit = (interestIncome + penaltyIncome) - totalExpenses;
 
         setPnlData({
             interestIncome,
@@ -77,10 +81,10 @@ export const FinancialStatements: React.FC = () => {
             totalRevenue: interestIncome + penaltyIncome,
             expenseCategories,
             totalExpenses,
-            netProfit: (interestIncome + penaltyIncome) - totalExpenses
+            netProfit
         });
 
-        // 4. Fetch Balance Sheet Data (Current State)
+        // 2. BALANCE SHEET DATA
         const { data: accounts } = await supabase.from('internal_accounts').select('*');
         const { data: loans } = await supabase.from('loans').select('principal_outstanding').eq('status', 'active');
         
@@ -99,7 +103,9 @@ export const FinancialStatements: React.FC = () => {
                 total: liabilities
             },
             equity: {
-                total: equity
+                baseEquity: equity,
+                currentEarnings: isClosed ? 0 : netProfit, // If not closed, show profit/loss as part of equity
+                total: equity + (isClosed ? 0 : netProfit)
             }
         });
 
@@ -108,12 +114,36 @@ export const FinancialStatements: React.FC = () => {
     }
   };
 
+  const handleDownload = () => {
+      if (!pnlData || !balanceSheet) return;
+
+      const headers = ['Category', 'Amount (MK)'];
+      const rows = [
+          ['--- INCOME STATEMENT ---', ''],
+          ['Interest Income', pnlData.interestIncome.toFixed(2)],
+          ['Penalty Income', pnlData.penaltyIncome.toFixed(2)],
+          ['Total Revenue', pnlData.totalRevenue.toFixed(2)],
+          ['Total Expenses', pnlData.totalExpenses.toFixed(2)],
+          ['Net Profit', pnlData.netProfit.toFixed(2)],
+          ['', ''],
+          ['--- BALANCE SHEET ---', ''],
+          ['Cash & Bank', balanceSheet.assets.cash.toFixed(2)],
+          ['Loan Receivables', balanceSheet.assets.receivables.toFixed(2)],
+          ['Total Assets', balanceSheet.assets.total.toFixed(2)],
+          ['Total Liabilities', balanceSheet.liabilities.total.toFixed(2)],
+          ['Owner Equity', balanceSheet.equity.baseEquity.toFixed(2)],
+          ['Current Period Earnings', balanceSheet.equity.currentEarnings.toFixed(2)],
+          ['Total Liabilities & Equity', (balanceSheet.liabilities.total + balanceSheet.equity.total).toFixed(2)]
+      ];
+
+      generateTablePDF(`Financial Statement - ${period}`, headers, rows, `Financial_Statement_${period}`);
+  };
+
   const handleCloseBooks = async () => {
       if (!isCEO || !targetEquityId || !pnlData || !balanceSheet) return;
       setIsProcessing(true);
 
       try {
-          // 1. Record the closed period
           const { error: closeError } = await supabase.from('closed_periods').insert({
               month: period,
               closed_by: profile?.id,
@@ -124,7 +154,6 @@ export const FinancialStatements: React.FC = () => {
 
           if (closeError) throw closeError;
 
-          // 2. Transfer profit to Equity (Retained Earnings)
           if (pnlData.netProfit !== 0) {
               const { error: txError } = await supabase.from('fund_transactions').insert({
                   to_account_id: targetEquityId,
@@ -137,7 +166,6 @@ export const FinancialStatements: React.FC = () => {
               if (txError) throw txError;
           }
 
-          // 3. Log Audit
           await supabase.from('audit_logs').insert({
               user_id: profile?.id,
               action: 'Books Closed',
@@ -157,6 +185,11 @@ export const FinancialStatements: React.FC = () => {
   };
 
   if (loading) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
+
+  // Real Solvency Check: Assets = Liabilities + Equity
+  const totalAssets = balanceSheet.assets.total;
+  const totalLiabilitiesAndEquity = balanceSheet.liabilities.total + balanceSheet.equity.total;
+  const isSolvent = Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -189,6 +222,14 @@ export const FinancialStatements: React.FC = () => {
                 </button>
             )}
 
+            <button 
+                onClick={handleDownload}
+                className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all"
+                title="Download PDF"
+            >
+                <Download className="h-5 w-5 text-gray-600" />
+            </button>
+
             <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
                 <Printer className="h-5 w-5 text-gray-600" />
             </button>
@@ -205,7 +246,6 @@ export const FinancialStatements: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Profit & Loss */}
           <div className="bg-white shadow-sm rounded-2xl border border-gray-200 overflow-hidden">
               <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
                   <h3 className="font-bold text-gray-900 flex items-center">
@@ -263,7 +303,6 @@ export const FinancialStatements: React.FC = () => {
               </div>
           </div>
 
-          {/* Balance Sheet */}
           <div className="bg-white shadow-sm rounded-2xl border border-gray-200 overflow-hidden">
               <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50">
                   <h3 className="font-bold text-gray-900 flex items-center">
@@ -300,8 +339,16 @@ export const FinancialStatements: React.FC = () => {
                           </div>
                           <div className="flex justify-between text-sm">
                               <span className="text-gray-600">Owner's Equity / Capital</span>
-                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.equity.total)}</span>
+                              <span className="font-medium text-gray-900 truncate ml-4">{formatCurrency(balanceSheet.equity.baseEquity)}</span>
                           </div>
+                          {!isClosed && (
+                              <div className="flex justify-between text-sm italic">
+                                  <span className="text-gray-500">Current Period Earnings</span>
+                                  <span className={`font-medium truncate ml-4 ${balanceSheet.equity.currentEarnings >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {formatCurrency(balanceSheet.equity.currentEarnings)}
+                                  </span>
+                              </div>
+                          )}
                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-gray-100">
                               <span>Total Liabilities & Equity</span>
                               <span className="text-indigo-600 truncate ml-4">{formatCurrency(balanceSheet.liabilities.total + balanceSheet.equity.total)}</span>
@@ -309,20 +356,21 @@ export const FinancialStatements: React.FC = () => {
                       </div>
                   </div>
 
-                  <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
+                  <div className={`p-4 rounded-xl border ${isSolvent ? 'bg-indigo-50 border-indigo-100' : 'bg-red-50 border-red-100'}`}>
                       <div className="flex items-center justify-between">
                           <div className="flex items-center">
-                              <PieIcon className="h-4 w-4 text-indigo-600 mr-2" />
-                              <span className="text-xs font-bold text-indigo-900">Solvency Check</span>
+                              <PieIcon className={`h-4 w-4 mr-2 ${isSolvent ? 'text-indigo-600' : 'text-red-600'}`} />
+                              <span className={`text-xs font-bold ${isSolvent ? 'text-indigo-900' : 'text-red-900'}`}>Solvency Check</span>
                           </div>
-                          <span className="text-xs font-bold text-green-600 bg-green-100 px-2 py-0.5 rounded">Balanced</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${isSolvent ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                              {isSolvent ? 'Balanced' : 'Imbalance Detected'}
+                          </span>
                       </div>
                   </div>
               </div>
           </div>
       </div>
 
-      {/* Close Books Modal */}
       {showCloseModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">

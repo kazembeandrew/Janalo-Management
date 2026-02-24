@@ -2,16 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { Loan, Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
-import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
+import { Repayment, LoanNote, LoanDocument, InternalAccount } from '@/types';
+import { formatCurrency, formatNumberWithCommas, parseFormattedNumber, calculateRepaymentDistribution } from '@/utils/finance';
 import { generateReceiptPDF } from '@/utils/export';
 import { 
-    ArrowLeft, User, Phone, MapPin, Building2, FileText, 
-    MessageSquare, Send, Receipt, ThumbsUp, Printer, RefreshCw, 
-    ChevronRight, ZoomIn, X, Clock, CheckCircle2, AlertCircle, Landmark, 
-    RotateCcw, Ban
+    ArrowLeft, User, Phone, MapPin, Building2, 
+    ThumbsUp, Printer, RefreshCw, 
+    ChevronRight, X, Landmark, 
+    RotateCcw, Ban, Receipt
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// Sub-components
+import { LoanSummaryCard } from '@/components/loans/LoanSummaryCard';
+import { LoanDocumentsList } from '@/components/loans/LoanDocumentsList';
+import { LoanRepaymentHistory } from '@/components/loans/LoanRepaymentHistory';
+import { LoanNotesSection } from '@/components/loans/LoanNotesSection';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -63,38 +69,24 @@ export const LoanDetails: React.FC = () => {
       if (loanError) throw loanError;
       setLoan(loanData);
 
-      // Fetch Repayments
-      const { data: repayData } = await supabase
-        .from('repayments')
-        .select('*')
-        .eq('loan_id', id)
-        .order('payment_date', { ascending: false });
-      setRepayments(repayData || []);
+      const [repayRes, noteRes, docRes] = await Promise.all([
+        supabase.from('repayments').select('*').eq('loan_id', id).order('payment_date', { ascending: false }),
+        supabase.from('loan_notes').select('*, users(full_name)').eq('loan_id', id).order('created_at', { ascending: false }),
+        supabase.from('loan_documents').select('*').eq('loan_id', id)
+      ]);
 
-      // Fetch Notes
-      const { data: noteData } = await supabase
-        .from('loan_notes')
-        .select('*, users(full_name)')
-        .eq('loan_id', id)
-        .order('created_at', { ascending: false });
-      setNotes(noteData || []);
-
-      // Fetch Documents
-      const { data: docData } = await supabase
-        .from('loan_documents')
-        .select('*')
-        .eq('loan_id', id);
-      setDocuments(docData || []);
+      setRepayments(repayRes.data || []);
+      setNotes(noteRes.data || []);
+      setDocuments(docRes.data || []);
       
-      if (docData) {
+      if (docRes.data) {
           const urlMap: {[key: string]: string} = {};
-          for (const doc of docData) {
+          for (const doc of docRes.data) {
               const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
               if (data) urlMap[doc.id] = data.publicUrl;
           }
           setDocumentUrls(urlMap);
       }
-
     } catch (error) {
       console.error(error);
       toast.error("Error loading loan details");
@@ -105,7 +97,7 @@ export const LoanDetails: React.FC = () => {
 
   const fetchAccounts = async () => {
       const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
-      if (data) setAccounts(data);
+      setAccounts(data || []);
   };
 
   const handlePostNote = async (e: React.FormEvent) => {
@@ -126,10 +118,11 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
-  const handleRepayAmountChange = (val: string) => {
-      const numeric = parseFormattedNumber(val);
-      setDisplayRepayAmount(formatNumberWithCommas(val));
-      setRepayAmount(numeric);
+  const handleRepayAmountChange = (value: string) => {
+    // Remove non-numeric characters except decimal point
+    const cleaned = value.replace(/[^0-9.]/g, '');
+    setDisplayRepayAmount(cleaned);
+    setRepayAmount(parseFloat(cleaned) || 0);
   };
 
   const handleRepayment = async (e: React.FormEvent) => {
@@ -138,19 +131,19 @@ export const LoanDetails: React.FC = () => {
     setProcessingAction(true);
     try {
         const amount = Number(repayAmount);
-        let remaining = amount;
-        const penPaid = Math.min(remaining, loan.penalty_outstanding || 0);
-        remaining -= penPaid;
-        const intPaid = Math.min(remaining, loan.interest_outstanding);
-        remaining -= intPaid;
-        const prinPaid = remaining;
+        const { principalPaid, interestPaid, penaltyPaid } = calculateRepaymentDistribution(
+            amount,
+            loan.penalty_outstanding || 0,
+            loan.interest_outstanding,
+            loan.principal_outstanding
+        );
 
         const { data: rData, error: rError } = await supabase.from('repayments').insert([{
             loan_id: loan.id,
             amount_paid: amount,
-            principal_paid: prinPaid,
-            interest_paid: intPaid,
-            penalty_paid: penPaid,
+            principal_paid: principalPaid,
+            interest_paid: interestPaid,
+            penalty_paid: penaltyPaid,
             payment_date: new Date().toISOString().split('T')[0],
             recorded_by: profile.id
         }]).select().single();
@@ -166,11 +159,18 @@ export const LoanDetails: React.FC = () => {
             recorded_by: profile.id
         }]);
 
-        const isCompleted = (loan.principal_outstanding - prinPaid) <= 0.01;
+        await supabase.from('loan_notes').insert([{
+            loan_id: id,
+            user_id: profile.id,
+            content: `Repayment of ${formatCurrency(amount)} recorded. Principal: ${formatCurrency(principalPaid)}, Interest: ${formatCurrency(interestPaid)}, Penalty: ${formatCurrency(penaltyPaid)}.`,
+            is_system: true
+        }]);
+
+        const isCompleted = (loan.principal_outstanding - principalPaid) <= 0.01;
         await supabase.from('loans').update({
-            penalty_outstanding: Math.max(0, (loan.penalty_outstanding || 0) - penPaid),
-            interest_outstanding: Math.max(0, loan.interest_outstanding - intPaid),
-            principal_outstanding: Math.max(0, loan.principal_outstanding - prinPaid),
+            penalty_outstanding: Math.max(0, (loan.penalty_outstanding || 0) - penaltyPaid),
+            interest_outstanding: Math.max(0, loan.interest_outstanding - interestPaid),
+            principal_outstanding: Math.max(0, loan.principal_outstanding - principalPaid),
             status: isCompleted ? 'completed' : 'active'
         }).eq('id', loan.id);
 
@@ -187,72 +187,33 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
-  const handleApproveLoan = async () => {
-      if (!loan || !targetAccountId) return;
+  const handleStatusUpdate = async (status: string, note: string, accountId?: string) => {
+      if (!loan) return;
       setProcessingAction(true);
       try {
-          await supabase.from('loans').update({ status: 'active' }).eq('id', loan.id);
-          await supabase.from('fund_transactions').insert([{
-              from_account_id: targetAccountId,
-              amount: loan.principal_amount,
-              type: 'disbursement',
-              description: `Loan disbursement to ${loan.borrowers?.full_name}`,
-              reference_id: loan.id,
-              recorded_by: profile?.id
-          }]);
+          await supabase.from('loans').update({ status }).eq('id', loan.id);
+          
+          if (status === 'active' && accountId) {
+              await supabase.from('fund_transactions').insert([{
+                  from_account_id: accountId,
+                  amount: loan.principal_amount,
+                  type: 'disbursement',
+                  description: `Loan disbursement to ${loan.borrowers?.full_name}`,
+                  reference_id: loan.id,
+                  recorded_by: profile?.id
+              }]);
+          }
           
           await supabase.from('loan_notes').insert([{
               loan_id: id,
               user_id: profile?.id,
-              content: `Loan Approved and Disbursed. ${decisionReason}`,
+              content: `${status.charAt(0).toUpperCase() + status.slice(1)}: ${note}`,
               is_system: true
           }]);
 
-          toast.success('Loan approved');
+          toast.success(`Loan ${status}`);
           setShowApproveModal(false);
-          fetchData();
-      } catch (e) {
-          toast.error('Approval failed');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleReassessLoan = async () => {
-      if (!loan || !decisionReason.trim()) return;
-      setProcessingAction(true);
-      try {
-          await supabase.from('loans').update({ status: 'reassess' }).eq('id', loan.id);
-          await supabase.from('loan_notes').insert([{
-              loan_id: id,
-              user_id: profile?.id,
-              content: `Application sent back for reassessment. Reason: ${decisionReason}`,
-              is_system: true
-          }]);
-
-          toast.success('Sent for reassessment');
           setShowReassessModal(false);
-          fetchData();
-      } catch (e) {
-          toast.error('Action failed');
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
-  const handleRejectLoan = async () => {
-      if (!loan || !decisionReason.trim()) return;
-      setProcessingAction(true);
-      try {
-          await supabase.from('loans').update({ status: 'rejected' }).eq('id', loan.id);
-          await supabase.from('loan_notes').insert([{
-              loan_id: id,
-              user_id: profile?.id,
-              content: `Application Rejected. Reason: ${decisionReason}`,
-              is_system: true
-          }]);
-
-          toast.success('Application rejected');
           setShowRejectModal(false);
           fetchData();
       } catch (e) {
@@ -267,8 +228,6 @@ export const LoanDetails: React.FC = () => {
   const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
   const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
-
-  const totalInterest = loan.total_payable - loan.principal_amount;
 
   return (
     <div className="space-y-6">
@@ -302,114 +261,25 @@ export const LoanDetails: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column: Financials & History */}
           <div className="lg:col-span-2 space-y-6">
-              {/* Financial Summary Card */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <Receipt className="h-4 w-4 mr-2 text-indigo-600" />
-                          Loan Summary
-                      </h3>
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
-                          loan.status === 'active' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
-                          loan.status === 'completed' ? 'bg-green-50 text-green-700 border-green-100' : 
-                          loan.status === 'pending' ? 'bg-yellow-50 text-yellow-700 border-yellow-100' :
-                          loan.status === 'reassess' ? 'bg-purple-50 text-purple-700 border-purple-100' :
-                          'bg-red-50 text-red-700 border-red-100'
-                      }`}>
-                          {loan.status}
-                      </span>
-                  </div>
-                  <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-                      <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Principal Amount</p>
-                          <p className="text-lg font-bold text-gray-900 truncate">{formatCurrency(loan.principal_amount)}</p>
-                      </div>
-                      <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Total Interest</p>
-                          <p className="text-lg font-bold text-indigo-600 truncate">{formatCurrency(totalInterest)}</p>
-                      </div>
-                      <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Loan Term</p>
-                          <p className="text-lg font-bold text-gray-900 truncate">{loan.term_months} Months</p>
-                      </div>
-                      <div className="min-w-0">
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 truncate">Interest Type</p>
-                          <p className="text-lg font-bold text-gray-900 truncate capitalize">{loan.interest_type} Rate</p>
-                      </div>
-                  </div>
-              </div>
+              <LoanSummaryCard 
+                principalAmount={loan.principal_amount}
+                totalPayable={loan.total_payable}
+                termMonths={loan.term_months}
+                interestType={loan.interest_type}
+                status={loan.status}
+              />
 
-              {/* Documents Section */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <FileText className="h-4 w-4 mr-2 text-indigo-600" />
-                          Loan Documents
-                      </h3>
-                  </div>
-                  <div className="p-6">
-                      {documents.length === 0 ? (
-                          <p className="text-sm text-gray-400 italic text-center py-4">No documents uploaded.</p>
-                      ) : (
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                              {documents.map(doc => (
-                                  <div key={doc.id} onClick={() => setViewImage(documentUrls[doc.id])} className="relative aspect-square rounded-xl border border-gray-100 overflow-hidden cursor-pointer group hover:border-indigo-500 transition-all">
-                                      <img src={documentUrls[doc.id]} alt={doc.type} className="w-full h-full object-cover" />
-                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                                          <ZoomIn className="text-white h-6 w-6" />
-                                      </div>
-                                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1.5 text-[8px] text-white text-center font-bold uppercase truncate">
-                                          {doc.type.replace('_', ' ')}
-                                      </div>
-                                  </div>
-                              ))}
-                          </div>
-                      )}
-                  </div>
-              </div>
+              <LoanDocumentsList 
+                documents={documents}
+                documentUrls={documentUrls}
+                onViewImage={setViewImage}
+              />
 
-              {/* Repayment History Table */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <Clock className="h-4 w-4 mr-2 text-indigo-600" />
-                          Repayment History
-                      </h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                              <tr>
-                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-400 uppercase">Date</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Amount</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Principal</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-400 uppercase">Interest</th>
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100">
-                              {repayments.length === 0 ? (
-                                  <tr><td colSpan={4} className="px-6 py-8 text-center text-xs text-gray-400 italic">No repayments recorded.</td></tr>
-                              ) : (
-                                  repayments.map(r => (
-                                      <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                                          <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-600">{new Date(r.payment_date).toLocaleDateString()}</td>
-                                          <td className="px-6 py-4 whitespace-nowrap text-right text-xs font-bold text-green-600">{formatCurrency(r.amount_paid)}</td>
-                                          <td className="px-6 py-4 whitespace-nowrap text-right text-xs text-gray-500">{formatCurrency(r.principal_paid)}</td>
-                                          <td className="px-6 py-4 whitespace-nowrap text-right text-xs text-gray-500">{formatCurrency(r.interest_paid)}</td>
-                                      </tr>
-                                  ))
-                              )}
-                          </tbody>
-                      </table>
-                  </div>
-              </div>
+              <LoanRepaymentHistory repayments={repayments} />
           </div>
 
-          {/* Right Column: Client Info & Notes */}
           <div className="space-y-6">
-              {/* Client Info Card */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                   <div className="p-6 border-b border-gray-100 bg-gray-50/50">
                       <h3 className="font-bold text-gray-900 flex items-center">
@@ -451,40 +321,12 @@ export const LoanDetails: React.FC = () => {
                   </div>
               </div>
 
-              {/* Notes Section */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <MessageSquare className="h-4 w-4 mr-2 text-indigo-600" />
-                          Loan Notes
-                      </h3>
-                  </div>
-                  <div className="p-6 space-y-6">
-                      <form onSubmit={handlePostNote} className="flex gap-2">
-                          <input 
-                            type="text" 
-                            placeholder="Add a note..." 
-                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
-                            value={newNote}
-                            onChange={e => setNewNote(e.target.value)}
-                          />
-                          <button type="submit" className="bg-indigo-600 text-white p-2 rounded-xl hover:bg-indigo-700 transition-all">
-                              <Send className="h-4 w-4" />
-                          </button>
-                      </form>
-                      <div className="space-y-4 max-h-80 overflow-y-auto custom-scrollbar pr-2">
-                          {notes.map(note => (
-                              <div key={note.id} className={`p-3 rounded-xl border ${note.is_system ? 'bg-gray-50 border-gray-100' : 'bg-white border-gray-100 shadow-sm'}`}>
-                                  <div className="flex justify-between items-start mb-1">
-                                      <span className="text-[10px] font-bold text-gray-900">{note.is_system ? 'System' : note.users?.full_name}</span>
-                                      <span className="text-[8px] text-gray-400">{new Date(note.created_at).toLocaleDateString()}</span>
-                                  </div>
-                                  <p className={`text-xs leading-relaxed ${note.is_system ? 'text-gray-500 italic' : 'text-gray-700'}`}>{note.content}</p>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </div>
+              <LoanNotesSection 
+                notes={notes}
+                newNote={newNote}
+                onNoteChange={setNewNote}
+                onPostNote={handlePostNote}
+              />
           </div>
       </div>
 
@@ -505,7 +347,7 @@ export const LoanDetails: React.FC = () => {
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Deposit Into Account</label>
                           <select required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 bg-white" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
                               <option value="">-- Select Account --</option>
-                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>)}
+                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.account_code})</option>)}
                           </select>
                       </div>
                       <div className="pt-4">
@@ -541,7 +383,7 @@ export const LoanDetails: React.FC = () => {
                           <textarea className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" placeholder="Add any final comments..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
                       </div>
                       <div className="pt-4">
-                          <button onClick={handleApproveLoan} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
+                          <button onClick={() => handleStatusUpdate('active', decisionReason, targetAccountId)} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-100">
                               {processingAction ? 'Processing...' : 'Confirm Approval'}
                           </button>
                       </div>
@@ -566,7 +408,7 @@ export const LoanDetails: React.FC = () => {
                           <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 h-32 resize-none" placeholder="e.g. Please verify the guarantor's employment status..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
                       </div>
                       <div className="pt-4">
-                          <button onClick={handleReassessLoan} disabled={processingAction || !decisionReason.trim()} className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-400 transition-all shadow-lg shadow-purple-100">
+                          <button onClick={() => handleStatusUpdate('reassess', decisionReason)} disabled={processingAction || !decisionReason.trim()} className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-400 transition-all shadow-lg shadow-purple-100">
                               {processingAction ? 'Processing...' : 'Confirm Reassessment'}
                           </button>
                       </div>
@@ -591,7 +433,7 @@ export const LoanDetails: React.FC = () => {
                           <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 h-32 resize-none" placeholder="e.g. Insufficient collateral value..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
                       </div>
                       <div className="pt-4">
-                          <button onClick={handleRejectLoan} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100">
+                          <button onClick={() => handleStatusUpdate('rejected', decisionReason)} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100">
                               {processingAction ? 'Processing...' : 'Confirm Rejection'}
                           </button>
                       </div>

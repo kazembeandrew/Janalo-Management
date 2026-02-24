@@ -39,6 +39,12 @@ export const Budgets: React.FC = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
+        // Calculate date range for the selected month
+        const [year, monthNum] = month.split('-').map(Number);
+        const startStr = `${month}-01`;
+        const nextMonthDate = new Date(year, monthNum, 1);
+        const endStr = nextMonthDate.toISOString().substring(0, 10);
+
         // 1. Fetch Budgets
         const { data: bData } = await supabase
             .from('budgets')
@@ -46,20 +52,20 @@ export const Budgets: React.FC = () => {
             .eq('month', month);
         setBudgets(bData || []);
 
-        // 2. Fetch Actual Expenses
+        // 2. Fetch Actual Expenses (using lt next month to avoid invalid date errors)
         const { data: eData } = await supabase
             .from('expenses')
             .select('amount, category')
             .eq('status', 'approved')
-            .gte('date', `${month}-01`)
-            .lte('date', `${month}-31`);
+            .gte('date', startStr)
+            .lt('date', endStr);
         
         // 3. Fetch Actual Income (Interest + Penalties)
         const { data: rData } = await supabase
             .from('repayments')
             .select('interest_paid, penalty_paid')
-            .gte('payment_date', `${month}-01`)
-            .lte('payment_date', `${month}-31`);
+            .gte('payment_date', startStr)
+            .lt('payment_date', endStr);
 
         const expenseActuals = eData?.reduce((acc: any, e) => {
             acc[e.category] = (acc[e.category] || 0) + Number(e.amount);

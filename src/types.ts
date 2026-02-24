@@ -17,32 +17,44 @@ export interface UserProfile {
   delegated_role?: UserRole | null;
   delegation_start?: string | null;
   delegation_end?: string | null;
+  revocation_reason?: string | null;
 }
 
 export interface InternalAccount {
     id: string;
     name: string;
-    type: 'bank' | 'cash' | 'equity' | 'liability';
+    account_category: 'asset' | 'liability' | 'equity' | 'income' | 'expense';
+    account_code: string;
+    parent_id?: string | null;
     balance: number;
-    account_number?: string;
-    bank_name?: string;
+    is_system_account: boolean;
     created_at: string;
     updated_at: string;
 }
 
-export interface FundTransaction {
+export interface JournalEntry {
     id: string;
-    from_account_id?: string;
-    to_account_id?: string;
-    amount: number;
-    type: 'transfer' | 'injection' | 'disbursement' | 'repayment' | 'expense';
+    reference_type: 'loan_disbursement' | 'repayment' | 'expense' | 'transfer' | 'injection' | 'adjustment';
+    reference_id?: string | null;
+    date: string;
     description: string;
-    reference_id?: string;
-    recorded_by: string;
-    is_verified: boolean;
+    created_by: string;
     created_at: string;
+    journal_lines?: JournalLine[];
     users?: {
         full_name: string;
+    };
+}
+
+export interface JournalLine {
+    id: string;
+    journal_entry_id: string;
+    account_id: string;
+    debit: number;
+    credit: number;
+    accounts?: {
+        name: string;
+        account_code: string;
     };
 }
 
@@ -52,16 +64,6 @@ export interface Budget {
     amount: number;
     month: string; // YYYY-MM
     type: 'income' | 'expense';
-}
-
-export interface ClosedPeriod {
-    id: string;
-    month: string;
-    closed_at: string;
-    closed_by: string;
-    net_profit: number;
-    total_assets: number;
-    total_liabilities: number;
 }
 
 export interface AuditLog {
@@ -186,17 +188,10 @@ export interface LoanDocument {
   created_at: string;
 }
 
-export interface Visitation {
-    id: string;
-    loan_id: string;
-    officer_id: string;
-    visit_date: string;
-    notes: string;
-    location_lat?: number;
-    location_long?: number;
-    image_path?: string;
-    created_at: string;
-    users?: {
-        full_name: string;
-    };
+export interface AmortizationScheduleItem {
+    month: number;
+    installment: number;
+    principal: number;
+    interest: number;
+    balance: number;
 }

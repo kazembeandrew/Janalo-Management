@@ -1,20 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { InternalAccount, FundTransaction } from '@/types';
+import { InternalAccount, JournalEntry } from '@/types';
 import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
+import { postJournalEntry } from '@/utils/accounting';
 import { 
     Landmark, Wallet, ArrowUpRight, ArrowDownLeft, Plus, 
     Search, History, RefreshCw, Landmark as BankIcon, 
     Coins, ShieldCheck, ArrowRightLeft, Download, Filter,
-    TrendingUp, AlertCircle, X, CheckCircle2
+    TrendingUp, AlertCircle, X, CheckCircle2, Calculator
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const Accounts: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
-  const [transactions, setTransactions] = useState<FundTransaction[]>([]);
+  const [journalEntries, setJournalEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Modals
@@ -24,7 +25,8 @@ export const Accounts: React.FC = () => {
 
   const [accountForm, setAccountForm] = useState({
       name: '',
-      type: 'bank' as any,
+      category: 'asset' as any,
+      code: 'BANK' as any,
       account_number: '',
       bank_name: '',
       initial_balance: 0
@@ -47,7 +49,7 @@ export const Accounts: React.FC = () => {
 
     const channel = supabase.channel('finance-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_accounts' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fund_transactions' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -61,33 +63,24 @@ export const Accounts: React.FC = () => {
             .select('*')
             .order('name', { ascending: true });
         
-        const { data: txs } = await supabase
-            .from('fund_transactions')
-            .select('*, users(full_name)')
+        const { data: entries } = await supabase
+            .from('journal_entries')
+            .select('*, journal_lines(*, accounts:internal_accounts(name)), users(full_name)')
             .order('created_at', { ascending: false })
             .limit(50);
 
         setAccounts(accs || []);
-        setTransactions(txs || []);
+        setJournalEntries(entries || []);
     } finally {
         setLoading(false);
     }
   };
 
-  const handleVerify = async (txId: string) => {
-      if (!isAccountant) return;
-      try {
-          const { error } = await supabase
-            .from('fund_transactions')
-            .update({ is_verified: true })
-            .eq('id', txId);
-          if (error) throw error;
-          toast.success('Transaction verified');
-          fetchData();
-      } catch (e) {
-          toast.error('Verification failed');
-      }
-  };
+  const totalLiquidity = useMemo(() => {
+      return accounts
+        .filter(a => a.account_category === 'asset' && ['CASH', 'BANK', 'MOBILE'].includes(a.account_code))
+        .reduce((sum, a) => sum + Number(a.balance), 0);
+  }, [accounts]);
 
   const handleInitialBalanceChange = (val: string) => {
       const numeric = parseFormattedNumber(val);
@@ -103,16 +96,18 @@ export const Accounts: React.FC = () => {
 
   const handleCreateAccount = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!profile) return;
       setIsProcessing(true);
       try {
-          const { data, error } = await supabase
+          const { data: newAcc, error } = await supabase
             .from('internal_accounts')
             .insert([{
                 name: accountForm.name,
-                type: accountForm.type,
+                account_category: accountForm.category,
+                account_code: accountForm.code,
                 account_number: accountForm.account_number,
                 bank_name: accountForm.bank_name,
-                balance: Number(accountForm.initial_balance)
+                balance: 0
             }])
             .select()
             .single();
@@ -120,20 +115,32 @@ export const Accounts: React.FC = () => {
           if (error) throw error;
 
           if (Number(accountForm.initial_balance) > 0) {
-              await supabase.from('fund_transactions').insert([{
-                  to_account_id: data.id,
-                  amount: Number(accountForm.initial_balance),
-                  type: 'injection',
-                  description: 'Initial account balance',
-                  recorded_by: profile?.id,
-                  is_verified: true
-              }]);
+              // Find Share Capital account for the credit side
+              const { data: capitalAcc } = await supabase
+                .from('internal_accounts')
+                .select('id')
+                .eq('account_code', 'CAPITAL')
+                .single();
+
+              if (capitalAcc) {
+                  await postJournalEntry(
+                      'injection',
+                      newAcc.id,
+                      `Initial balance for ${accountForm.name}`,
+                      [
+                          { account_id: newAcc.id, debit: Number(accountForm.initial_balance), credit: 0 },
+                          { account_id: capitalAcc.id, debit: 0, credit: Number(accountForm.initial_balance) }
+                      ],
+                      profile.id
+                  );
+              }
           }
 
-          toast.success('Account created successfully');
+          toast.success('Account created and initialized');
           setShowAccountModal(false);
-          setAccountForm({ name: '', type: 'bank', account_number: '', bank_name: '', initial_balance: 0 });
+          setAccountForm({ name: '', category: 'asset', code: 'BANK', account_number: '', bank_name: '', initial_balance: 0 });
           setDisplayInitialBalance('0');
+          fetchData();
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -143,37 +150,49 @@ export const Accounts: React.FC = () => {
 
   const handleFundAction = async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!profile) return;
       setIsProcessing(true);
       try {
           const amount = Number(fundForm.amount);
           
           if (fundForm.type === 'transfer') {
-              if (!fundForm.from_account_id || !fundForm.to_account_id) throw new Error("Select both accounts");
-              
-              const { error } = await supabase.from('fund_transactions').insert([{
-                  from_account_id: fundForm.from_account_id,
-                  to_account_id: fundForm.to_account_id,
-                  amount: amount,
-                  type: 'transfer',
-                  description: fundForm.description,
-                  recorded_by: profile?.id
-              }]);
-              if (error) throw error;
+              await postJournalEntry(
+                  'transfer',
+                  null,
+                  fundForm.description || 'Internal Fund Transfer',
+                  [
+                      { account_id: fundForm.to_account_id, debit: amount, credit: 0 },
+                      { account_id: fundForm.from_account_id, debit: 0, credit: amount }
+                  ],
+                  profile.id
+              );
           } else {
-              const { error } = await supabase.from('fund_transactions').insert([{
-                  to_account_id: fundForm.to_account_id,
-                  amount: amount,
-                  type: 'injection',
-                  description: fundForm.description,
-                  recorded_by: profile?.id
-              }]);
-              if (error) throw error;
+              // Capital Injection
+              const { data: capitalAcc } = await supabase
+                .from('internal_accounts')
+                .select('id')
+                .eq('account_code', 'CAPITAL')
+                .single();
+
+              if (!capitalAcc) throw new Error("System 'Share Capital' account not found.");
+
+              await postJournalEntry(
+                  'injection',
+                  null,
+                  fundForm.description || 'Capital Injection',
+                  [
+                      { account_id: fundForm.to_account_id, debit: amount, credit: 0 },
+                      { account_id: capitalAcc.id, debit: 0, credit: amount }
+                  ],
+                  profile.id
+              );
           }
 
-          toast.success('Transaction recorded');
+          toast.success('Transaction posted to ledger');
           setShowFundModal(false);
           setFundForm({ type: 'injection', from_account_id: '', to_account_id: '', amount: 0, description: '' });
           setDisplayFundAmount('');
+          fetchData();
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -181,17 +200,15 @@ export const Accounts: React.FC = () => {
       }
   };
 
-  const totalLiquidity = accounts.filter(a => a.type !== 'equity' && a.type !== 'liability').reduce((sum, a) => sum + Number(a.balance), 0);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
             <h1 className="text-2xl font-bold text-gray-900">Institutional Finance</h1>
-            <p className="text-sm text-gray-500">Manage internal accounts, capital funds, and institutional liquidity.</p>
+            <p className="text-sm text-gray-500">Manage internal accounts and institutional liquidity via the ledger.</p>
         </div>
         {isAccountant && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                 <button
                     onClick={() => setShowFundModal(true)}
                     className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
@@ -214,23 +231,22 @@ export const Accounts: React.FC = () => {
               <h3 className="text-3xl font-bold text-indigo-600">{formatCurrency(totalLiquidity)}</h3>
               <div className="mt-2 flex items-center text-xs text-gray-500">
                   <ShieldCheck className="h-3 w-3 mr-1 text-green-500" />
-                  Verified across {accounts.length} accounts
+                  Ledger-verified balance
               </div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Capital Injections (MTD)</p>
-              <h3 className="text-3xl font-bold text-green-600">{formatCurrency(transactions.filter(t => t.type === 'injection').reduce((sum, t) => sum + Number(t.amount), 0))}</h3>
+              <h3 className="text-3xl font-bold text-green-600">{formatCurrency(journalEntries.filter(e => e.reference_type === 'injection').reduce((sum, e) => sum + e.journal_lines.reduce((s: any, l: any) => s + Number(l.debit), 0), 0))}</h3>
               <div className="mt-2 flex items-center text-xs text-green-600">
                   <TrendingUp className="h-3 w-3 mr-1" />
                   Institutional growth
               </div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Net Cash Flow</p>
-              <h3 className="text-3xl font-bold text-gray-900">Positive</h3>
-              <div className="mt-2 flex items-center text-xs text-blue-600">
-                  <CheckCircle2 className="h-3 w-3 mr-1" />
-                  Healthy operational margin
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Ledger Integrity</p>
+              <div className="flex items-center mt-1">
+                  <CheckCircle2 className="h-6 w-6 text-green-500 mr-2" />
+                  <h3 className="text-xl font-bold text-gray-900">Synchronized</h3>
               </div>
           </div>
       </div>
@@ -254,22 +270,22 @@ export const Accounts: React.FC = () => {
                               <div key={acc.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
                                   <div className="flex items-center">
                                       <div className={`h-12 w-12 rounded-xl flex items-center justify-center mr-4 ${
-                                          acc.type === 'bank' ? 'bg-blue-50 text-blue-600' : 
-                                          acc.type === 'cash' ? 'bg-green-50 text-green-600' : 
+                                          acc.account_category === 'asset' ? 'bg-blue-50 text-blue-600' : 
+                                          acc.account_category === 'liability' ? 'bg-red-50 text-red-600' : 
                                           'bg-purple-50 text-purple-600'
                                       }`}>
-                                          {acc.type === 'bank' ? <BankIcon className="h-6 w-6" /> : <Coins className="h-6 w-6" />}
+                                          {acc.account_code === 'BANK' ? <BankIcon className="h-6 w-6" /> : <Coins className="h-6 w-6" />}
                                       </div>
                                       <div>
                                           <h4 className="font-bold text-gray-900">{acc.name}</h4>
                                           <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
-                                              {acc.bank_name ? `${acc.bank_name} • ` : ''}{acc.type}
+                                              {acc.account_category} • {acc.account_code}
                                           </p>
                                       </div>
                                   </div>
                                   <div className="text-right">
-                                      <p className="text-lg font-bold text-gray-900">{formatCurrency(acc.balance)}</p>
-                                      <p className="text-[10px] text-gray-400 uppercase font-bold">Current Balance</p>
+                                      <p className={`text-lg font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatCurrency(acc.balance)}</p>
+                                      <p className="text-[10px] text-gray-400 uppercase font-bold">Ledger Balance</p>
                                   </div>
                               </div>
                           ))
@@ -283,9 +299,6 @@ export const Accounts: React.FC = () => {
                           <History className="h-4 w-4 mr-2 text-indigo-600" />
                           Institutional General Ledger
                       </h3>
-                      <button className="text-xs font-bold text-indigo-600 hover:underline flex items-center">
-                          <Download className="h-3 w-3 mr-1" /> Export Ledger
-                      </button>
                   </div>
                   <div className="overflow-x-auto">
                       <table className="min-w-full divide-y divide-gray-200">
@@ -294,44 +307,41 @@ export const Accounts: React.FC = () => {
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Date</th>
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Description</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Amount</th>
-                                  <th className="px-6 py-3 text-center text-[10px] font-bold text-gray-500 uppercase">Reconciled</th>
+                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Debit</th>
+                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Credit</th>
                               </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-100">
-                              {transactions.map(tx => (
-                                  <tr key={tx.id} className="hover:bg-gray-50 transition-colors">
-                                      <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                                          {new Date(tx.created_at).toLocaleDateString()}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap">
-                                          <span className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase border ${
-                                              tx.type === 'injection' ? 'bg-green-50 text-green-700 border-green-100' :
-                                              tx.type === 'transfer' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                              'bg-gray-50 text-gray-700 border-gray-100'
-                                          }`}>
-                                              {tx.type}
-                                          </span>
-                                      </td>
-                                      <td className="px-6 py-4 text-xs text-gray-900 font-medium">
-                                          {tx.description}
-                                          <p className="text-[10px] text-gray-400 mt-0.5">Recorded by {tx.users?.full_name}</p>
-                                      </td>
-                                      <td className={`px-6 py-4 whitespace-nowrap text-right text-xs font-bold ${
-                                          tx.type === 'injection' || tx.type === 'repayment' ? 'text-green-600' : 'text-red-600'
-                                      }`}>
-                                          {tx.type === 'injection' || tx.type === 'repayment' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                                          {tx.is_verified ? (
-                                              <CheckCircle2 className="h-4 w-4 text-green-500 mx-auto" />
-                                          ) : (
-                                              isAccountant && (
-                                                  <button onClick={() => handleVerify(tx.id)} className="text-[10px] font-bold text-indigo-600 hover:underline">Verify</button>
-                                              )
-                                          )}
-                                      </td>
-                                  </tr>
+                              {journalEntries.map(entry => (
+                                  <React.Fragment key={entry.id}>
+                                      <tr className="bg-gray-50/30">
+                                          <td className="px-6 py-2 whitespace-nowrap text-[10px] text-gray-400 font-bold uppercase">
+                                              {new Date(entry.date).toLocaleDateString()}
+                                          </td>
+                                          <td className="px-6 py-2 whitespace-nowrap">
+                                              <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase border bg-white text-gray-600">
+                                                  {entry.reference_type}
+                                              </span>
+                                          </td>
+                                          <td colSpan={3} className="px-6 py-2 text-[10px] font-bold text-gray-900">
+                                              {entry.description} <span className="text-gray-400 font-normal ml-2">by {entry.users?.full_name}</span>
+                                          </td>
+                                      </tr>
+                                      {entry.journal_lines.map((line: any) => (
+                                          <tr key={line.id} className="hover:bg-gray-50 transition-colors">
+                                              <td colSpan={2}></td>
+                                              <td className="px-6 py-2 text-xs text-gray-600 pl-12">
+                                                  {line.accounts?.name}
+                                              </td>
+                                              <td className="px-6 py-2 text-right text-xs font-medium text-gray-900">
+                                                  {line.debit > 0 ? formatCurrency(line.debit) : '-'}
+                                              </td>
+                                              <td className="px-6 py-2 text-right text-xs font-medium text-gray-900">
+                                                  {line.credit > 0 ? formatCurrency(line.credit) : '-'}
+                                              </td>
+                                          </tr>
+                                      ))}
+                                  </React.Fragment>
                               ))}
                           </tbody>
                       </table>
@@ -343,16 +353,23 @@ export const Accounts: React.FC = () => {
               <div className="bg-indigo-900 rounded-2xl p-6 text-white shadow-lg">
                   <h3 className="font-bold mb-4 flex items-center">
                       <TrendingUp className="h-5 w-5 mr-2 text-indigo-300" />
-                      Liquidity Forecast
+                      Liquidity Engine
                   </h3>
+                  <p className="text-xs text-indigo-200 leading-relaxed mb-4">
+                      Balances are calculated in real-time using the formula:
+                      <br/><br/>
+                      <code className="bg-black/20 p-1 rounded">Asset = Debit - Credit</code>
+                      <br/>
+                      <code className="bg-black/20 p-1 rounded">Liability = Credit - Debit</code>
+                  </p>
                   <div className="space-y-4">
                       <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                          <p className="text-[10px] text-indigo-300 uppercase font-bold">Projected Inflows (30d)</p>
-                          <p className="text-xl font-bold">{formatCurrency(totalLiquidity * 0.25)}</p>
+                          <p className="text-[10px] text-indigo-300 uppercase font-bold">Total Assets</p>
+                          <p className="text-xl font-bold">{formatCurrency(accounts.filter(a => a.account_category === 'asset').reduce((sum, a) => sum + Number(a.balance), 0))}</p>
                       </div>
                       <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                          <p className="text-[10px] text-indigo-300 uppercase font-bold">Projected Outflows (30d)</p>
-                          <p className="text-xl font-bold">{formatCurrency(totalLiquidity * 0.15)}</p>
+                          <p className="text-[10px] text-indigo-300 uppercase font-bold">Total Liabilities</p>
+                          <p className="text-xl font-bold">{formatCurrency(accounts.filter(a => a.account_category === 'liability').reduce((sum, a) => sum + Number(a.balance), 0))}</p>
                       </div>
                   </div>
               </div>
@@ -374,22 +391,30 @@ export const Accounts: React.FC = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Type</label>
-                              <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={accountForm.type} onChange={e => setAccountForm({...accountForm, type: e.target.value as any})}>
-                                  <option value="bank">Bank Account</option>
-                                  <option value="cash">Petty Cash</option>
-                                  <option value="equity">Equity/Capital</option>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
+                              <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={accountForm.category} onChange={e => setAccountForm({...accountForm, category: e.target.value as any})}>
+                                  <option value="asset">Asset</option>
                                   <option value="liability">Liability</option>
+                                  <option value="equity">Equity</option>
+                                  <option value="income">Income</option>
+                                  <option value="expense">Expense</option>
                               </select>
                           </div>
                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Balance (MK)</label>
-                              <input type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={displayInitialBalance} onChange={e => handleInitialBalanceChange(e.target.value)} />
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Code</label>
+                              <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={accountForm.code} onChange={e => setAccountForm({...accountForm, code: e.target.value as any})}>
+                                  <option value="BANK">BANK</option>
+                                  <option value="CASH">CASH</option>
+                                  <option value="MOBILE">MOBILE</option>
+                                  <option value="EQUITY">EQUITY</option>
+                                  <option value="LIABILITY">LIABILITY</option>
+                                  <option value="OPERATIONAL">OPERATIONAL</option>
+                              </select>
                           </div>
                       </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Bank Name (Optional)</label>
-                          <input type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="e.g. National Bank" value={accountForm.bank_name} onChange={e => setAccountForm({...accountForm, bank_name: e.target.value})} />
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Balance (MK)</label>
+                          <input type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={displayInitialBalance} onChange={e => handleInitialBalanceChange(e.target.value)} />
                       </div>
                       <div className="pt-4">
                           <button type="submit" disabled={isProcessing} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">

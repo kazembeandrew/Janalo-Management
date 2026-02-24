@@ -14,8 +14,8 @@ import {
 } from 'lucide-react';
 
 // Fix for default marker icons
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+const markerIcon = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href;
+const markerShadow = new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href;
 
 let DefaultIcon = L.icon({
     iconUrl: markerIcon,

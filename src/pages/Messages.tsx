@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { usePresence } from '@/context/PresenceContext';
-import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info, UserPlus, ExternalLink, Paperclip, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Send, User, Search, MessageSquare, Plus, X, Check, ArrowLeft, Phone, Video, Info, UserPlus, ExternalLink, Paperclip, Image as ImageIcon, Loader2, ZoomIn } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 

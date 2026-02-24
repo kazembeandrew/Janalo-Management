@@ -8,8 +8,8 @@ import { MapPin, User, Phone, Banknote, ExternalLink, Navigation } from 'lucide-
 import { Link } from 'react-router-dom';
 
 // Fix for default marker icons in Leaflet with React
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+const markerIcon = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href;
+const markerShadow = new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href;
 
 let DefaultIcon = L.icon({
     iconUrl: markerIcon,

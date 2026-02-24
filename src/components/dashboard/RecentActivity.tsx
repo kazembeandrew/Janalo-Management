@@ -30,14 +30,21 @@ export const RecentActivity: React.FC = () => {
   }, []);
 
   const fetchActivity = async () => {
-    const { data } = await supabase
-      .from('audit_logs')
-      .select('id, action, created_at, details, users(full_name)')
-      .order('created_at', { ascending: false })
-      .limit(6);
-    
-    if (data) setActivities(data as any);
-    setLoading(false);
+    try {
+        // Using explicit join syntax users!user_id to ensure PostgREST finds the correct relationship
+        const { data, error } = await supabase
+          .from('audit_logs')
+          .select('id, action, created_at, details, users!user_id(full_name)')
+          .order('created_at', { ascending: false })
+          .limit(6);
+        
+        if (error) throw error;
+        if (data) setActivities(data as any);
+    } catch (e) {
+        console.error("Error fetching activity:", e);
+    } finally {
+        setLoading(false);
+    }
   };
 
   const getIcon = (action: string) => {
@@ -71,7 +78,7 @@ export const RecentActivity: React.FC = () => {
                                   {activity.action}
                               </p>
                               <p className="text-xs text-gray-500 flex items-center mt-0.5">
-                                  <User className="h-3 w-3 mr-1" /> {activity.users?.full_name} 
+                                  <User className="h-3 w-3 mr-1" /> {activity.users?.full_name || 'System'} 
                                   <span className="mx-1.5">•</span>
                                   {new Date(activity.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                               </p>

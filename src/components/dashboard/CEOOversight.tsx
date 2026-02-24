@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ShieldCheck, UserX, Banknote, Check, X, AlertCircle, ArrowRight, Receipt, ClipboardList, TrendingUp } from 'lucide-react';
+import { ShieldCheck, UserX, Banknote, Check, X, AlertCircle, ArrowRight, Receipt, ClipboardList, TrendingUp, ShieldAlert, RefreshCw } from 'lucide-react';
 import { formatCurrency } from '@/utils/finance';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const CEOOversight: React.FC = () => {
+  const navigate = useNavigate();
   const [pendingLoans, setPendingLoans] = useState<any[]>([]);
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
   const [pendingExpenses, setPendingExpenses] = useState<any[]>([]);
   const [pendingTasks, setPendingTasks] = useState<any[]>([]);
+  const [pendingReset, setPendingReset] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     fetchOversightData();
@@ -20,6 +23,7 @@ export const CEOOversight: React.FC = () => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchOversightData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchOversightData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => fetchOversightData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => fetchOversightData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -28,33 +32,45 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
-        const { data: loans } = await supabase
-            .from('loans')
-            .select('*, borrowers(full_name)')
-            .eq('status', 'pending')
-            .order('created_at', { ascending: false });
+        const [loansRes, usersRes, expensesRes, tasksRes, resetRes] = await Promise.all([
+            supabase
+                .from('loans')
+                .select('*, borrowers(full_name)')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('users')
+                .select('*')
+                .eq('deletion_status', 'pending_approval'),
+            supabase
+                .from('expenses')
+                .select('*, users!recorded_by(full_name)')
+                .eq('status', 'pending_approval')
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('tasks')
+                .select('*, users!assigned_to(full_name)')
+                .eq('status', 'pending_approval')
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('audit_logs')
+                .select('*, users(full_name)')
+                .eq('action', 'SYSTEM_RESET_REQUESTED')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+        ]);
+
+        setPendingLoans(loansRes.data || []);
+        setPendingUsers(usersRes.data || []);
+        setPendingExpenses(expensesRes.data || []);
+        setPendingTasks(tasksRes.data || []);
         
-        const { data: users } = await supabase
-            .from('users')
-            .select('*')
-            .eq('deletion_status', 'pending_approval');
-
-        const { data: expenses } = await supabase
-            .from('expenses')
-            .select('*, users(full_name)')
-            .eq('status', 'pending_approval')
-            .order('created_at', { ascending: false });
-
-        const { data: tasks } = await supabase
-            .from('tasks')
-            .select('*, users(full_name)')
-            .eq('status', 'pending_approval')
-            .order('created_at', { ascending: false });
-
-        setPendingLoans(loans || []);
-        setPendingUsers(users || []);
-        setPendingExpenses(expenses || []);
-        setPendingTasks(tasks || []);
+        if (resetRes.data && !resetRes.data.details?.executed) {
+            setPendingReset(resetRes.data);
+        } else {
+            setPendingReset(null);
+        }
     } finally {
         setLoading(false);
     }
@@ -119,7 +135,38 @@ export const CEOOversight: React.FC = () => {
       }
   };
 
-  const totalPending = pendingLoans.length + pendingUsers.length + pendingExpenses.length + pendingTasks.length;
+  const handleExecuteReset = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !pendingReset) return;
+
+      if (user.id === pendingReset.user_id) {
+          toast.error("Dual Authorization Required: A different administrator must authorize this reset.");
+          return;
+      }
+
+      if (!window.confirm("CRITICAL: You are about to execute a system-wide Factory Reset. This will erase all business data. Continue?")) return;
+
+      setIsProcessing(true);
+      try {
+          const { error } = await supabase.rpc('wipe_all_data');
+          if (error) throw error;
+
+          // Mark the request as executed
+          await supabase
+            .from('audit_logs')
+            .update({ details: { ...pendingReset.details, executed: true, authorized_by: user.id } })
+            .eq('id', pendingReset.id);
+
+          toast.success("System reset successful.");
+          setTimeout(() => navigate('/'), 1500);
+      } catch (e: any) {
+          toast.error("Reset failed: " + e.message);
+      } finally {
+          setIsProcessing(false);
+      }
+  };
+
+  const totalPending = pendingLoans.length + pendingUsers.length + pendingExpenses.length + pendingTasks.length + (pendingReset ? 1 : 0);
 
   if (loading && totalPending === 0) return null;
 
@@ -144,6 +191,30 @@ export const CEOOversight: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Pending Reset (Highest Priority) */}
+          {pendingReset && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 shadow-sm flex items-center justify-between md:col-span-2 animate-pulse">
+                  <div className="flex items-center">
+                      <div className="p-2 bg-red-100 rounded-lg mr-4">
+                          <ShieldAlert className="h-5 w-5 text-red-600" />
+                      </div>
+                      <div>
+                          <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Critical: Factory Reset Request</p>
+                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name}</p>
+                          <p className="text-xs text-gray-500">Requires 2nd Authorization to execute.</p>
+                      </div>
+                  </div>
+                  <button 
+                    onClick={handleExecuteReset}
+                    disabled={isProcessing}
+                    className="bg-red-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-red-700 transition-all flex items-center"
+                  >
+                      {isProcessing ? <RefreshCw className="h-3 w-3 animate-spin mr-2" /> : <Check className="h-3 w-3 mr-2" />}
+                      Authorize & Execute
+                  </button>
+              </div>
+          )}
+
           {/* Pending Loans */}
           {pendingLoans.map(loan => (
               <div key={loan.id} className="bg-white border border-amber-100 rounded-xl p-4 shadow-sm flex items-center justify-between hover:border-amber-200 transition-colors">
@@ -194,7 +265,7 @@ export const CEOOversight: React.FC = () => {
                       <div>
                           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Task/Allocation</p>
                           <p className="text-sm font-bold text-gray-900">{task.title}</p>
-                          <p className="text-xs text-gray-500">Proposed by {task.users?.full_name}</p>
+                          <p className="text-xs text-gray-500">Assigned to {task.users?.full_name}</p>
                       </div>
                   </div>
                   <div className="flex gap-2">

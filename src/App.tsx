@@ -26,7 +26,9 @@ import { Repayments } from '@/pages/Repayments';
 import { Accounts } from '@/pages/Accounts';
 import { FinancialStatements } from '@/pages/FinancialStatements';
 import { Budgets } from '@/pages/Budgets';
-import { GlobalSchedule } from '@/pages/GlobalSchedule';
+import { RepaymentSchedule } from '@/pages/RepaymentSchedule';
+import { SystemSettings } from '@/pages/SystemSettings';
+import { ImportData } from '@/pages/ImportData';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -97,7 +99,7 @@ const App: React.FC = () => {
             path="/schedule"
             element={
               <ProtectedRoute>
-                <GlobalSchedule />
+                <RepaymentSchedule />
               </ProtectedRoute>
             }
           />
@@ -226,6 +228,22 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <AuditLogs />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SystemSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/import"
+            element={
+              <ProtectedRoute>
+                <ImportData />
               </ProtectedRoute>
             }
           />

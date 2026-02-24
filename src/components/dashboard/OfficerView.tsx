@@ -9,6 +9,11 @@ interface OfficerViewProps {
 }
 
 export const OfficerView: React.FC<OfficerViewProps> = ({ stats }) => {
+  // Calculate percentage of monthly interest target reached
+  const targetPercent = stats.interestTarget > 0 
+    ? Math.min(100, (stats.interestEarned / stats.interestTarget) * 100) 
+    : 0;
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -28,7 +33,7 @@ export const OfficerView: React.FC<OfficerViewProps> = ({ stats }) => {
         />
         <StatCard 
           title="Due This Week" 
-          value={stats.parCount} // Reusing PAR count logic for 'at risk/due'
+          value={stats.parCount} 
           subtitle="Follow-ups needed"
           icon={Clock}
           color="bg-amber-500"
@@ -72,12 +77,17 @@ export const OfficerView: React.FC<OfficerViewProps> = ({ stats }) => {
               </div>
               <h3 className="text-lg font-bold text-gray-900">Collection Target</h3>
               <p className="text-sm text-gray-500 mt-1 max-w-xs">
-                  You have collected <span className="font-bold text-indigo-600">{formatCurrency(stats.interestEarned)}</span> in interest this month.
+                  Institutional interest collected: <span className="font-bold text-indigo-600">{formatCurrency(stats.interestEarned)}</span>
               </p>
               <div className="w-full bg-gray-100 rounded-full h-2.5 mt-6">
-                  <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: '65%' }}></div>
+                  <div 
+                    className="bg-indigo-600 h-2.5 rounded-full transition-all duration-1000 ease-out" 
+                    style={{ width: `${targetPercent}%` }}
+                  ></div>
               </div>
-              <p className="text-[10px] text-gray-400 mt-2 uppercase font-bold tracking-wider">65% of Monthly Target Reached</p>
+              <p className="text-[10px] text-gray-400 mt-2 uppercase font-bold tracking-wider">
+                {targetPercent.toFixed(1)}% of Monthly Target Reached
+              </p>
           </div>
       </div>
     </div>
