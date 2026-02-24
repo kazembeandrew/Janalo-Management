@@ -144,7 +144,7 @@ export const DataImporter: React.FC = () => {
     try {
       // Pre-fetch existing references to prevent duplicates in this batch
       const { data: existingLoans } = await supabase.from('loans').select('reference_no');
-      const existingRefs = new Set(existingLoans?.map(l => l.reference_no.toUpperCase()) || []);
+      const existingRefs = new Set(existingLoans?.map(l => String(l.reference_no || '').toUpperCase()) || []);
 
       for (const row of preview.rows) {
         const nameKey = preview.type === 'loans' ? 'Name' : 'Borrower Name';
@@ -153,7 +153,7 @@ export const DataImporter: React.FC = () => {
 
         let borrowerId = currentMatchedBorrowers[borrowerName];
 
-        // Create borrower if they don't exist
+        // 1. Handle Borrower (Find or Create)
         if (!borrowerId) {
           const { data: existing } = await supabase
             .from('borrowers')
@@ -188,23 +188,29 @@ export const DataImporter: React.FC = () => {
           }
         }
 
+        // 2. Handle Loan or Repayment
         if (preview.type === 'loans') {
           const ref = String(row['Reference'] || '').toUpperCase().trim();
           
           if (ref && existingRefs.has(ref)) {
-              errors.push(`Skipped: Loan reference "${ref}" already exists in system.`);
+              errors.push(`Skipped: Loan reference "${ref}" already exists for ${borrowerName}.`);
               continue;
           }
 
           const principal = Number(row['Loan']) || 0;
           const rate = Number(row['Interest']) || 0;
           const term = Number(row['Term']) || 0;
+          
+          if (principal <= 0) {
+              errors.push(`Skipped: Invalid loan amount for ${borrowerName}.`);
+              continue;
+          }
+
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
-          
           const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
 
-          const { error } = await supabase.from('loans').insert([{
+          const { error: loanError } = await supabase.from('loans').insert([{
             reference_no: finalRef,
             borrower_id: borrowerId,
             officer_id: selectedOfficerId,
@@ -220,8 +226,8 @@ export const DataImporter: React.FC = () => {
             monthly_installment: total / (term || 1)
           }]);
 
-          if (error) {
-              errors.push(`Loan error for ${borrowerName}: ${error.message}`);
+          if (loanError) {
+              errors.push(`Loan error for ${borrowerName}: ${loanError.message}`);
           } else {
               success++;
               if (ref) existingRefs.add(ref);
@@ -236,28 +242,39 @@ export const DataImporter: React.FC = () => {
             .limit(1);
           
           if (!activeLoans || activeLoans.length === 0) {
-              errors.push(`No active loan for ${borrowerName}`);
+              errors.push(`No active loan found for ${borrowerName} to apply repayment.`);
               continue;
           }
 
           const loan = activeLoans[0];
           const amount = Number(row['Amount Paid']) || 0;
           
-          const { error } = await supabase.from('repayments').insert([{
+          if (amount <= 0) {
+              errors.push(`Skipped: Invalid repayment amount for ${borrowerName}.`);
+              continue;
+          }
+
+          const { error: repayError } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
-              principal_paid: amount * 0.8, 
+              principal_paid: amount * 0.8, // Default split for imports if not specified
               interest_paid: amount * 0.2,
               payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
               recorded_by: selectedOfficerId
           }]);
 
-          if (error) errors.push(`Repayment error for ${borrowerName}: ${error.message}`);
-          else success++;
+          if (repayError) {
+              errors.push(`Repayment error for ${borrowerName}: ${repayError.message}`);
+          } else {
+              success++;
+          }
         }
       }
 
       setImportResults({ success, errors, createdBorrowers });
+    } catch (globalError: any) {
+        console.error("Import failed:", globalError);
+        toast.error("A critical error occurred during import.");
     } finally {
       setIsImporting(false);
     }
