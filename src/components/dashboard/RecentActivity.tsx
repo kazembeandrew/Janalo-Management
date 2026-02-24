@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Clock, User, CheckCircle, AlertCircle, Banknote, UserPlus } from 'lucide-react';
+import { Clock, User, CheckCircle, AlertCircle, Banknote, UserPlus, ShieldAlert } from 'lucide-react';
 
 interface Activity {
   id: string;
   action: string;
   created_at: string;
-  users: { full_name: string };
+  users: { full_name: string } | null;
   details: any;
 }
 
@@ -31,27 +31,39 @@ export const RecentActivity: React.FC = () => {
 
   const fetchActivity = async () => {
     try {
-        // Using explicit join syntax users!user_id to ensure PostgREST finds the correct relationship
+        // Using explicit join syntax and fetching more records to ensure we have a good feed
         const { data, error } = await supabase
           .from('audit_logs')
           .select('id, action, created_at, details, users!user_id(full_name)')
           .order('created_at', { ascending: false })
-          .limit(6);
+          .limit(8);
         
         if (error) throw error;
         if (data) setActivities(data as any);
     } catch (e) {
         console.error("Error fetching activity:", e);
+        // Fallback: try fetching without the join if the join fails
+        const { data: fallbackData } = await supabase
+            .from('audit_logs')
+            .select('id, action, created_at, details')
+            .order('created_at', { ascending: false })
+            .limit(8);
+        
+        if (fallbackData) {
+            setActivities(fallbackData.map(a => ({ ...a, users: null })));
+        }
     } finally {
         setLoading(false);
     }
   };
 
   const getIcon = (action: string) => {
-      if (action.includes('Approve')) return <CheckCircle className="h-4 w-4 text-green-500" />;
-      if (action.includes('Reject') || action.includes('Delete')) return <AlertCircle className="h-4 w-4 text-red-500" />;
-      if (action.includes('Repayment') || action.includes('Loan')) return <Banknote className="h-4 w-4 text-blue-500" />;
-      if (action.includes('User') || action.includes('Borrower')) return <UserPlus className="h-4 w-4 text-indigo-500" />;
+      const a = action.toLowerCase();
+      if (a.includes('approve')) return <CheckCircle className="h-4 w-4 text-green-500" />;
+      if (a.includes('reject') || a.includes('delete') || a.includes('revoke') || a.includes('reset')) return <AlertCircle className="h-4 w-4 text-red-500" />;
+      if (a.includes('repayment') || a.includes('loan') || a.includes('disburse')) return <Banknote className="h-4 w-4 text-blue-500" />;
+      if (a.includes('user') || a.includes('borrower') || a.includes('promote')) return <UserPlus className="h-4 w-4 text-indigo-500" />;
+      if (a.includes('system')) return <ShieldAlert className="h-4 w-4 text-amber-500" />;
       return <Clock className="h-4 w-4 text-gray-400" />;
   };
 
