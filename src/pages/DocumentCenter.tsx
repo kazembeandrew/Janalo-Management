@@ -25,26 +25,41 @@ export const DocumentCenter: React.FC = () => {
   const [viewingExcel, setViewingExcel] = useState<{url: string, name: string} | null>(null);
   const [viewingPdf, setViewingPdf] = useState<{url: string, name: string} | null>(null);
   
+  // Role Checks
+  const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
+  const isHR = effectiveRoles.includes('hr');
+  const isAccountant = effectiveRoles.includes('accountant');
+  
+  // A user is "Strictly Accountant" if they have the role but aren't an Admin/CEO/HR
+  const isStrictAccountant = isAccountant && !isCEO && !isHR;
+  
+  const canUpload = isCEO || isHR || isAccountant;
+  const canManagePermissions = isCEO || isHR;
+
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
   const [uploadForm, setUploadForm] = useState({
       name: '',
-      category: 'general' as DocumentCategory,
+      category: (isStrictAccountant ? 'financial' : 'general') as DocumentCategory,
       file: null as File | null
   });
 
   // Permissions State
   const [filePermissions, setFilePermissions] = useState<UserRole[]>([]);
 
-  const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
-  const isHR = effectiveRoles.includes('hr');
-  const isAccountant = effectiveRoles.includes('accountant');
-  const canUpload = isCEO || isHR || isAccountant;
-  const canManagePermissions = isCEO || isHR;
-
   useEffect(() => {
     fetchFiles();
   }, [activeCategory]);
+
+  // Reset form defaults when modal opens
+  useEffect(() => {
+      if (showUploadModal) {
+          setUploadForm(prev => ({
+              ...prev,
+              category: isStrictAccountant ? 'financial' : 'general'
+          }));
+      }
+  }, [showUploadModal, isStrictAccountant]);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -100,7 +115,7 @@ export const DocumentCenter: React.FC = () => {
 
           toast.success("Document uploaded successfully");
           setShowUploadModal(false);
-          setUploadForm({ name: '', category: 'general', file: null });
+          setUploadForm({ name: '', category: isStrictAccountant ? 'financial' : 'general', file: null });
           fetchFiles();
       } catch (e: any) {
           toast.error("Upload failed: " + e.message);
@@ -366,9 +381,9 @@ export const DocumentCenter: React.FC = () => {
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={uploadForm.category}
                             onChange={e => setUploadForm({...uploadForm, category: e.target.value as DocumentCategory})}
-                            disabled={isAccountant}
+                            disabled={isStrictAccountant}
                           >
-                              {isAccountant ? (
+                              {isStrictAccountant ? (
                                   <option value="financial">Financial</option>
                               ) : (
                                   <>
@@ -380,7 +395,7 @@ export const DocumentCenter: React.FC = () => {
                                   </>
                               )}
                           </select>
-                          {isAccountant && <p className="mt-1 text-[10px] text-indigo-600 font-bold">Accountants can only upload financial documents.</p>}
+                          {isStrictAccountant && <p className="mt-1 text-[10px] text-indigo-600 font-bold">Accountants are restricted to financial documents.</p>}
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Select File</label>
