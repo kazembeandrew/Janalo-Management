@@ -198,7 +198,13 @@ export const Borrowers: React.FC = () => {
           })
           .eq('id', editingBorrower.id);
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === '23505') {
+                toast.error('A borrower with this name already exists.');
+                return;
+            }
+            throw error;
+        }
         toast.success('Client updated');
       } else {
         const { error } = await supabase.from('borrowers').insert([
@@ -208,7 +214,13 @@ export const Borrowers: React.FC = () => {
           }
         ]);
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === '23505') {
+                toast.error('A borrower with this name already exists.');
+                return;
+            }
+            throw error;
+        }
         toast.success('Client registered');
       }
 

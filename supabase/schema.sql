@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 CREATE TABLE IF NOT EXISTS public.borrowers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    full_name TEXT NOT NULL,
+    full_name TEXT NOT NULL UNIQUE, -- Added UNIQUE constraint
     phone TEXT,
     address TEXT,
     employment TEXT,
