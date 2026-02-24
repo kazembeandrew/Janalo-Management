@@ -108,28 +108,40 @@ export const Accounts: React.FC = () => {
               { name: 'Retained Earnings', category: 'equity', code: 'EQUITY' }
           ];
 
-          for (const acc of coreAccounts) {
-              const { data: existing } = await supabase
-                .from('internal_accounts')
-                .select('id')
-                .eq('account_code', acc.code)
-                .maybeSingle();
-              
-              if (!existing) {
-                  await supabase.from('internal_accounts').insert({
-                      name: acc.name,
-                      account_category: acc.category,
-                      account_code: acc.code,
-                      type: acc.code.toLowerCase(),
-                      balance: 0
-                  });
-              }
+          // Check which accounts are missing
+          const { data: existing } = await supabase
+            .from('internal_accounts')
+            .select('account_code')
+            .in('account_code', coreAccounts.map(a => a.code));
+          
+          const existingCodes = new Set(existing?.map(e => e.account_code) || []);
+          const missingAccounts = coreAccounts.filter(a => !existingCodes.has(a.code));
+
+          if (missingAccounts.length === 0) {
+              toast.success("System accounts are already initialized.", { id: loadingToast });
+              setIsProcessing(false);
+              return;
           }
 
-          toast.success("System accounts initialized", { id: loadingToast });
+          // Insert missing accounts
+          const { error } = await supabase
+            .from('internal_accounts')
+            .insert(missingAccounts.map(acc => ({
+                name: acc.name,
+                account_category: acc.category,
+                account_code: acc.code,
+                type: acc.code.toLowerCase(),
+                balance: 0,
+                is_system_account: true
+            })));
+
+          if (error) throw error;
+
+          toast.success(`Successfully created ${missingAccounts.length} system accounts.`, { id: loadingToast });
           fetchData();
       } catch (e: any) {
-          toast.error(e.message, { id: loadingToast });
+          console.error("Setup error:", e);
+          toast.error(`Setup failed: ${e.message}`, { id: loadingToast });
       } finally {
           setIsProcessing(false);
       }
@@ -242,7 +254,7 @@ export const Accounts: React.FC = () => {
       }
   };
 
-  const hasCapitalAccount = accounts.some(a => a.account_code === 'CAPITAL');
+  const hasCapitalAccount = accounts.some(a => a.account_code?.toUpperCase() === 'CAPITAL');
 
   return (
     <div className="space-y-6">
