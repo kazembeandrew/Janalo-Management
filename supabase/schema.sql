@@ -1,19 +1,37 @@
--- JANALO ENTERPRISES - FINAL DATABASE SCHEMA
+-- JANALO ENTERPRISES - ROBUST DATABASE SCHEMA
 
 -- 1. Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Enums
-CREATE TYPE public.user_role AS ENUM ('admin', 'ceo', 'loan_officer', 'hr', 'accountant');
-CREATE TYPE public.interest_type AS ENUM ('flat', 'reducing');
-CREATE TYPE public.loan_status AS ENUM ('active', 'completed', 'defaulted', 'pending', 'rejected', 'reassess');
-CREATE TYPE public.approval_status AS ENUM ('pending_approval', 'approved', 'rejected');
-CREATE TYPE public.document_category AS ENUM ('financial', 'hr', 'operational', 'general', 'template', 'loan_application');
+-- 2. Enums (Safe Creation)
+DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE public.user_role AS ENUM ('admin', 'ceo', 'loan_officer', 'hr', 'accountant');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'interest_type') THEN
+        CREATE TYPE public.interest_type AS ENUM ('flat', 'reducing');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'loan_status') THEN
+        CREATE TYPE public.loan_status AS ENUM ('active', 'completed', 'defaulted', 'pending', 'rejected', 'reassess');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'approval_status') THEN
+        CREATE TYPE public.approval_status AS ENUM ('pending_approval', 'approved', 'rejected');
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'document_category') THEN
+        CREATE TYPE public.document_category AS ENUM ('financial', 'hr', 'operational', 'general', 'template', 'loan_application');
+    ELSE
+        -- Ensure 'loan_application' exists in the existing type
+        ALTER TYPE public.document_category ADD VALUE IF NOT EXISTS 'loan_application';
+    END IF;
+END $$;
 
--- 3. Tables
+-- 3. Tables (Safe Creation)
 
--- Users & Profiles
-CREATE TABLE public.users (
+CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE,
     full_name TEXT,
@@ -28,8 +46,7 @@ CREATE TABLE public.users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Borrowers
-CREATE TABLE public.borrowers (
+CREATE TABLE IF NOT EXISTS public.borrowers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     full_name TEXT NOT NULL,
     phone TEXT,
@@ -39,8 +56,7 @@ CREATE TABLE public.borrowers (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Loans
-CREATE TABLE public.loans (
+CREATE TABLE IF NOT EXISTS public.loans (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     reference_no TEXT UNIQUE,
     borrower_id UUID REFERENCES public.borrowers(id) ON DELETE CASCADE,
@@ -60,8 +76,7 @@ CREATE TABLE public.loans (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Repayments
-CREATE TABLE public.repayments (
+CREATE TABLE IF NOT EXISTS public.repayments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
     amount_paid NUMERIC NOT NULL,
@@ -73,12 +88,11 @@ CREATE TABLE public.repayments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Internal Accounts (Ledger)
-CREATE TABLE public.internal_accounts (
+CREATE TABLE IF NOT EXISTS public.internal_accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    account_category TEXT NOT NULL, -- asset, liability, equity, income, expense
-    account_code TEXT NOT NULL, -- BANK, CASH, CAPITAL, etc.
+    account_category TEXT NOT NULL,
+    account_code TEXT NOT NULL,
     balance NUMERIC DEFAULT 0,
     account_number TEXT,
     bank_name TEXT,
@@ -86,8 +100,7 @@ CREATE TABLE public.internal_accounts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Journal Entries
-CREATE TABLE public.journal_entries (
+CREATE TABLE IF NOT EXISTS public.journal_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     reference_type TEXT NOT NULL,
     reference_id UUID,
@@ -97,8 +110,7 @@ CREATE TABLE public.journal_entries (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Journal Lines
-CREATE TABLE public.journal_lines (
+CREATE TABLE IF NOT EXISTS public.journal_lines (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     journal_entry_id UUID REFERENCES public.journal_entries(id) ON DELETE CASCADE,
     account_id UUID REFERENCES public.internal_accounts(id),
@@ -107,8 +119,7 @@ CREATE TABLE public.journal_lines (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- System Documents
-CREATE TABLE public.system_documents (
+CREATE TABLE IF NOT EXISTS public.system_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     storage_path TEXT NOT NULL,
@@ -119,16 +130,14 @@ CREATE TABLE public.system_documents (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Document Permissions
-CREATE TABLE public.document_permissions (
+CREATE TABLE IF NOT EXISTS public.document_permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID REFERENCES public.system_documents(id) ON DELETE CASCADE,
     role public.user_role NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Tasks
-CREATE TABLE public.tasks (
+CREATE TABLE IF NOT EXISTS public.tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     description TEXT,
@@ -139,8 +148,7 @@ CREATE TABLE public.tasks (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Audit Logs
-CREATE TABLE public.audit_logs (
+CREATE TABLE IF NOT EXISTS public.audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES public.users(id),
     action TEXT NOT NULL,
@@ -151,7 +159,6 @@ CREATE TABLE public.audit_logs (
 );
 
 -- 4. Security (RLS)
-
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.borrowers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.loans ENABLE ROW LEVEL SECURITY;
@@ -164,19 +171,7 @@ ALTER TABLE public.document_permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- Example Policies
-CREATE POLICY "Users view own profile" ON public.users FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Admins view all users" ON public.users FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Staff view borrowers" ON public.borrowers FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Officers manage own borrowers" ON public.borrowers FOR ALL TO authenticated USING (created_by = auth.uid() OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'ceo')));
-
-CREATE POLICY "Staff view loans" ON public.loans FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Officers manage own loans" ON public.loans FOR ALL TO authenticated USING (officer_id = auth.uid() OR EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin', 'ceo')));
-
 -- 5. Triggers & Functions
-
--- Update account balance when journal line is inserted
 CREATE OR REPLACE FUNCTION public.update_account_balance_from_journal()
 RETURNS trigger AS $$
 DECLARE
@@ -192,6 +187,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_journal_line_insert ON public.journal_lines;
 CREATE TRIGGER on_journal_line_insert
 AFTER INSERT ON public.journal_lines
 FOR EACH ROW EXECUTE FUNCTION public.update_account_balance_from_journal();
