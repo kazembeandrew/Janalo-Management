@@ -6,7 +6,7 @@ import {
     FolderOpen, FileText, FileSpreadsheet, Download, 
     Eye, Trash2, Search, Filter, RefreshCw, 
     Upload, X, Clock, User, ChevronRight, File,
-    ShieldCheck, Check, Lock, Globe, Shield
+    ShieldCheck, Check, Lock, Globe, Shield, UserCircle
 } from 'lucide-react';
 import { ExcelViewer } from '@/components/ExcelViewer';
 import toast from 'react-hot-toast';
@@ -16,7 +16,7 @@ export const DocumentCenter: React.FC = () => {
   const [files, setFiles] = useState<SystemDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeCategory, setActiveCategory] = useState<DocumentCategory | 'all'>('all');
+  const [activeCategory, setActiveCategory] = useState<DocumentCategory | 'all' | 'mine'>('all');
   
   // Modals
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -49,13 +49,14 @@ export const DocumentCenter: React.FC = () => {
   const fetchFiles = async () => {
     setLoading(true);
     try {
-        // Fetch from database table which respects RLS
         let query = supabase
             .from('system_documents')
             .select('*, uploader:users!uploaded_by(full_name)')
             .order('created_at', { ascending: false });
         
-        if (activeCategory !== 'all') {
+        if (activeCategory === 'mine') {
+            query = query.eq('uploaded_by', profile?.id);
+        } else if (activeCategory !== 'all') {
             query = query.eq('category', activeCategory);
         }
 
@@ -78,15 +79,13 @@ export const DocumentCenter: React.FC = () => {
           const file = uploadForm.file;
           const path = `system/${Date.now()}_${file.name}`;
           
-          // 1. Upload to Storage
           const { error: storageError } = await supabase.storage
             .from('loan-documents')
             .upload(path, file);
           
           if (storageError) throw storageError;
 
-          // 2. Insert into Database
-          const { data: doc, error: dbError } = await supabase
+          const { error: dbError } = await supabase
             .from('system_documents')
             .insert({
                 name: uploadForm.name || file.name,
@@ -95,9 +94,7 @@ export const DocumentCenter: React.FC = () => {
                 file_type: file.type,
                 file_size: file.size,
                 uploaded_by: profile.id
-            })
-            .select()
-            .single();
+            });
           
           if (dbError) throw dbError;
 
@@ -116,11 +113,8 @@ export const DocumentCenter: React.FC = () => {
       if (!window.confirm("Are you sure you want to delete this document?")) return;
       
       try {
-          // Delete from storage
           await supabase.storage.from('loan-documents').remove([file.storage_path]);
-          // Delete from DB (cascade will handle permissions)
           await supabase.from('system_documents').delete().eq('id', file.id);
-          
           toast.success("Document removed");
           fetchFiles();
       } catch (e: any) {
@@ -207,7 +201,6 @@ export const DocumentCenter: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Sidebar Filters */}
           <div className="lg:col-span-1 space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-6">
                   <div>
@@ -227,16 +220,25 @@ export const DocumentCenter: React.FC = () => {
                   <div>
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Categories</label>
                       <div className="space-y-1">
-                          {(['all', 'financial', 'hr', 'operational', 'general', 'template'] as const).map(cat => (
+                          <button 
+                            onClick={() => setActiveCategory('all')}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeCategory === 'all' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                          >
+                              All Documents
+                          </button>
+                          <button 
+                            onClick={() => setActiveCategory('mine')}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${activeCategory === 'mine' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                          >
+                              <div className="flex items-center"><UserCircle className="h-4 w-4 mr-2" /> My Uploads</div>
+                          </button>
+                          {(['financial', 'hr', 'operational', 'general', 'template'] as const).map(cat => (
                               <button 
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all capitalize ${activeCategory === cat ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
                               >
                                   {cat}
-                                  <span className="text-[10px] font-bold opacity-50">
-                                      {cat === 'all' ? files.length : files.filter(f => f.category === cat).length}
-                                  </span>
                               </button>
                           ))}
                       </div>
@@ -254,7 +256,6 @@ export const DocumentCenter: React.FC = () => {
               </div>
           </div>
 
-          {/* File List */}
           <div className="lg:col-span-3">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
@@ -365,7 +366,7 @@ export const DocumentCenter: React.FC = () => {
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={uploadForm.category}
                             onChange={e => setUploadForm({...uploadForm, category: e.target.value as DocumentCategory})}
-                            disabled={isAccountant} // Accountant is locked to financial
+                            disabled={isAccountant}
                           >
                               {isAccountant ? (
                                   <option value="financial">Financial</option>

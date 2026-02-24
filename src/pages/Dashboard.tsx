@@ -10,6 +10,7 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { OfficerLeaderboard } from '@/components/dashboard/OfficerLeaderboard';
 import { CEOOversight } from '@/components/dashboard/CEOOversight';
+import { RecentDocuments } from '@/components/dashboard/RecentDocuments';
 import { formatCurrency } from '@/utils/finance';
 
 export const Dashboard: React.FC = () => {
@@ -46,7 +47,6 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     fetchDashboardData();
     
-    // Global sync: Listen for any financial changes to trigger a dashboard refresh
     const channel = supabase.channel('dashboard-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchDashboardData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'repayments' }, () => fetchDashboardData())
@@ -60,7 +60,6 @@ export const Dashboard: React.FC = () => {
     try {
       setLoading(true);
       
-      // Parallel data fetching for speed and sync
       const [
           { data: rpcStats },
           { data: revData },
@@ -99,38 +98,24 @@ export const Dashboard: React.FC = () => {
           reassessCount = count || 0;
       }
 
-      // DATA ANALYSIS: Calculate Liquidity and Equity from the official Chart of Accounts
       let liquidity = 0;
-      let totalAssets = 0;
       let totalLiabilities = 0;
-      let totalEquity = 0;
       
       if (accounts) {
-          // Liquidity = Sum of all Bank/Cash/Mobile asset accounts
           liquidity = accounts
             .filter(a => a.account_category === 'asset' && ['BANK', 'CASH', 'MOBILE'].includes(a.account_code))
             .reduce((sum, a) => sum + Number(a.balance), 0);
 
-          // Total Assets = Liquidity + Loan Receivables (handled below)
           totalLiabilities = accounts
             .filter(a => a.account_category === 'liability')
-            .reduce((sum, a) => sum + Number(a.balance), 0);
-            
-          totalEquity = accounts
-            .filter(a => a.account_category === 'equity')
             .reduce((sum, a) => sum + Number(a.balance), 0);
       }
 
       if (rpcStats) {
         const active = rpcStats.active_count || 0;
         const completed = rpcStats.completed_count || 0;
-        const defaulted = rpcStats.defaulted_count || 0;
-        const totalLoans = active + completed + defaulted;
-        
+        const totalLoans = active + completed + (rpcStats.defaulted_count || 0);
         const principalOutstanding = rpcStats.principal_outstanding || 0;
-
-        // SYSTEM SYNC: The Accounting Equation (A = L + E)
-        // We add the Loan Portfolio (Principal) to our Cash Liquidity to get Total Assets
         const calculatedAssets = liquidity + principalOutstanding;
         
         setStats({
@@ -147,7 +132,7 @@ export const Dashboard: React.FC = () => {
           reassessCount,
           totalLiquidity: liquidity,
           interestTarget: budgetData?.amount || 0,
-          totalEquity: calculatedAssets - totalLiabilities // Net Worth
+          totalEquity: calculatedAssets - totalLiabilities
         });
       }
 
@@ -233,6 +218,7 @@ export const Dashboard: React.FC = () => {
 
           <div className="space-y-6">
               <RecentActivity />
+              {isExec && <RecentDocuments />}
               {isExec && <OfficerLeaderboard officers={officerStats} />}
           </div>
       </div>
