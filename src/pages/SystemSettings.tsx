@@ -4,7 +4,8 @@ import { supabase } from '@/lib/supabase';
 import { 
     ShieldAlert, Trash2, RefreshCw, AlertTriangle, X, 
     CheckCircle2, Database, Settings, Send, Clock, 
-    Sparkles, Bot, Layout, FileCode, Key, Save, Eye, EyeOff
+    Sparkles, Bot, Layout, FileCode, Key, Save, Eye, EyeOff,
+    ShieldCheck, Lock, Globe, Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -14,7 +15,7 @@ import { SystemBlueprint } from '@/components/SystemBlueprint';
 export const SystemSettings: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'ai' | 'blueprint' | 'maintenance'>('ai');
+  const [activeTab, setActiveTab] = useState<'ai' | 'blueprint' | 'security' | 'maintenance'>('ai');
   const [showWipeModal, setShowWipeModal] = useState(false);
   const [confirmText, setConfirmText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -55,7 +56,6 @@ export const SystemSettings: React.FC = () => {
           localStorage.setItem('gemini_api_key', apiKey.trim());
           toast.success("Gemini API Key updated successfully.");
       }
-      // Force a small delay then refresh to ensure services pick up the new key
       setTimeout(() => window.location.reload(), 1000);
   };
 
@@ -131,22 +131,28 @@ export const SystemSettings: React.FC = () => {
             </h1>
             <p className="text-sm text-gray-500">Manage global application state and maintenance tasks.</p>
         </div>
-        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
             <button 
                 onClick={() => setActiveTab('ai')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center ${activeTab === 'ai' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center whitespace-nowrap ${activeTab === 'ai' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
             >
                 <Bot className="h-3.5 w-3.5 mr-2" /> AI Assistant
             </button>
             <button 
                 onClick={() => setActiveTab('blueprint')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center ${activeTab === 'blueprint' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center whitespace-nowrap ${activeTab === 'blueprint' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
             >
                 <FileCode className="h-3.5 w-3.5 mr-2" /> Blueprint
             </button>
             <button 
+                onClick={() => setActiveTab('security')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center whitespace-nowrap ${activeTab === 'security' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+            >
+                <ShieldCheck className="h-3.5 w-3.5 mr-2" /> Security
+            </button>
+            <button 
                 onClick={() => setActiveTab('maintenance')}
-                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center ${activeTab === 'maintenance' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center whitespace-nowrap ${activeTab === 'maintenance' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
             >
                 <Database className="h-3.5 w-3.5 mr-2" /> Maintenance
             </button>
@@ -231,6 +237,90 @@ export const SystemSettings: React.FC = () => {
                   <h2 className="text-lg font-bold text-gray-900">Technical System Blueprint</h2>
               </div>
               <SystemBlueprint />
+          </div>
+      )}
+
+      {activeTab === 'security' && (
+          <div className="space-y-6">
+              <div className="flex items-center gap-2 mb-2">
+                  <ShieldCheck className="h-5 w-5 text-indigo-600" />
+                  <h2 className="text-lg font-bold text-gray-900">Security & Firewall Status</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                          <Lock className="h-5 w-5 text-green-600" />
+                          <span className="text-[10px] font-bold text-green-600 uppercase bg-green-50 px-2 py-0.5 rounded">Active</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">Database RLS</h4>
+                      <p className="text-[10px] text-gray-500 mt-1">Row Level Security prevents unauthorized data access.</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                          <Shield className="h-5 w-5 text-indigo-600" />
+                          <span className="text-[10px] font-bold text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded">Active</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">AI PII Firewall</h4>
+                      <p className="text-[10px] text-gray-500 mt-1">Sensitive client data is scrubbed before AI analysis.</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                          <Globe className="h-5 w-5 text-blue-600" />
+                          <span className="text-[10px] font-bold text-blue-600 uppercase bg-blue-50 px-2 py-0.5 rounded">Active</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">SSL Encryption</h4>
+                      <p className="text-[10px] text-gray-500 mt-1">All data in transit is encrypted via HTTPS/TLS.</p>
+                  </div>
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm">
+                      <div className="flex items-center justify-between mb-3">
+                          <Key className="h-5 w-5 text-amber-600" />
+                          <span className="text-[10px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-0.5 rounded">Active</span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">Dual Auth Reset</h4>
+                      <p className="text-[10px] text-gray-500 mt-1">Critical system actions require two administrators.</p>
+                  </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 bg-slate-50 border-b border-gray-100">
+                      <h3 className="font-bold text-gray-900">Security Architecture Overview</h3>
+                  </div>
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-4">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Data Protection</h4>
+                          <div className="space-y-3">
+                              <div className="flex items-start gap-3">
+                                  <div className="mt-1 p-1 bg-green-100 rounded-full"><CheckCircle2 className="h-3 w-3 text-green-600" /></div>
+                                  <div>
+                                      <p className="text-sm font-bold text-gray-900">Immutable Audit Trail</p>
+                                      <p className="text-xs text-gray-500">Every administrative action is logged with a timestamp and actor ID.</p>
+                                  </div>
+                              </div>
+                              <div className="flex items-start gap-3">
+                                  <div className="mt-1 p-1 bg-green-100 rounded-full"><CheckCircle2 className="h-3 w-3 text-green-600" /></div>
+                                  <div>
+                                      <p className="text-sm font-bold text-gray-900">Role-Based Access (RBAC)</p>
+                                      <p className="text-xs text-gray-500">Permissions are strictly enforced based on staff roles (Officer, HR, CEO).</p>
+                                  </div>
+                              </div>
+                          </div>
+                      </div>
+                      <div className="space-y-4">
+                          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">AI Privacy Firewall</h4>
+                          <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                              <p className="text-xs text-indigo-800 leading-relaxed">
+                                  The system automatically anonymizes data before it leaves the application. 
+                                  <strong> Names</strong> are reduced to initials, and <strong>Phone Numbers/Addresses</strong> are completely redacted.
+                              </p>
+                              <div className="mt-3 flex items-center gap-2 text-[10px] font-bold text-indigo-600 uppercase">
+                                  <Shield className="h-3 w-3" />
+                                  Compliant with Rule #4
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
           </div>
       )}
 

@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { scrubPII } from "@/utils/security";
 
 const getApiKey = () => {
-    // Priority: 1. User-provided key in settings, 2. Environment variable
     return localStorage.getItem('gemini_api_key') || process.env.GEMINI_API_KEY || "";
 };
 
@@ -27,11 +27,14 @@ export const analyzeFinancialData = async (data: any): Promise<string[]> => {
     const genAI = getAIInstance();
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
+    // Apply Firewall
+    const safeData = scrubPII(data);
+    
     const prompt = `
       As a microfinance financial analyst, analyze the following portfolio data and provide 4 concise, actionable insights.
       Focus on risk distribution, revenue trends, and operational efficiency.
       
-      Data: ${JSON.stringify(data)}
+      Data: ${JSON.stringify(safeData)}
       
       Format: Return only a JSON array of strings.
     `;
@@ -60,11 +63,14 @@ export const predictCashFlow = async (loanData: any[]): Promise<any> => {
     const genAI = getAIInstance();
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
+    // Apply Firewall
+    const safeData = scrubPII(loanData);
+    
     const prompt = `
       Based on the following active loan data, predict the expected cash flow (principal + interest) for the next 3 months.
       Consider potential default risks (PAR).
       
-      Loans: ${JSON.stringify(loanData)}
+      Loans: ${JSON.stringify(safeData)}
       
       Format: Return a JSON object with keys 'month1', 'month2', 'month3' (values are numbers) and a 'summary' string.
     `;
@@ -90,11 +96,14 @@ export const assessLoanRisk = async (loanData: any): Promise<string> => {
     const genAI = getAIInstance();
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
+    // Apply Firewall
+    const safeData = scrubPII(loanData);
+    
     const prompt = `
       Assess the risk level for this loan application based on the provided details.
       Provide a brief summary of risk factors and a recommendation.
       
-      Loan Details: ${JSON.stringify(loanData)}
+      Loan Details: ${JSON.stringify(safeData)}
     `;
 
     const result = await model.generateContent(prompt);
@@ -111,6 +120,9 @@ export const querySystemAI = async (query: string, context: any): Promise<string
         const genAI = getAIInstance();
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         
+        // Apply Firewall
+        const safeContext = scrubPII(context);
+        
         const systemPrompt = `
             You are the "Janalo System Architect AI". You have full context of a Microfinance Management System.
             
@@ -121,7 +133,7 @@ export const querySystemAI = async (query: string, context: any): Promise<string
             - Security: Row Level Security (RLS) is enabled on all tables.
             
             CURRENT SYSTEM CONTEXT:
-            ${JSON.stringify(context)}
+            ${JSON.stringify(safeContext)}
             
             USER QUERY:
             "${query}"
