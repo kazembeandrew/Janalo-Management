@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower } from '@/types';
-import { Plus, Search, MapPin, Phone, Briefcase, User, ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, Home, Building2, X, Activity, RefreshCw } from 'lucide-react';
+import { 
+    Plus, Search, MapPin, Phone, Briefcase, User, 
+    ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, 
+    Home, Building2, X, Activity, RefreshCw, CheckSquare, 
+    Square, UserPlus, ArrowRightLeft 
+} from 'lucide-react';
 import { MapPicker } from '@/components/MapPicker';
 import toast from 'react-hot-toast';
 
@@ -16,6 +21,9 @@ export const Borrowers: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
   // Map Picker State
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [activeMapTarget, setActiveMapTarget] = useState<'address' | 'employment' | null>(null);
@@ -24,15 +32,15 @@ export const Borrowers: React.FC = () => {
   
   // Reassignment State
   const [showReassignModal, setShowReassignModal] = useState(false);
-  const [reassignBorrower, setReassignBorrower] = useState<Borrower | null>(null);
   const [selectedOfficer, setSelectedOfficer] = useState('');
   const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
+  const [isReassigning, setIsReassigning] = useState(false);
 
   const [formData, setFormData] = useState({
     full_name: '',
     phone: '',
-    address: '', // Residence
-    employment: '' // Business/Work
+    address: '', 
+    employment: '' 
   });
 
   // Pagination State
@@ -50,13 +58,14 @@ export const Borrowers: React.FC = () => {
   }, [profile, page, searchTerm, effectiveRoles]); 
 
   const fetchOfficers = async () => {
-      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer');
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer').eq('is_active', true);
       setOfficers(data || []);
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       setSearchTerm(e.target.value);
       setPage(1);
+      setSelectedIds(new Set());
   };
 
   const fetchBorrowers = async () => {
@@ -91,25 +100,55 @@ export const Borrowers: React.FC = () => {
     }
   };
 
-  const handleReassign = async () => {
-      if (!reassignBorrower || !selectedOfficer) return;
+  const toggleSelect = (id: string) => {
+      const newSelected = new Set(selectedIds);
+      if (newSelected.has(id)) newSelected.delete(id);
+      else newSelected.add(id);
+      setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+      if (selectedIds.size === borrowers.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(borrowers.map(b => b.id)));
+      }
+  };
+
+  const handleBulkReassign = async () => {
+      if (selectedIds.size === 0 || !selectedOfficer) return;
+      
+      setIsReassigning(true);
+      const ids = Array.from(selectedIds);
       
       try {
-          const { error } = await supabase
+          // 1. Update Borrowers
+          const { error: bError } = await supabase
             .from('borrowers')
             .update({ created_by: selectedOfficer })
-            .eq('id', reassignBorrower.id);
+            .in('id', ids);
           
-          if (error) throw error;
+          if (bError) throw bError;
+
+          // 2. Update associated active/pending loans
+          const { error: lError } = await supabase
+            .from('loans')
+            .update({ officer_id: selectedOfficer })
+            .in('borrower_id', ids)
+            .in('status', ['active', 'pending', 'reassess', 'rejected']);
           
-          toast.success(`Client successfully reassigned.`);
+          if (lError) throw lError;
+          
+          toast.success(`${ids.length} clients and their active loans reassigned.`);
           setShowReassignModal(false);
-          setReassignBorrower(null);
+          setSelectedIds(new Set());
           setSelectedOfficer('');
           fetchBorrowers();
-      } catch (error) {
+      } catch (error: any) {
           console.error(error);
-          toast.error('Failed to reassign client.');
+          toast.error('Failed to reassign clients: ' + error.message);
+      } finally {
+          setIsReassigning(false);
       }
   };
 
@@ -187,7 +226,7 @@ export const Borrowers: React.FC = () => {
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -199,15 +238,26 @@ export const Borrowers: React.FC = () => {
               : 'Directory of all borrowers in the system'}
           </p>
         </div>
-        {canCreate && (
-          <button
-            onClick={openCreateModal}
-            className="inline-flex items-center px-4 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Borrower
-          </button>
-        )}
+        <div className="flex gap-2">
+            {borrowers.length > 0 && (
+                <button
+                    onClick={toggleSelectAll}
+                    className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
+                >
+                    {selectedIds.size === borrowers.length ? <CheckSquare className="h-4 w-4 mr-2 text-indigo-600" /> : <Square className="h-4 w-4 mr-2" />}
+                    {selectedIds.size === borrowers.length ? 'Deselect All' : 'Select All'}
+                </button>
+            )}
+            {canCreate && (
+            <button
+                onClick={openCreateModal}
+                className="inline-flex items-center px-4 py-2.5 bg-indigo-900 hover:bg-indigo-800 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-200 active:scale-95"
+            >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Borrower
+            </button>
+            )}
+        </div>
       </div>
 
       <div className="relative">
@@ -241,16 +291,27 @@ export const Borrowers: React.FC = () => {
             {borrowers.map((borrower) => {
                 const activeLoans = borrower.loans?.filter((l: any) => l.status === 'active').length || 0;
                 const totalLoans = borrower.loans?.length || 0;
+                const isSelected = selectedIds.has(borrower.id);
 
                 return (
-                    <div key={borrower.id} className="bg-white overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all border border-gray-100 group flex flex-col">
+                    <div 
+                        key={borrower.id} 
+                        className={`bg-white overflow-hidden rounded-2xl shadow-sm hover:shadow-md transition-all border group flex flex-col relative ${isSelected ? 'border-indigo-500 ring-1 ring-indigo-500' : 'border-gray-100'}`}
+                    >
+                        <button 
+                            onClick={() => toggleSelect(borrower.id)}
+                            className={`absolute top-4 right-4 z-10 p-1 rounded-lg transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100'}`}
+                        >
+                            {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                        </button>
+
                         <div className="p-6 flex-1">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center min-w-0">
                                     <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-3 shrink-0">
                                         {(borrower.full_name || 'C').charAt(0)}
                                     </div>
-                                    <h3 className="text-base font-bold text-gray-900 truncate">{borrower.full_name || 'Unnamed Client'}</h3>
+                                    <h3 className="text-base font-bold text-gray-900 truncate pr-8">{borrower.full_name || 'Unnamed Client'}</h3>
                                 </div>
                                 {activeLoans > 0 && (
                                     <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase rounded-full border border-green-100">Active</span>
@@ -288,7 +349,7 @@ export const Borrowers: React.FC = () => {
                             <div className="flex space-x-4">
                                 {isExec && (
                                     <button 
-                                        onClick={() => { setReassignBorrower(borrower); setShowReassignModal(true); }}
+                                        onClick={() => { setSelectedIds(new Set([borrower.id])); setShowReassignModal(true); }}
                                         className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
                                     >
                                         Reassign
@@ -364,26 +425,74 @@ export const Borrowers: React.FC = () => {
         </div>
       )}
 
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 animate-in slide-in-from-bottom-8 duration-300">
+              <div className="bg-indigo-900 text-white rounded-2xl shadow-2xl p-4 flex items-center justify-between border border-white/10 backdrop-blur-md">
+                  <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-indigo-300">
+                          {selectedIds.size}
+                      </div>
+                      <div>
+                          <p className="text-sm font-bold">Clients Selected</p>
+                          <p className="text-[10px] text-indigo-300 uppercase font-bold tracking-wider">Bulk Actions Available</p>
+                      </div>
+                  </div>
+                  <div className="flex gap-2">
+                      {isExec && (
+                          <button 
+                            onClick={() => setShowReassignModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-900 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all"
+                          >
+                              <ArrowRightLeft className="h-3.5 w-3.5" /> Reassign
+                          </button>
+                      )}
+                      <button 
+                        onClick={() => setSelectedIds(new Set())}
+                        className="p-2 text-indigo-300 hover:text-white transition-colors"
+                      >
+                          <X className="h-5 w-5" />
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Reassign Modal */}
       {showReassignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                 <div className="p-8">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">Reassign Client</h3>
-                    <p className="text-sm text-gray-500 mb-6">
-                        Select a new loan officer to manage <strong>{reassignBorrower?.full_name}</strong>.
+                    <div className="h-14 w-14 bg-indigo-100 rounded-2xl flex items-center justify-center mb-6">
+                        <ArrowRightLeft className="h-8 w-8 text-indigo-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Bulk Reassign Clients</h3>
+                    <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                        You are reassigning <strong>{selectedIds.size}</strong> client(s) and their active loan portfolios to a new officer.
                     </p>
                     
-                    <select
-                        className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                        value={selectedOfficer}
-                        onChange={(e) => setSelectedOfficer(e.target.value)}
-                    >
-                        <option value="">-- Select Officer --</option>
-                        {officers.map(o => (
-                            <option key={o.id} value={o.id}>{o.full_name}</option>
-                        ))}
-                    </select>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Target Officer</label>
+                            <select
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
+                                value={selectedOfficer}
+                                onChange={(e) => setSelectedOfficer(e.target.value)}
+                            >
+                                <option value="">-- Select Officer --</option>
+                                {officers.map(o => (
+                                    <option key={o.id} value={o.id}>{o.full_name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start">
+                            <Activity className="h-4 w-4 text-amber-600 mr-3 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-amber-700 leading-relaxed">
+                                This will update the <strong>Officer ID</strong> on all active, pending, and reassessment loans for these clients.
+                            </p>
+                        </div>
+                    </div>
 
                     <div className="flex gap-3 mt-8">
                         <button
@@ -395,11 +504,11 @@ export const Borrowers: React.FC = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={handleReassign}
-                            disabled={!selectedOfficer}
+                            onClick={handleBulkReassign}
+                            disabled={!selectedOfficer || isReassigning}
                             className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 shadow-lg shadow-indigo-100 transition-all active:scale-95"
                         >
-                            Confirm
+                            {isReassigning ? <RefreshCw className="h-4 w-4 animate-spin mx-auto" /> : 'Confirm Reassign'}
                         </button>
                     </div>
                 </div>
