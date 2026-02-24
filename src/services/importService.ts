@@ -1,9 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const DEFAULT_KEY = "AIzaSyDBgdOKJpbvdTKuRtnC6cYiwAmeLigrTaY";
-
 const getApiKey = () => {
-    return localStorage.getItem('gemini_api_key') || DEFAULT_KEY;
+    return localStorage.getItem('gemini_api_key') || process.env.GEMINI_API_KEY || "";
 };
 
 export interface ImportMapping {
@@ -17,7 +15,10 @@ export interface ImportMapping {
 
 export const analyzeImportData = async (headers: string[]): Promise<ImportMapping> => {
   try {
-    const genAI = new GoogleGenerativeAI(getApiKey());
+    const key = getApiKey();
+    if (!key) throw new Error("No API Key configured");
+    
+    const genAI = new GoogleGenerativeAI(key);
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     
     const prompt = `

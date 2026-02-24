@@ -1,14 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Default fallback key
-const DEFAULT_KEY = "AIzaSyDBgdOKJpbvdTKuRtnC6cYiwAmeLigrTaY";
-
 const getApiKey = () => {
-    return localStorage.getItem('gemini_api_key') || DEFAULT_KEY;
+    // Priority: 1. User-provided key in settings, 2. Environment variable
+    return localStorage.getItem('gemini_api_key') || process.env.GEMINI_API_KEY || "";
 };
 
 const getAIInstance = () => {
-    return new GoogleGenerativeAI(getApiKey());
+    const key = getApiKey();
+    if (!key) throw new Error("No API Key configured");
+    return new GoogleGenerativeAI(key);
 };
 
 const handleAIError = (error: any) => {
