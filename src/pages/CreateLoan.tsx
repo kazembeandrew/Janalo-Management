@@ -32,6 +32,15 @@ export const CreateLoan: React.FC = () => {
   // Display state for formatted input
   const [displayPrincipal, setDisplayPrincipal] = useState('1,000');
 
+  // Documents State
+  const [idCardBlob, setIdCardBlob] = useState<Blob | null>(null);
+  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
+  const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
+  const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
+      { id: Date.now(), blob: null }
+  ]);
+  const [preview, setPreview] = useState<any>(null);
+
   useEffect(() => {
     const fetchBorrowers = async () => {
         if (!profile) return;
@@ -109,7 +118,7 @@ export const CreateLoan: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile || existingLoanError) return;
+    if (!profile || existingLoanError || !appFormBlob) return;
     setLoading(true);
 
     try {
@@ -171,14 +180,6 @@ export const CreateLoan: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const [idCardBlob, setIdCardBlob] = useState<Blob | null>(null);
-  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
-  const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
-  const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
-      { id: Date.now(), blob: null }
-  ]);
-  const [preview, setPreview] = useState<any>(null);
 
   const steps = [
       { id: 'borrower', name: 'Borrower', icon: User },
@@ -342,10 +343,13 @@ export const CreateLoan: React.FC = () => {
 
                {currentStep === 'documents' && (
                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                       <h3 className="text-lg font-medium text-gray-900">Documentation</h3>
+                       <div className="flex justify-between items-center">
+                           <h3 className="text-lg font-medium text-gray-900">Documentation</h3>
+                           <span className="text-[10px] font-bold text-red-600 uppercase bg-red-50 px-2 py-1 rounded border border-red-100">Application Form Required</span>
+                       </div>
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                           <DocumentUpload label="Application Form (Required)" onUpload={setAppFormBlob} onRemove={() => setAppFormBlob(null)} />
                            <DocumentUpload label="Client ID / Passport" onUpload={setIdCardBlob} onRemove={() => setIdCardBlob(null)} />
-                           <DocumentUpload label="Application Form" onUpload={setAppFormBlob} onRemove={() => setAppFormBlob(null)} />
                            <DocumentUpload label="Guarantor ID / Form" onUpload={setGuarantorBlob} onRemove={() => setGuarantorBlob(null)} />
                        </div>
                        <div className="border-t border-gray-100 pt-6">
@@ -405,7 +409,11 @@ export const CreateLoan: React.FC = () => {
                
                <button
                    type="button"
-                   disabled={loading || (currentStep === 'borrower' && (!formData.borrower_id || !formData.reference_no || !!existingLoanError))}
+                   disabled={
+                       loading || 
+                       (currentStep === 'borrower' && (!formData.borrower_id || !formData.reference_no || !!existingLoanError)) ||
+                       (currentStep === 'documents' && !appFormBlob)
+                   }
                    onClick={() => {
                        if (currentStep === 'borrower') setCurrentStep('terms');
                        else if (currentStep === 'terms') setCurrentStep('documents');

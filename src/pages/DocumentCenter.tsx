@@ -247,13 +247,13 @@ export const DocumentCenter: React.FC = () => {
                           >
                               <div className="flex items-center"><UserCircle className="h-4 w-4 mr-2" /> My Uploads</div>
                           </button>
-                          {(['financial', 'hr', 'operational', 'general', 'template'] as const).map(cat => (
+                          {(['loan_application', 'financial', 'hr', 'operational', 'general', 'template'] as const).map(cat => (
                               <button 
                                 key={cat}
                                 onClick={() => setActiveCategory(cat)}
                                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all capitalize ${activeCategory === cat ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50'}`}
                               >
-                                  {cat}
+                                  {cat.replace('_', ' ')}
                               </button>
                           ))}
                       </div>
@@ -308,7 +308,7 @@ export const DocumentCenter: React.FC = () => {
                                               </td>
                                               <td className="px-6 py-4 whitespace-nowrap">
                                                   <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-700 uppercase border border-gray-200">
-                                                      {file.category}
+                                                      {file.category.replace('_', ' ')}
                                                   </span>
                                               </td>
                                               <td className="px-6 py-4 whitespace-nowrap">
@@ -388,6 +388,7 @@ export const DocumentCenter: React.FC = () => {
                               ) : (
                                   <>
                                       <option value="general">General</option>
+                                      <option value="loan_application">Loan Application</option>
                                       <option value="financial">Financial</option>
                                       <option value="hr">HR / Personnel</option>
                                       <option value="operational">Operational</option>

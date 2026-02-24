@@ -6,7 +6,7 @@ export type LoanStatus = 'active' | 'completed' | 'defaulted' | 'pending' | 'rej
 
 export type ApprovalStatus = 'pending_approval' | 'approved' | 'rejected';
 
-export type DocumentCategory = 'financial' | 'hr' | 'operational' | 'general' | 'template';
+export type DocumentCategory = 'financial' | 'hr' | 'operational' | 'general' | 'template' | 'loan_application';
 
 export interface UserProfile {
   id: string;
