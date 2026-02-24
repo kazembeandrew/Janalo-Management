@@ -29,18 +29,19 @@ export const DocumentCenter: React.FC = () => {
   const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
   const isHR = effectiveRoles.includes('hr');
   const isAccountant = effectiveRoles.includes('accountant');
+  const isOfficer = effectiveRoles.includes('loan_officer');
   
-  // A user is "Strictly Accountant" if they have the role but aren't an Admin/CEO/HR
   const isStrictAccountant = isAccountant && !isCEO && !isHR;
+  const isStrictOfficer = isOfficer && !isCEO && !isHR && !isAccountant;
   
-  const canUpload = isCEO || isHR || isAccountant;
+  const canUpload = isCEO || isHR || isAccountant || isOfficer;
   const canManagePermissions = isCEO || isHR;
 
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
   const [uploadForm, setUploadForm] = useState({
       name: '',
-      category: (isStrictAccountant ? 'financial' : 'general') as DocumentCategory,
+      category: (isStrictAccountant ? 'financial' : isStrictOfficer ? 'loan_application' : 'general') as DocumentCategory,
       file: null as File | null
   });
 
@@ -51,15 +52,14 @@ export const DocumentCenter: React.FC = () => {
     fetchFiles();
   }, [activeCategory]);
 
-  // Reset form defaults when modal opens
   useEffect(() => {
       if (showUploadModal) {
           setUploadForm(prev => ({
               ...prev,
-              category: isStrictAccountant ? 'financial' : 'general'
+              category: isStrictAccountant ? 'financial' : isStrictOfficer ? 'loan_application' : 'general'
           }));
       }
-  }, [showUploadModal, isStrictAccountant]);
+  }, [showUploadModal, isStrictAccountant, isStrictOfficer]);
 
   const fetchFiles = async () => {
     setLoading(true);
@@ -115,7 +115,7 @@ export const DocumentCenter: React.FC = () => {
 
           toast.success("Document uploaded successfully");
           setShowUploadModal(false);
-          setUploadForm({ name: '', category: isStrictAccountant ? 'financial' : 'general', file: null });
+          setUploadForm({ name: '', category: isStrictAccountant ? 'financial' : isStrictOfficer ? 'loan_application' : 'general', file: null });
           fetchFiles();
       } catch (e: any) {
           toast.error("Upload failed: " + e.message);
@@ -381,10 +381,12 @@ export const DocumentCenter: React.FC = () => {
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={uploadForm.category}
                             onChange={e => setUploadForm({...uploadForm, category: e.target.value as DocumentCategory})}
-                            disabled={isStrictAccountant}
+                            disabled={isStrictAccountant || isStrictOfficer}
                           >
                               {isStrictAccountant ? (
                                   <option value="financial">Financial</option>
+                              ) : isStrictOfficer ? (
+                                  <option value="loan_application">Loan Application</option>
                               ) : (
                                   <>
                                       <option value="general">General</option>
@@ -396,7 +398,11 @@ export const DocumentCenter: React.FC = () => {
                                   </>
                               )}
                           </select>
-                          {isStrictAccountant && <p className="mt-1 text-[10px] text-indigo-600 font-bold">Accountants are restricted to financial documents.</p>}
+                          {(isStrictAccountant || isStrictOfficer) && (
+                              <p className="mt-1 text-[10px] text-indigo-600 font-bold">
+                                  {isStrictAccountant ? 'Accountants are restricted to financial documents.' : 'Loan Officers are restricted to loan applications.'}
+                              </p>
+                          )}
                       </div>
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Select File</label>

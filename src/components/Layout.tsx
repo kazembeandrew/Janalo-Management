@@ -10,7 +10,6 @@ import {
   Menu, 
   X, 
   PieChart,
-  PlusCircle,
   FileText,
   Receipt,
   MessageSquare,
@@ -22,7 +21,6 @@ import {
   UserCircle,
   Map as MapIcon,
   ClipboardList,
-  Wallet,
   Landmark,
   Scale,
   Target,
@@ -34,11 +32,7 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { ToastProvider } from './ToastProvider';
 
-interface LayoutProps {
-  children: React.Node;
-}
-
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, effectiveRoles, signOut } = useAuth();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -79,11 +73,11 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { name: 'Statements', href: '/statements', icon: Scale, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer', 'accountant'] },
     { name: 'Data Import', href: '/import', icon: FileSpreadsheet, roles: ['admin', 'accountant'] },
-    { name: 'Document Center', href: '/documents', icon: FolderOpen, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Document Center', href: '/documents', icon: FolderOpen, roles: ['admin', 'ceo', 'accountant', 'loan_officer', 'hr'] },
     { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
     { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'ceo', 'hr', 'accountant'] },
+    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'ceo', 'hr', 'accountant', 'loan_officer'] },
     { name: 'Performance', href: '/performance', icon: Award, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
@@ -122,7 +116,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="font-medium truncate text-sm">{profile?.full_name}</div>
         </div>
 
-        <nav className="mt-4 px-3 space-y-1">
+        <nav className="mt-4 px-3 space-y-1 overflow-y-auto custom-scrollbar h-[calc(100vh-12rem)]">
           {navigation.map((item) => {
             const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
             if (!hasAccess) return null;
