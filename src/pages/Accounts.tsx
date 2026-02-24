@@ -105,7 +105,7 @@ export const Accounts: React.FC = () => {
                 name: accountForm.name,
                 account_category: accountForm.category,
                 account_code: accountForm.code,
-                type: accountForm.code.toLowerCase(), // Added required 'type' column
+                type: accountForm.code.toLowerCase(),
                 account_number: accountForm.account_number,
                 bank_name: accountForm.bank_name,
                 balance: 0
@@ -121,7 +121,7 @@ export const Accounts: React.FC = () => {
                 .from('internal_accounts')
                 .select('id')
                 .eq('account_code', 'CAPITAL')
-                .single();
+                .maybeSingle(); // Use maybeSingle to avoid 406 error if not found
 
               if (capitalAcc) {
                   await postJournalEntry(
@@ -134,10 +134,12 @@ export const Accounts: React.FC = () => {
                       ],
                       profile.id
                   );
+              } else {
+                  toast.error("Account created, but initial balance could not be posted because no 'CAPITAL' account exists yet.");
               }
           }
 
-          toast.success('Account created and initialized');
+          toast.success('Account created successfully');
           setShowAccountModal(false);
           setAccountForm({ name: '', category: 'asset', code: 'BANK', account_number: '', bank_name: '', initial_balance: 0 });
           setDisplayInitialBalance('0');
@@ -173,9 +175,9 @@ export const Accounts: React.FC = () => {
                 .from('internal_accounts')
                 .select('id')
                 .eq('account_code', 'CAPITAL')
-                .single();
+                .maybeSingle();
 
-              if (!capitalAcc) throw new Error("System 'Share Capital' account not found.");
+              if (!capitalAcc) throw new Error("System 'Share Capital' account (code: CAPITAL) not found. Please create it first.");
 
               await postJournalEntry(
                   'injection',
@@ -410,6 +412,7 @@ export const Accounts: React.FC = () => {
                                   <option value="EQUITY">EQUITY</option>
                                   <option value="LIABILITY">LIABILITY</option>
                                   <option value="OPERATIONAL">OPERATIONAL</option>
+                                  <option value="CAPITAL">CAPITAL</option>
                               </select>
                           </div>
                       </div>
