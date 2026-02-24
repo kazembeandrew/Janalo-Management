@@ -22,27 +22,41 @@ export const AuditLogs: React.FC = () => {
 
   const fetchLogs = async () => {
     setLoading(true);
-    let query = supabase
-      .from('audit_logs')
-      .select('*, users(full_name)')
-      .order('created_at', { ascending: false })
-      .limit(150);
-    
-    if (activeFilter !== 'all') {
-        query = query.eq('entity_type', activeFilter);
+    try {
+        // Try with join first
+        const { data, error } = await supabase
+          .from('audit_logs')
+          .select('*, users!user_id(full_name)')
+          .order('created_at', { ascending: false })
+          .limit(150);
+        
+        if (error) {
+            // Fallback if join fails
+            const { data: fallbackData } = await supabase
+                .from('audit_logs')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(150);
+            setLogs(fallbackData || []);
+        } else {
+            setLogs(data || []);
+        }
+    } catch (e) {
+        console.error(e);
+    } finally {
+        setLoading(false);
     }
-
-    const { data, error } = await query;
-    
-    if (!error) setLogs(data || []);
-    setLoading(false);
   };
 
-  const filteredLogs = logs.filter(log => 
-    log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.users?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    log.entity_id?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredLogs = logs.filter(log => {
+    const matchesSearch = log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         log.users?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         log.entity_id?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesFilter = activeFilter === 'all' || log.entity_type === activeFilter;
+    
+    return matchesSearch && matchesFilter;
+  });
 
   const getEntityIcon = (type: string) => {
       switch(type) {
@@ -134,7 +148,7 @@ export const AuditLogs: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                                 <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-xs mr-3">
-                                    {log.users?.full_name?.charAt(0)}
+                                    {(log.users?.full_name || 'S').charAt(0)}
                                 </div>
                                 <span className="text-sm font-bold text-gray-700">{log.users?.full_name || 'System'}</span>
                             </div>

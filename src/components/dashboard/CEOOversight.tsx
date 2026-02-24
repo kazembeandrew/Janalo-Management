@@ -36,47 +36,35 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
-        // Fetch reset request separately without join first to ensure it's captured
-        const { data: resetData } = await supabase
+        // 1. Fetch Reset Request (Safest way: no join first to avoid 500s)
+        const { data: resetLogs } = await supabase
             .from('audit_logs')
-            .select('*, users!user_id(full_name)')
+            .select('*')
             .eq('action', 'SYSTEM_RESET_REQUESTED')
             .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(1);
+        
+        const latestReset = resetLogs?.[0];
+        if (latestReset && !latestReset.details?.executed && !latestReset.details?.cancelled) {
+            // Fetch requester name separately to be safe
+            const { data: userData } = await supabase.from('users').select('full_name').eq('id', latestReset.user_id).single();
+            setPendingReset({ ...latestReset, requester_name: userData?.full_name || 'Administrator' });
+        } else {
+            setPendingReset(null);
+        }
 
+        // 2. Fetch other pending items
         const [loansRes, usersRes, expensesRes, tasksRes] = await Promise.all([
-            supabase
-                .from('loans')
-                .select('*, borrowers(full_name)')
-                .eq('status', 'pending')
-                .order('created_at', { ascending: false }),
-            supabase
-                .from('users')
-                .select('*')
-                .eq('deletion_status', 'pending_approval'),
-            supabase
-                .from('expenses')
-                .select('*, users!recorded_by(full_name)')
-                .eq('status', 'pending_approval')
-                .order('created_at', { ascending: false }),
-            supabase
-                .from('tasks')
-                .select('*, users!assigned_to(full_name)')
-                .eq('status', 'pending_approval')
-                .order('created_at', { ascending: false })
+            supabase.from('loans').select('*, borrowers(full_name)').eq('status', 'pending').order('created_at', { ascending: false }),
+            supabase.from('users').select('*').eq('deletion_status', 'pending_approval'),
+            supabase.from('expenses').select('*, users!recorded_by(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false }),
+            supabase.from('tasks').select('*, users!assigned_to(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false })
         ]);
 
         setPendingLoans(loansRes.data || []);
         setPendingUsers(usersRes.data || []);
         setPendingExpenses(expensesRes.data || []);
         setPendingTasks(tasksRes.data || []);
-        
-        if (resetData && !resetData.details?.executed && !resetData.details?.cancelled) {
-            setPendingReset(resetData);
-        } else {
-            setPendingReset(null);
-        }
     } catch (err) {
         console.error("Oversight fetch error:", err);
     } finally {
@@ -183,7 +171,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                       <div>
                           <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Critical: Factory Reset Request</p>
-                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name || 'Administrator'}</p>
+                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.requester_name}</p>
                           <p className="text-xs text-gray-500">
                               {profile?.id === pendingReset.user_id 
                                 ? "Waiting for a second administrator to authorize." 
