@@ -342,10 +342,11 @@ export const Users: React.FC = () => {
       
       setIsProcessing(true);
       try {
+          // Ensure empty strings are sent as null for date columns
           const updatePayload = {
               delegated_role: isClearing ? null : delegationData.role,
-              delegation_start: isClearing ? null : delegationData.start,
-              delegation_end: (isClearing || !delegationData.end) ? null : delegationData.end
+              delegation_start: isClearing ? null : (delegationData.start || null),
+              delegation_end: (isClearing || !delegationData.end) ? null : (delegationData.end || null)
           };
 
           const { error } = await supabase
