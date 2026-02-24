@@ -46,6 +46,33 @@ export const DataImporter: React.FC = () => {
       }
   };
 
+  const normalizeDate = (dateVal: any): string => {
+      if (!dateVal) return new Date().toISOString().split('T')[0];
+      
+      const dateStr = String(dateVal).trim();
+      
+      // Handle DD/MM/YYYY format
+      if (dateStr.includes('/')) {
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+              const day = parts[0].padStart(2, '0');
+              const month = parts[1].padStart(2, '0');
+              const year = parts[2];
+              // Ensure year is 4 digits
+              const fullYear = year.length === 2 ? `20${year}` : year;
+              return `${fullYear}-${month}-${day}`;
+          }
+      }
+
+      // Handle Excel serial dates (numbers)
+      if (!isNaN(Number(dateStr)) && Number(dateStr) > 40000) {
+          const date = new Date((Number(dateStr) - 25569) * 86400 * 1000);
+          return date.toISOString().split('T')[0];
+      }
+
+      return dateStr;
+  };
+
   const downloadTemplate = (type: 'loans' | 'repayments') => {
     const headers = type === 'loans' 
       ? [['Reference', 'Name', 'Phones', 'Occupation', 'Loan', 'Date Disbursed', 'Term', 'Interest']]
@@ -209,6 +236,7 @@ export const DataImporter: React.FC = () => {
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
           const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
+          const disbursementDate = normalizeDate(row['Date Disbursed']);
 
           const { error: loanError } = await supabase.from('loans').insert([{
             reference_no: finalRef,
@@ -217,7 +245,7 @@ export const DataImporter: React.FC = () => {
             principal_amount: principal,
             interest_rate: rate,
             term_months: term,
-            disbursement_date: row['Date Disbursed'] || new Date().toISOString().split('T')[0],
+            disbursement_date: disbursementDate,
             interest_type: 'flat',
             status: 'pending',
             principal_outstanding: principal,
@@ -254,12 +282,14 @@ export const DataImporter: React.FC = () => {
               continue;
           }
 
+          const paymentDate = normalizeDate(row['Payment Date (YYYY-MM-DD)']);
+
           const { error: repayError } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
               amount_paid: amount,
               principal_paid: amount * 0.8, // Default split for imports if not specified
               interest_paid: amount * 0.2,
-              payment_date: row['Payment Date (YYYY-MM-DD)'] || new Date().toISOString().split('T')[0],
+              payment_date: paymentDate,
               recorded_by: selectedOfficerId
           }]);
 
