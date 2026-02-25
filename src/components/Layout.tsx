@@ -33,6 +33,7 @@ import {
   Hash
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
+import { OversightIndicator } from './OversightIndicator';
 import { ToastProvider } from './ToastProvider';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -262,6 +263,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
             
             <div className="flex items-center space-x-4">
+                <OversightIndicator />
                 <NotificationBell />
                 <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
                     {profile?.full_name?.charAt(0)}
