@@ -216,12 +216,7 @@ export const Dashboard: React.FC = () => {
           <div className="lg:col-span-2 space-y-6">
               {isExec && <CEOOversight />}
 
-              {isExec && (
-                  <div className="grid grid-cols-1 gap-6">
-                      <PARAgingChart data={parAgingData} />
-                      <ProfitabilityChart data={profitData} />
-                  </div>
-              )}
+              {isExec && <PARAgingChart data={parAgingData} />}
 
               <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
                 <div className="relative z-10">
@@ -248,11 +243,18 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div className="space-y-6">
-              <RecentActivity />
-              {isExec && <RecentDocuments />}
               {isExec && <OfficerLeaderboard officers={officerStats} />}
+              {isExec && <ProfitabilityChart data={profitData} />}
           </div>
       </div>
+
+      {/* Bottom Section for Logs and Documents */}
+      {isExec && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-6 border-t border-gray-200">
+              <RecentActivity />
+              <RecentDocuments />
+          </div>
+      )}
     </div>
   );
 };
