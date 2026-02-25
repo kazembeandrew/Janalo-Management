@@ -36,19 +36,17 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
-        // 1. Fetch Reset Request (Safest way: no join first to avoid 500s)
-        const { data: resetLogs } = await supabase
+        // 1. Fetch Reset State
+        const { data: logs } = await supabase
             .from('audit_logs')
-            .select('*')
-            .eq('action', 'SYSTEM_RESET_REQUESTED')
+            .select('*, users!user_id(full_name)')
+            .in('action', ['SYSTEM_RESET_REQUESTED', 'SYSTEM_RESET_CANCELLED', 'SYSTEM_FACTORY_RESET'])
             .order('created_at', { ascending: false })
             .limit(1);
         
-        const latestReset = resetLogs?.[0];
-        if (latestReset && !latestReset.details?.executed && !latestReset.details?.cancelled) {
-            // Fetch requester name separately to be safe
-            const { data: userData } = await supabase.from('users').select('full_name').eq('id', latestReset.user_id).single();
-            setPendingReset({ ...latestReset, requester_name: userData?.full_name || 'Administrator' });
+        const latest = logs?.[0];
+        if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
+            setPendingReset(latest);
         } else {
             setPendingReset(null);
         }
@@ -119,11 +117,8 @@ export const CEOOversight: React.FC = () => {
           const { error } = await supabase.rpc('wipe_all_data');
           if (error) throw error;
 
-          await supabase
-            .from('audit_logs')
-            .update({ details: { ...pendingReset.details, executed: true, authorized_by: profile.id } })
-            .eq('id', pendingReset.id);
-
+          // Note: wipe_all_data inserts its own SYSTEM_FACTORY_RESET log, 
+          // which will clear the pending state on next fetch.
           toast.success("System reset successful.");
           setTimeout(() => navigate('/'), 1500);
       } catch (e: any) {
@@ -171,7 +166,7 @@ export const CEOOversight: React.FC = () => {
                       </div>
                       <div>
                           <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Critical: Factory Reset Request</p>
-                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.requester_name}</p>
+                          <p className="text-sm font-bold text-gray-900">Requested by {pendingReset.users?.full_name || 'Administrator'}</p>
                           <p className="text-xs text-gray-500">
                               {profile?.id === pendingReset.user_id 
                                 ? "Waiting for a second administrator to authorize." 

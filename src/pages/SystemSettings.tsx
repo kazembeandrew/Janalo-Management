@@ -34,15 +34,17 @@ export const SystemSettings: React.FC = () => {
 
   const fetchPendingReset = async () => {
       try {
-          const { data } = await supabase
+          // Fetch the latest of each relevant action type
+          const { data: logs } = await supabase
             .from('audit_logs')
             .select('*, users!user_id(full_name)')
-            .eq('action', 'SYSTEM_RESET_REQUESTED')
+            .in('action', ['SYSTEM_RESET_REQUESTED', 'SYSTEM_RESET_CANCELLED', 'SYSTEM_FACTORY_RESET'])
             .order('created_at', { ascending: false })
             .limit(1);
           
-          const latest = data?.[0];
-          if (latest && !latest.details?.executed && !latest.details?.cancelled) {
+          const latest = logs?.[0];
+          // A request is only pending if the absolute latest system action is the request itself
+          if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
               setPendingRequest(latest);
           } else {
               setPendingRequest(null);
@@ -93,7 +95,7 @@ export const SystemSettings: React.FC = () => {
 
           if (error) throw error;
 
-          toast.success("Reset request submitted. A second administrator must now authorize this from the Oversight Queue.");
+          toast.success("Reset request submitted. A second administrator must now authorize this.");
           setShowWipeModal(false);
           setConfirmText('');
           fetchPendingReset();
@@ -105,17 +107,22 @@ export const SystemSettings: React.FC = () => {
   };
 
   const handleCancelRequest = async () => {
-      if (!pendingRequest) return;
+      if (!profile) return;
       setIsProcessing(true);
       try {
-          const { error } = await supabase
-            .from('audit_logs')
-            .update({ details: { ...pendingRequest.details, executed: true, cancelled: true } })
-            .eq('id', pendingRequest.id);
+          // Instead of updating the log (which is restricted), we insert a cancellation log
+          const { error } = await supabase.from('audit_logs').insert({
+              user_id: profile.id,
+              action: 'SYSTEM_RESET_CANCELLED',
+              entity_type: 'system',
+              details: { cancelled_at: new Date().toISOString() }
+          });
           
           if (error) throw error;
           toast.success("Reset request cancelled.");
           fetchPendingReset();
+      } catch (e: any) {
+          toast.error("Cancellation failed: " + e.message);
       } finally {
           setIsProcessing(false);
       }
