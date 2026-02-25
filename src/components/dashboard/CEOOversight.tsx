@@ -36,19 +36,36 @@ export const CEOOversight: React.FC = () => {
   const fetchOversightData = async () => {
     setLoading(true);
     try {
-        // 1. Fetch Reset State
-        const { data: logs } = await supabase
+        // 1. Fetch Reset State (Resilient Query)
+        const { data: logs, error: logError } = await supabase
             .from('audit_logs')
             .select('*, users!user_id(full_name)')
             .in('action', ['SYSTEM_RESET_REQUESTED', 'SYSTEM_RESET_CANCELLED', 'SYSTEM_FACTORY_RESET'])
             .order('created_at', { ascending: false })
             .limit(1);
         
-        const latest = logs?.[0];
-        if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
-            setPendingReset(latest);
+        // Fallback if join fails
+        if (logError) {
+            const { data: fallbackLogs } = await supabase
+                .from('audit_logs')
+                .select('*')
+                .in('action', ['SYSTEM_RESET_REQUESTED', 'SYSTEM_RESET_CANCELLED', 'SYSTEM_FACTORY_RESET'])
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            const latest = fallbackLogs?.[0];
+            if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
+                setPendingReset({ ...latest, users: null });
+            } else {
+                setPendingReset(null);
+            }
         } else {
-            setPendingReset(null);
+            const latest = logs?.[0];
+            if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
+                setPendingReset(latest);
+            } else {
+                setPendingReset(null);
+            }
         }
 
         // 2. Fetch other pending items
@@ -117,8 +134,6 @@ export const CEOOversight: React.FC = () => {
           const { error } = await supabase.rpc('wipe_all_data');
           if (error) throw error;
 
-          // Note: wipe_all_data inserts its own SYSTEM_FACTORY_RESET log, 
-          // which will clear the pending state on next fetch.
           toast.success("System reset successful.");
           setTimeout(() => navigate('/'), 1500);
       } catch (e: any) {
