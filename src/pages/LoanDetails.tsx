@@ -221,9 +221,9 @@ export const LoanDetails: React.FC = () => {
 
         if (rError) throw rError;
 
-        // Record in Ledger
-        const bankAcc = accounts.find(a => a.id === targetAccountId);
-        const interestAcc = await getAccountByCode('EQUITY'); // Interest goes to earnings
+        // Record in Ledger (Balanced Entry)
+        const portfolioAcc = await getAccountByCode('PORTFOLIO');
+        const interestAcc = await getAccountByCode('EQUITY');
 
         await postJournalEntry(
             'repayment',
@@ -231,6 +231,7 @@ export const LoanDetails: React.FC = () => {
             `Repayment from ${loan.borrowers?.full_name}`,
             [
                 { account_id: targetAccountId, debit: amount, credit: 0 },
+                { account_id: portfolioAcc.id, debit: 0, credit: principalPaid },
                 { account_id: interestAcc.id, debit: 0, credit: interestPaid + penaltyPaid }
             ],
             profile.id
@@ -269,9 +270,21 @@ export const LoanDetails: React.FC = () => {
       setProcessingAction(true);
       try {
           // 1. Create Reversal Journal Entry
+          const portfolioAcc = await getAccountByCode('PORTFOLIO');
           const interestAcc = await getAccountByCode('EQUITY');
-          // We need to find which bank account it went into. For simplicity, we ask or use a default.
-          // In a real system, we'd link the repayment to the journal entry.
+          
+          // Swapping debits and credits from the original repayment
+          await postJournalEntry(
+              'reversal',
+              loan.id,
+              `REVERSAL of repayment from ${new Date(selectedRepayment.payment_date).toLocaleDateString()}`,
+              [
+                  { account_id: portfolioAcc.id, debit: selectedRepayment.principal_paid, credit: 0 },
+                  { account_id: interestAcc.id, debit: selectedRepayment.interest_paid + selectedRepayment.penalty_paid, credit: 0 },
+                  { account_id: targetAccountId || accounts[0].id, debit: 0, credit: selectedRepayment.amount_paid }
+              ],
+              profile.id
+          );
           
           // 2. Update Loan Balances (Add back what was paid)
           await supabase.from('loans').update({
@@ -281,7 +294,7 @@ export const LoanDetails: React.FC = () => {
               status: 'active'
           }).eq('id', loan.id);
 
-          // 3. Delete the repayment record (or mark as reversed)
+          // 3. Delete the repayment record
           await supabase.from('repayments').delete().eq('id', selectedRepayment.id);
 
           await supabase.from('loan_notes').insert([{
@@ -308,16 +321,17 @@ export const LoanDetails: React.FC = () => {
       try {
           const totalLoss = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
           
-          // 1. Accounting: Debit Bad Debt Expense, Credit Loan Receivable
-          // Note: This requires a 'BAD_DEBT' account code to exist
+          // 1. Accounting: Debit Bad Debt Expense, Credit Loan Portfolio
           const expenseAcc = await getAccountByCode('OPERATIONAL'); 
+          const portfolioAcc = await getAccountByCode('PORTFOLIO');
 
           await postJournalEntry(
               'write_off',
               loan.id,
               `Write-off for loan ${loan.reference_no} (${loan.borrowers?.full_name})`,
               [
-                  { account_id: expenseAcc.id, debit: totalLoss, credit: 0 }
+                  { account_id: expenseAcc.id, debit: totalLoss, credit: 0 },
+                  { account_id: portfolioAcc.id, debit: 0, credit: totalLoss }
               ],
               profile.id
           );
@@ -355,13 +369,14 @@ export const LoanDetails: React.FC = () => {
           await supabase.from('loans').update({ status }).eq('id', loan.id);
           
           if (status === 'active' && accountId) {
-              // Record Disbursement in Ledger
-              const bankAcc = accounts.find(a => a.id === accountId);
+              // Record Disbursement in Ledger (Balanced Entry)
+              const portfolioAcc = await getAccountByCode('PORTFOLIO');
               await postJournalEntry(
                   'loan_disbursement',
                   loan.id,
                   `Disbursement to ${loan.borrowers?.full_name}`,
                   [
+                      { account_id: portfolioAcc.id, debit: loan.principal_amount, credit: 0 },
                       { account_id: accountId, debit: 0, credit: loan.principal_amount }
                   ],
                   profile?.id || ''
@@ -379,8 +394,8 @@ export const LoanDetails: React.FC = () => {
           setActiveModal(null);
           setDecisionReason('');
           fetchData();
-      } catch (e) {
-          toast.error('Action failed');
+      } catch (e: any) {
+          toast.error('Action failed: ' + e.message);
       } finally {
           setProcessingAction(false);
       }

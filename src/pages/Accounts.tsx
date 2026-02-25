@@ -105,7 +105,8 @@ export const Accounts: React.FC = () => {
               { name: 'Share Capital', category: 'equity', code: 'CAPITAL', type: 'equity' },
               { name: 'Main Bank Account', category: 'asset', code: 'BANK', type: 'bank' },
               { name: 'Petty Cash', category: 'asset', code: 'CASH', type: 'cash' },
-              { name: 'Retained Earnings', category: 'equity', code: 'EQUITY', type: 'equity' }
+              { name: 'Retained Earnings', category: 'equity', code: 'EQUITY', type: 'equity' },
+              { name: 'Loan Portfolio', category: 'asset', code: 'PORTFOLIO', type: 'asset' }
           ];
 
           // Check which accounts are missing
@@ -153,7 +154,7 @@ export const Accounts: React.FC = () => {
       setIsProcessing(true);
       try {
           // Map code to a valid type string for the DB constraint
-          const validTypes = ['bank', 'cash', 'mobile', 'equity', 'liability', 'operational', 'capital'];
+          const validTypes = ['bank', 'cash', 'mobile', 'equity', 'liability', 'operational', 'capital', 'asset'];
           const suggestedType = accountForm.code.toLowerCase();
           const finalType = validTypes.includes(suggestedType) ? suggestedType : accountForm.category;
 
@@ -493,6 +494,7 @@ export const Accounts: React.FC = () => {
                                   <option value="LIABILITY">LIABILITY</option>
                                   <option value="OPERATIONAL">OPERATIONAL</option>
                                   <option value="CAPITAL">CAPITAL</option>
+                                  <option value="PORTFOLIO">PORTFOLIO</option>
                               </select>
                           </div>
                       </div>
