@@ -11,6 +11,8 @@ import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { OfficerLeaderboard } from '@/components/dashboard/OfficerLeaderboard';
 import { CEOOversight } from '@/components/dashboard/CEOOversight';
 import { RecentDocuments } from '@/components/dashboard/RecentDocuments';
+import { PARAgingChart } from '@/components/dashboard/PARAgingChart';
+import { ProfitabilityChart } from '@/components/dashboard/ProfitabilityChart';
 import { formatCurrency } from '@/utils/finance';
 
 export const Dashboard: React.FC = () => {
@@ -35,6 +37,7 @@ export const Dashboard: React.FC = () => {
   const [profitData, setProfitData] = useState<any[]>([]);
   const [officerStats, setOfficerStats] = useState<any[]>([]);
   const [activeLoans, setActiveLoans] = useState<any[]>([]);
+  const [parAgingData, setParAgingData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [aiInsights, setAiInsights] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -80,12 +83,33 @@ export const Dashboard: React.FC = () => {
             .maybeSingle()
       ]);
 
-      if (isAccountant || isExec) {
-          const { data: loans } = await supabase
-            .from('loans')
-            .select('principal_outstanding, interest_outstanding, penalty_outstanding, monthly_installment, updated_at')
-            .eq('status', 'active');
-          setActiveLoans(loans || []);
+      const { data: loans } = await supabase
+        .from('loans')
+        .select('id, principal_outstanding, interest_outstanding, penalty_outstanding, monthly_installment, updated_at, status')
+        .eq('status', 'active');
+      
+      setActiveLoans(loans || []);
+
+      // Calculate PAR Aging
+      if (loans) {
+          const buckets = [
+              { range: 'Current', min: 0, max: 30, value: 0, count: 0 },
+              { range: '31-60 Days', min: 31, max: 60, value: 0, count: 0 },
+              { range: '61-90 Days', min: 61, max: 90, value: 0, count: 0 },
+              { range: '91+ Days', min: 91, max: 9999, value: 0, count: 0 }
+          ];
+
+          const now = new Date();
+          loans.forEach(loan => {
+              const lastUpdate = new Date(loan.updated_at);
+              const diffDays = Math.floor((now.getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
+              const totalOutstanding = Number(loan.principal_outstanding) + Number(loan.interest_outstanding) + Number(loan.penalty_outstanding || 0);
+
+              const bucket = buckets.find(b => diffDays >= b.min && diffDays <= b.max) || buckets[0];
+              bucket.value += totalOutstanding;
+              bucket.count += 1;
+          });
+          setParAgingData(buckets);
       }
 
       let reassessCount = 0;
@@ -175,22 +199,29 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {isAccountant && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} loanData={activeLoans} />}
-      {isHR && <HRView stats={stats} officerStats={officerStats} />}
+      {isAccountant && !isExec && <AccountantView stats={stats} revenueData={revenueData} profitData={profitData} loanData={activeLoans} />}
+      {isHR && !isExec && <HRView stats={stats} officerStats={officerStats} />}
       {isOfficer && !isHR && !isAccountant && !isExec && <OfficerView stats={stats} />}
       
-      {isExec && !isAccountant && !isHR && (
+      {isExec && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              <StatCard title="Portfolio At Risk" value={stats.parCount} icon={AlertTriangle} color="bg-red-500" subtitle="Overdue Accounts" />
               <StatCard title="Total Liquidity" value={formatCurrency(stats.totalLiquidity)} icon={Landmark} color="bg-green-600" subtitle="Cash & Bank" />
               <StatCard title="Institutional Equity" value={formatCurrency(stats.totalEquity)} icon={Scale} color="bg-purple-600" subtitle="Net Worth" />
               <StatCard title="Portfolio Value" value={formatCurrency(stats.totalPortfolio)} icon={DollarSign} color="bg-indigo-600" subtitle="Active Capital" />
-              <StatCard title="Portfolio At Risk" value={stats.parCount} icon={AlertTriangle} color="bg-red-500" subtitle="Overdue Accounts" />
           </div>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
               {isExec && <CEOOversight />}
+
+              {isExec && (
+                  <div className="grid grid-cols-1 gap-6">
+                      <PARAgingChart data={parAgingData} />
+                      <ProfitabilityChart data={profitData} />
+                  </div>
+              )}
 
               <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
                 <div className="relative z-10">

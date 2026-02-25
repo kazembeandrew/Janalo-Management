@@ -87,7 +87,7 @@ export const Reports: React.FC = () => {
             activeLoans.forEach(loan => {
                 const lastUpdate = new Date(loan.updated_at);
                 const diffDays = Math.floor((now.getTime() - lastUpdate.getTime()) / (1000 * 3600 * 24));
-                const totalOutstanding = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+                const totalOutstanding = Number(loan.principal_outstanding) + Number(loan.interest_outstanding) + Number(loan.penalty_outstanding || 0);
 
                 const bucket = buckets.find(b => diffDays >= b.min && diffDays <= b.max) || buckets[0];
                 bucket.value += totalOutstanding;
@@ -238,26 +238,7 @@ export const Reports: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {/* Profitability Chart */}
-          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 lg:col-span-2 break-inside-avoid">
-              <h3 className="text-lg font-bold text-gray-900 mb-4">Profitability Analysis (Income vs Expenses)</h3>
-              <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={profitData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                          <Legend />
-                          <Bar dataKey="income" fill="#10B981" name="Interest Income" radius={[4, 4, 0, 0]} />
-                          <Bar dataKey="expense" fill="#EF4444" name="Expenses" radius={[4, 4, 0, 0]} />
-                          <Line type="monotone" dataKey="profit" stroke="#4F46E5" strokeWidth={3} name="Net Profit" />
-                      </ComposedChart>
-                  </ResponsiveContainer>
-              </div>
-          </div>
-
-          {/* PAR Aging Analysis */}
+          {/* PAR Aging Analysis - MOVED UP */}
           <div className="bg-white p-6 rounded-lg shadow border border-gray-200 break-inside-avoid">
               <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-bold text-gray-900">Portfolio At Risk (PAR) Aging</h3>
@@ -332,6 +313,25 @@ export const Reports: React.FC = () => {
                           <Tooltip formatter={(value: number) => formatCurrency(value)} />
                           <Legend />
                       </PieChart>
+                  </ResponsiveContainer>
+              </div>
+          </div>
+
+          {/* Profitability Chart - MOVED DOWN */}
+          <div className="bg-white p-6 rounded-lg shadow border border-gray-200 lg:col-span-2 break-inside-avoid">
+              <h3 className="text-lg font-bold text-gray-900 mb-4">Profitability Analysis (Income vs Expenses)</h3>
+              <div className="h-80">
+                  <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={profitData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                          <Legend />
+                          <Bar dataKey="income" fill="#10B981" name="Interest Income" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="expense" fill="#EF4444" name="Expenses" radius={[4, 4, 0, 0]} />
+                          <Line type="monotone" dataKey="profit" stroke="#4F46E5" strokeWidth={3} name="Net Profit" />
+                      </ComposedChart>
                   </ResponsiveContainer>
               </div>
           </div>
