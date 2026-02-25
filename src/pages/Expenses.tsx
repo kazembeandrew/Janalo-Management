@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Expense, InternalAccount } from '@/types';
 import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
+import { postJournalEntry, getAccountByCode } from '@/utils/accounting';
 import { Plus, Search, Filter, Receipt, Calendar, Trash2, PieChart as PieIcon, TrendingUp, BarChart3, RefreshCw, X, AlertCircle, CheckCircle2, Clock, Landmark } from 'lucide-react';
 import { 
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend,
@@ -128,32 +129,37 @@ export const Expenses: React.FC = () => {
   };
 
   const handleApprove = async () => {
-      if (!isCEO || !selectedExpense || !targetAccountId) return;
+      if (!isCEO || !selectedExpense || !targetAccountId || !profile) return;
       setIsProcessing(true);
       try {
           // 1. Update Expense Status
           const { error } = await supabase.from('expenses').update({ status: 'approved' }).eq('id', selectedExpense.id);
           if (error) throw error;
 
-          // 2. Record Institutional Outflow (Double Entry)
-          await supabase.from('fund_transactions').insert([{
-              from_account_id: targetAccountId,
-              amount: selectedExpense.amount,
-              type: 'expense',
-              description: `Expense payment: ${selectedExpense.description}`,
-              reference_id: selectedExpense.id,
-              recorded_by: profile?.id
-          }]);
+          // 2. Record Institutional Outflow via Journal (Double Entry)
+          // Find or create an expense account for this category
+          const expenseAcc = await getAccountByCode('OPERATIONAL'); 
+
+          await postJournalEntry(
+              'expense',
+              selectedExpense.id,
+              `Expense payment: ${selectedExpense.description}`,
+              [
+                  { account_id: expenseAcc.id, debit: selectedExpense.amount, credit: 0 },
+                  { account_id: targetAccountId, debit: 0, credit: selectedExpense.amount }
+              ],
+              profile.id
+          );
 
           await logAudit('Expense Approved', { amount: selectedExpense.amount, description: selectedExpense.description }, selectedExpense.id);
           await createNotification(selectedExpense.recorded_by, 'Expense Approved', `Your expense for "${selectedExpense.description}" (${formatCurrency(selectedExpense.amount)}) has been authorized.`);
           
-          toast.success('Expense approved and paid');
+          toast.success('Expense approved and posted to ledger');
           setShowApproveModal(false);
           setSelectedExpense(null);
           setTargetAccountId('');
       } catch (e: any) {
-          toast.error("Approval failed");
+          toast.error("Approval failed: " + e.message);
       } finally {
           setIsProcessing(false);
       }
