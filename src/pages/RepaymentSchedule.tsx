@@ -18,19 +18,27 @@ export const RepaymentSchedule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
   
-  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || effectiveRoles.includes('accountant');
 
   useEffect(() => {
     fetchActiveLoans();
-  }, []);
+  }, [profile]);
 
   const fetchActiveLoans = async () => {
+    if (!profile) return;
     setLoading(true);
     try {
-        const { data, error } = await supabase
+        let query = supabase
             .from('loans')
             .select('*, borrowers(full_name), users!officer_id(full_name)')
             .eq('status', 'active');
+        
+        // Filter by officer if not an executive/accountant
+        if (!isExec) {
+            query = query.eq('officer_id', profile.id);
+        }
+
+        const { data, error } = await query;
         
         if (error) throw error;
         setLoans(data as any || []);
@@ -121,7 +129,9 @@ export const RepaymentSchedule: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
             <h1 className="text-2xl font-bold text-gray-900">Repayment Schedule</h1>
-            <p className="text-sm text-gray-500">Master projection of all expected installments across the portfolio.</p>
+            <p className="text-sm text-gray-500">
+                {isExec ? 'Master projection of all expected installments across the portfolio.' : 'Your upcoming client installments for this month.'}
+            </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
             <button

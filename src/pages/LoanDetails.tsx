@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
-import { formatCurrency, formatNumberWithCommas, parseFormattedNumber, calculateRepaymentDistribution } from '@/utils/finance';
+import { formatCurrency, calculateRepaymentDistribution } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { 
     ArrowLeft, User, Phone, MapPin, Building2, 
@@ -20,8 +20,9 @@ import { LoanDocumentsList } from '@/components/loans/LoanDocumentsList';
 import { LoanRepaymentHistory } from '@/components/loans/LoanRepaymentHistory';
 import { LoanNotesSection } from '@/components/loans/LoanNotesSection';
 import { LoanVisitations } from '@/components/loans/LoanVisitations';
-import { DocumentUpload } from '@/components/DocumentUpload';
 import { MapPicker } from '@/components/MapPicker';
+import { LoanDecisionModals } from '@/components/loans/LoanDecisionModals';
+import { RepaymentModal } from '@/components/loans/RepaymentModal';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -41,11 +42,7 @@ export const LoanDetails: React.FC = () => {
   
   // UI State
   const [viewImage, setViewImage] = useState<string | null>(null);
-  const [showRepayModal, setShowRepayModal] = useState(false);
-  const [showApproveModal, setShowApproveModal] = useState(false);
-  const [showReassessModal, setShowReassessModal] = useState(false);
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [showVisitModal, setShowVisitModal] = useState(false);
+  const [activeModal, setActiveModal] = useState<'repay' | 'approve' | 'reassess' | 'reject' | 'visit' | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
   
@@ -177,7 +174,7 @@ export const LoanDetails: React.FC = () => {
           if (error) throw error;
 
           toast.success("Field visit logged");
-          setShowVisitModal(false);
+          setActiveModal(null);
           setVisitForm({ notes: '', lat: null, lng: null, imageBlob: null });
           fetchData();
       } catch (e: any) {
@@ -243,7 +240,7 @@ export const LoanDetails: React.FC = () => {
         }).eq('id', loan.id);
 
         toast.success('Repayment recorded');
-        setShowRepayModal(false);
+        setActiveModal(null);
         setDisplayRepayAmount('');
         setRepayAmount(0);
         fetchData();
@@ -280,9 +277,8 @@ export const LoanDetails: React.FC = () => {
           }]);
 
           toast.success(`Loan ${status}`);
-          setShowApproveModal(false);
-          setShowReassessModal(false);
-          setShowRejectModal(false);
+          setActiveModal(null);
+          setDecisionReason('');
           fetchData();
       } catch (e) {
           toast.error('Action failed');
@@ -321,7 +317,7 @@ export const LoanDetails: React.FC = () => {
             </button>
             {loan.status === 'active' && isOfficer && (
                 <>
-                    <button onClick={() => setShowVisitModal(true)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
+                    <button onClick={() => setActiveModal('visit')} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
                         <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
                     </button>
                     <Link to={`/loans/restructure/${loan.id}`} className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all flex items-center">
@@ -330,19 +326,19 @@ export const LoanDetails: React.FC = () => {
                 </>
             )}
             {loan.status === 'active' && (isAccountant || isOfficer) && (
-                <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
+                <button onClick={() => setActiveModal('repay')} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
                     Record Repayment
                 </button>
             )}
             {loan.status === 'pending' && isExecutive && (
                 <>
-                    <button onClick={() => setShowReassessModal(true)} className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-100 transition-all flex items-center">
+                    <button onClick={() => setActiveModal('reassess')} className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-100 transition-all flex items-center">
                         <RotateCcw className="h-4 w-4 mr-1.5" /> Reassess
                     </button>
-                    <button onClick={() => setShowRejectModal(true)} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
+                    <button onClick={() => setActiveModal('reject')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
                         <Ban className="h-4 w-4 mr-1.5" /> Reject
                     </button>
-                    <button onClick={() => setShowApproveModal(true)} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center">
+                    <button onClick={() => setActiveModal('approve')} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center">
                         <ThumbsUp className="h-4 w-4 mr-1.5" /> Approve & Disburse
                     </button>
                 </>
@@ -451,12 +447,12 @@ export const LoanDetails: React.FC = () => {
       </div>
 
       {/* Modals */}
-      {showVisitModal && (
+      {activeModal === 'visit' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><MapPin className="mr-3 h-6 w-6 text-indigo-300" /> Log Field Visit</h3>
-                      <button onClick={() => setShowVisitModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <form onSubmit={handleLogVisit} className="p-8 space-y-5">
                       <div>
@@ -513,115 +509,32 @@ export const LoanDetails: React.FC = () => {
           />
       )}
 
-      {showRepayModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                  <div className="bg-green-600 px-6 py-5 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center text-lg"><Receipt className="mr-3 h-6 w-6 text-green-200" /> Record Repayment</h3>
-                      <button onClick={() => setShowRepayModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-green-200" /></button>
-                  </div>
-                  <form onSubmit={handleRepayment} className="p-8 space-y-5">
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received (MK)</label>
-                          <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={displayRepayAmount} onChange={e => handleRepayAmountChange(e.target.value)} />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Deposit Into Account</label>
-                          <select required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500 bg-white" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
-                              <option value="">-- Select Account --</option>
-                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.account_code})</option>)}
-                          </select>
-                      </div>
-                      <div className="pt-4">
-                          <button type="submit" disabled={processingAction || !targetAccountId} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 disabled:bg-gray-400 transition-all shadow-lg shadow-green-100 active:scale-[0.98]">
-                              {processingAction ? 'Processing...' : 'Confirm & Record Payment'}
-                          </button>
-                      </div>
-                  </form>
-              </div>
-          </div>
+      {activeModal === 'repay' && (
+          <RepaymentModal 
+            displayAmount={displayRepayAmount}
+            onAmountChange={handleRepayAmountChange}
+            accounts={accounts}
+            targetAccountId={targetAccountId}
+            setTargetAccountId={setTargetAccountId}
+            isProcessing={processingAction}
+            onClose={() => setActiveModal(null)}
+            onConfirm={handleRepayment}
+          />
       )}
 
-      {showApproveModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                  <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center text-lg"><ThumbsUp className="mr-3 h-6 w-6 text-indigo-300" /> Approve & Disburse</h3>
-                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
-                  </div>
-                  <div className="p-8 space-y-5">
-                      <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-                          <p className="text-xs text-indigo-700 leading-relaxed">Approving this loan will mark it as <strong>Active</strong> and record an institutional disbursement of <strong>{formatCurrency(loan.principal_amount)}</strong>.</p>
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Disburse From Account</label>
-                          <select required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
-                              <option value="">-- Select Source Account --</option>
-                              {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({formatCurrency(acc.balance)})</option>)}
-                          </select>
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Approval Note (Optional)</label>
-                          <textarea className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 h-20 resize-none" placeholder="Add any final comments..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
-                      </div>
-                      <div className="pt-4">
-                          <button onClick={() => handleStatusUpdate('active', decisionReason, targetAccountId)} disabled={processingAction || !targetAccountId} className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200">
-                              {processingAction ? 'Processing...' : 'Confirm Approval'}
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showReassessModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                  <div className="bg-purple-600 px-6 py-5 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center text-lg"><RotateCcw className="mr-3 h-6 w-6 text-purple-200" /> Send for Reassessment</h3>
-                      <button onClick={() => setShowReassessModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-purple-200" /></button>
-                  </div>
-                  <div className="p-8 space-y-5">
-                      <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100">
-                          <p className="text-xs text-purple-700 leading-relaxed">This will return the application to the loan officer. Please specify what needs to be corrected or verified.</p>
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Instructions for Officer</label>
-                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-purple-500 h-32 resize-none" placeholder="e.g. Please verify the guarantor's employment status..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
-                      </div>
-                      <div className="pt-4">
-                          <button onClick={() => handleStatusUpdate('reassess', decisionReason)} disabled={processingAction || !decisionReason.trim()} className="w-full bg-purple-600 text-white py-3 rounded-xl font-bold hover:bg-purple-700 disabled:bg-gray-400 transition-all shadow-lg shadow-purple-100">
-                              {processingAction ? 'Processing...' : 'Confirm Reassessment'}
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {showRejectModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                  <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
-                      <h3 className="font-bold text-white flex items-center text-lg"><Ban className="mr-3 h-6 w-6 text-red-200" /> Reject Application</h3>
-                      <button onClick={() => setShowRejectModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
-                  </div>
-                  <div className="p-8 space-y-5">
-                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                          <p className="text-xs text-red-700 leading-relaxed">Are you sure you want to reject this application? This action is permanent and will be logged in the audit trail.</p>
-                      </div>
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Reason for Rejection</label>
-                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 h-32 resize-none" placeholder="e.g. Insufficient collateral value..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
-                      </div>
-                      <div className="pt-4">
-                          <button onClick={() => handleStatusUpdate('rejected', decisionReason)} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100">
-                              {processingAction ? 'Processing...' : 'Confirm Rejection'}
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
+      {(activeModal === 'approve' || activeModal === 'reassess' || activeModal === 'reject') && (
+          <LoanDecisionModals 
+            type={activeModal as any}
+            loan={loan}
+            accounts={accounts}
+            targetAccountId={targetAccountId}
+            setTargetAccountId={setTargetAccountId}
+            reason={decisionReason}
+            setReason={setDecisionReason}
+            isProcessing={processingAction}
+            onClose={() => setActiveModal(null)}
+            onConfirm={handleStatusUpdate}
+          />
       )}
 
       {/* Image Viewer */}
