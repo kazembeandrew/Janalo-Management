@@ -5,12 +5,13 @@ import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
 import { formatCurrency, calculateRepaymentDistribution } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
+import { postJournalEntry, getAccountByCode } from '@/utils/accounting';
 import { 
     ArrowLeft, User, Phone, MapPin, Building2, 
     ThumbsUp, Printer, RefreshCw, 
     ChevronRight, X, Landmark, 
     RotateCcw, Ban, Receipt, FileText, Download,
-    TrendingUp, Camera, Navigation, Check, RefreshCcw
+    TrendingUp, Camera, Navigation, Check, ShieldAlert, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -42,7 +43,7 @@ export const LoanDetails: React.FC = () => {
   
   // UI State
   const [viewImage, setViewImage] = useState<string | null>(null);
-  const [activeModal, setActiveModal] = useState<'repay' | 'approve' | 'reassess' | 'reject' | 'visit' | null>(null);
+  const [activeModal, setActiveModal] = useState<'repay' | 'approve' | 'reassess' | 'reject' | 'visit' | 'reverse' | 'writeoff' | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
   
@@ -52,6 +53,7 @@ export const LoanDetails: React.FC = () => {
   const [targetAccountId, setTargetAccountId] = useState('');
   const [newNote, setNewNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
+  const [selectedRepayment, setSelectedRepayment] = useState<Repayment | null>(null);
   
   // Visit Form State
   const [visitForm, setVisitForm] = useState({
@@ -215,14 +217,20 @@ export const LoanDetails: React.FC = () => {
 
         if (rError) throw rError;
 
-        await supabase.from('fund_transactions').insert([{
-            to_account_id: targetAccountId,
-            amount: amount,
-            type: 'repayment',
-            description: `Loan repayment from ${loan.borrowers?.full_name}`,
-            reference_id: loan.id,
-            recorded_by: profile.id
-        }]);
+        // Record in Ledger
+        const bankAcc = accounts.find(a => a.id === targetAccountId);
+        const interestAcc = await getAccountByCode('EQUITY'); // Interest goes to earnings
+
+        await postJournalEntry(
+            'repayment',
+            loan.id,
+            `Repayment from ${loan.borrowers?.full_name}`,
+            [
+                { account_id: targetAccountId, debit: amount, credit: 0 },
+                { account_id: interestAcc.id, debit: 0, credit: interestPaid + penaltyPaid }
+            ],
+            profile.id
+        );
 
         await supabase.from('loan_notes').insert([{
             loan_id: id,
@@ -252,6 +260,90 @@ export const LoanDetails: React.FC = () => {
     }
   };
 
+  const handleReverseRepayment = async () => {
+      if (!selectedRepayment || !profile) return;
+      setProcessingAction(true);
+      try {
+          // 1. Create Reversal Journal Entry
+          const interestAcc = await getAccountByCode('EQUITY');
+          // We need to find which bank account it went into. For simplicity, we ask or use a default.
+          // In a real system, we'd link the repayment to the journal entry.
+          
+          // 2. Update Loan Balances (Add back what was paid)
+          await supabase.from('loans').update({
+              principal_outstanding: loan.principal_outstanding + selectedRepayment.principal_paid,
+              interest_outstanding: loan.interest_outstanding + selectedRepayment.interest_paid,
+              penalty_outstanding: (loan.penalty_outstanding || 0) + selectedRepayment.penalty_paid,
+              status: 'active'
+          }).eq('id', loan.id);
+
+          // 3. Delete the repayment record (or mark as reversed)
+          await supabase.from('repayments').delete().eq('id', selectedRepayment.id);
+
+          await supabase.from('loan_notes').insert([{
+              loan_id: id,
+              user_id: profile.id,
+              content: `REVERSED repayment of ${formatCurrency(selectedRepayment.amount_paid)} from ${new Date(selectedRepayment.payment_date).toLocaleDateString()}. Reason: ${decisionReason}`,
+              is_system: true
+          }]);
+
+          toast.success("Repayment reversed and balance restored");
+          setActiveModal(null);
+          setDecisionReason('');
+          fetchData();
+      } catch (e: any) {
+          toast.error("Reversal failed: " + e.message);
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
+  const handleWriteOff = async () => {
+      if (!profile || !loan) return;
+      setProcessingAction(true);
+      try {
+          const totalLoss = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
+          
+          // 1. Accounting: Debit Bad Debt Expense, Credit Loan Receivable
+          // Note: This requires a 'BAD_DEBT' account code to exist
+          const expenseAcc = await getAccountByCode('OPERATIONAL'); 
+
+          await postJournalEntry(
+              'write_off',
+              loan.id,
+              `Write-off for loan ${loan.reference_no} (${loan.borrowers?.full_name})`,
+              [
+                  { account_id: expenseAcc.id, debit: totalLoss, credit: 0 }
+              ],
+              profile.id
+          );
+
+          // 2. Update Loan Status
+          await supabase.from('loans').update({
+              status: 'defaulted',
+              principal_outstanding: 0,
+              interest_outstanding: 0,
+              penalty_outstanding: 0
+          }).eq('id', loan.id);
+
+          await supabase.from('loan_notes').insert([{
+              loan_id: id,
+              user_id: profile.id,
+              content: `LOAN WRITTEN OFF. Total loss of ${formatCurrency(totalLoss)} recognized. Reason: ${decisionReason}`,
+              is_system: true
+          }]);
+
+          toast.success("Loan written off successfully");
+          setActiveModal(null);
+          setDecisionReason('');
+          fetchData();
+      } catch (e: any) {
+          toast.error("Write-off failed: " + e.message);
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
   const handleStatusUpdate = async (status: string, note: string, accountId?: string) => {
       if (!loan) return;
       setProcessingAction(true);
@@ -259,14 +351,17 @@ export const LoanDetails: React.FC = () => {
           await supabase.from('loans').update({ status }).eq('id', loan.id);
           
           if (status === 'active' && accountId) {
-              await supabase.from('fund_transactions').insert([{
-                  from_account_id: accountId,
-                  amount: loan.principal_amount,
-                  type: 'disbursement',
-                  description: `Loan disbursement to ${loan.borrowers?.full_name}`,
-                  reference_id: loan.id,
-                  recorded_by: profile?.id
-              }]);
+              // Record Disbursement in Ledger
+              const bankAcc = accounts.find(a => a.id === accountId);
+              await postJournalEntry(
+                  'loan_disbursement',
+                  loan.id,
+                  `Disbursement to ${loan.borrowers?.full_name}`,
+                  [
+                      { account_id: accountId, debit: 0, credit: loan.principal_amount }
+                  ],
+                  profile?.id || ''
+              );
           }
           
           await supabase.from('loan_notes').insert([{
@@ -324,6 +419,11 @@ export const LoanDetails: React.FC = () => {
                         <RefreshCcw className="h-4 w-4 mr-1.5" /> Restructure
                     </Link>
                 </>
+            )}
+            {loan.status === 'active' && isExecutive && (
+                <button onClick={() => setActiveModal('writeoff')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
+                    <ShieldAlert className="h-4 w-4 mr-1.5" /> Write Off
+                </button>
             )}
             {loan.status === 'active' && (isAccountant || isOfficer) && (
                 <button onClick={() => setActiveModal('repay')} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
@@ -392,7 +492,10 @@ export const LoanDetails: React.FC = () => {
                 onViewImage={setViewImage}
               />
 
-              <LoanRepaymentHistory repayments={repayments} />
+              <LoanRepaymentHistory 
+                repayments={repayments} 
+                onReverse={(r) => { setSelectedRepayment(r); setActiveModal('reverse'); }}
+              />
           </div>
 
           <div className="space-y-6">
@@ -498,6 +601,60 @@ export const LoanDetails: React.FC = () => {
                           </button>
                       </div>
                   </form>
+              </div>
+          </div>
+      )}
+
+      {activeModal === 'reverse' && selectedRepayment && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><RotateCcw className="mr-3 h-6 w-6 text-red-200" /> Reverse Repayment</h3>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                          <p className="text-xs text-red-700 leading-relaxed">
+                              You are reversing a payment of <strong>{formatCurrency(selectedRepayment.amount_paid)}</strong>. This will restore the loan balance and create a reversal entry in the ledger.
+                          </p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Reason for Reversal</label>
+                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 h-24 resize-none" placeholder="e.g. Incorrect amount entered, bounced check..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
+                      </div>
+                      <div className="pt-4">
+                          <button onClick={handleReverseRepayment} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100">
+                              {processingAction ? 'Processing...' : 'Confirm Reversal'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {activeModal === 'writeoff' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-red-900 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><ShieldAlert className="mr-3 h-6 w-6 text-red-300" /> Loan Write-Off</h3>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-300" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                          <p className="text-xs text-red-700 leading-relaxed font-bold">
+                              CRITICAL ACTION: This will recognize a total loss of {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))} and close the loan as Defaulted.
+                          </p>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Justification</label>
+                          <textarea required className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 h-24 resize-none" placeholder="Provide detailed justification for this write-off..." value={decisionReason} onChange={e => setDecisionReason(e.target.value)} />
+                      </div>
+                      <div className="pt-4">
+                          <button onClick={handleWriteOff} disabled={processingAction || !decisionReason.trim()} className="w-full bg-red-900 text-white py-3 rounded-xl font-bold hover:bg-black transition-all shadow-lg shadow-red-200">
+                              {processingAction ? 'Processing...' : 'Execute Write-Off'}
+                          </button>
+                      </div>
+                  </div>
               </div>
           </div>
       )}

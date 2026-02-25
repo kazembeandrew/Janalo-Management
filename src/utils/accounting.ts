@@ -8,16 +8,14 @@ interface JournalLineInput {
 
 /**
  * Centralized engine to post balanced journal entries.
- * Ensures Total Debits = Total Credits before saving.
  */
 export const postJournalEntry = async (
-    reference_type: 'loan_disbursement' | 'repayment' | 'expense' | 'transfer' | 'injection' | 'adjustment',
+    reference_type: 'loan_disbursement' | 'repayment' | 'expense' | 'transfer' | 'injection' | 'adjustment' | 'reversal' | 'write_off',
     reference_id: string | null,
     description: string,
     lines: JournalLineInput[],
     userId: string
 ) => {
-    // 1. Validate Balance
     const totalDebit = lines.reduce((sum, l) => sum + Number(l.debit), 0);
     const totalCredit = lines.reduce((sum, l) => sum + Number(l.credit), 0);
 
@@ -25,7 +23,6 @@ export const postJournalEntry = async (
         throw new Error(`Journal entry is not balanced. Debits (${totalDebit}) must equal Credits (${totalCredit}).`);
     }
 
-    // 2. Create Header
     const { data: entry, error: entryError } = await supabase
         .from('journal_entries')
         .insert([{
@@ -40,7 +37,6 @@ export const postJournalEntry = async (
 
     if (entryError) throw entryError;
 
-    // 3. Create Lines
     const linesWithHeader = lines.map(l => ({
         ...l,
         journal_entry_id: entry.id
@@ -56,8 +52,35 @@ export const postJournalEntry = async (
 };
 
 /**
- * Helper to find a system account by its code.
+ * Reverses an existing journal entry by creating a new entry with swapped debits and credits.
  */
+export const reverseJournalEntry = async (originalEntryId: string, userId: string, reason: string) => {
+    // 1. Fetch original entry and lines
+    const { data: original, error: fetchError } = await supabase
+        .from('journal_entries')
+        .select('*, journal_lines(*)')
+        .eq('id', originalEntryId)
+        .single();
+    
+    if (fetchError || !original) throw new Error("Original entry not found");
+
+    // 2. Prepare reversal lines (swap debit/credit)
+    const reversalLines = original.journal_lines.map((l: any) => ({
+        account_id: l.account_id,
+        debit: l.credit,
+        credit: l.debit
+    }));
+
+    // 3. Post reversal
+    return await postJournalEntry(
+        'reversal',
+        original.id,
+        `REVERSAL of Entry #${original.id.slice(0,8)}: ${reason}`,
+        reversalLines,
+        userId
+    );
+};
+
 export const getAccountByCode = async (code: string) => {
     const { data, error } = await supabase
         .from('internal_accounts')
