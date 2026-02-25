@@ -46,8 +46,8 @@ export const DataImporter: React.FC = () => {
       }
   };
 
-  const normalizeDate = (dateVal: any): string => {
-      if (!dateVal) return new Date().toISOString().split('T')[0];
+  const normalizeDate = (dateVal: any): string | null => {
+      if (!dateVal) return null;
       
       const dateStr = String(dateVal).trim();
       
@@ -70,7 +70,12 @@ export const DataImporter: React.FC = () => {
           return date.toISOString().split('T')[0];
       }
 
-      return dateStr;
+      // Basic YYYY-MM-DD check
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+          return dateStr.substring(0, 10);
+      }
+
+      return null;
   };
 
   const downloadTemplate = (type: 'loans' | 'repayments') => {
@@ -233,10 +238,15 @@ export const DataImporter: React.FC = () => {
               continue;
           }
 
+          const disbursementDate = normalizeDate(row['Date Disbursed']);
+          if (!disbursementDate) {
+              errors.push(`Skipped: Missing or invalid disbursement date for ${borrowerName}.`);
+              continue;
+          }
+
           const interest = principal * (rate / 100) * term;
           const total = principal + interest;
           const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
-          const disbursementDate = normalizeDate(row['Date Disbursed']);
 
           const { error: loanError } = await supabase.from('loans').insert([{
             reference_no: finalRef,
@@ -246,6 +256,7 @@ export const DataImporter: React.FC = () => {
             interest_rate: rate,
             term_months: term,
             disbursement_date: disbursementDate,
+            created_at: `${disbursementDate}T12:00:00Z`, // Preserve historical context in DB
             interest_type: 'flat',
             status: 'pending',
             principal_outstanding: principal,
@@ -283,6 +294,10 @@ export const DataImporter: React.FC = () => {
           }
 
           const paymentDate = normalizeDate(row['Payment Date (YYYY-MM-DD)']);
+          if (!paymentDate) {
+              errors.push(`Skipped: Missing or invalid payment date for ${borrowerName}.`);
+              continue;
+          }
 
           const { error: repayError } = await supabase.from('repayments').insert([{
               loan_id: loan.id,
@@ -290,6 +305,7 @@ export const DataImporter: React.FC = () => {
               principal_paid: amount * 0.8, // Default split for imports if not specified
               interest_paid: amount * 0.2,
               payment_date: paymentDate,
+              created_at: `${paymentDate}T12:00:00Z`, // Preserve historical context
               recorded_by: selectedOfficerId
           }]);
 
