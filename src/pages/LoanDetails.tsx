@@ -10,7 +10,7 @@ import {
     ThumbsUp, Printer, RefreshCw, 
     ChevronRight, X, Landmark, 
     RotateCcw, Ban, Receipt, FileText, Download,
-    TrendingUp, Camera, Navigation, Check
+    TrendingUp, Camera, Navigation, Check, RefreshCcw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -320,9 +320,14 @@ export const LoanDetails: React.FC = () => {
                 <Download className="h-4 w-4 mr-1.5 text-indigo-600" /> Statement
             </button>
             {loan.status === 'active' && isOfficer && (
-                <button onClick={() => setShowVisitModal(true)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
-                    <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
-                </button>
+                <>
+                    <button onClick={() => setShowVisitModal(true)} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
+                        <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
+                    </button>
+                    <Link to={`/loans/restructure/${loan.id}`} className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all flex items-center">
+                        <RefreshCcw className="h-4 w-4 mr-1.5" /> Restructure
+                    </Link>
+                </>
             )}
             {loan.status === 'active' && (isAccountant || isOfficer) && (
                 <button onClick={() => setShowRepayModal(true)} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">

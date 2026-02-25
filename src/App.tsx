@@ -31,6 +31,7 @@ import { SystemSettings } from '@/pages/SystemSettings';
 import { ImportData } from '@/pages/ImportData';
 import { DocumentCenter } from '@/pages/DocumentCenter';
 import { Oversight } from '@/pages/Oversight';
+import { RestructureLoan } from '@/pages/RestructureLoan';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -174,6 +175,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <EditLoan />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/loans/restructure/:id"
+            element={
+              <ProtectedRoute>
+                <RestructureLoan />
               </ProtectedRoute>
             }
           />
