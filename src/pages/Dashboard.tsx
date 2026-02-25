@@ -9,7 +9,6 @@ import { OfficerView } from '@/components/dashboard/OfficerView';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RecentActivity } from '@/components/dashboard/RecentActivity';
 import { OfficerLeaderboard } from '@/components/dashboard/OfficerLeaderboard';
-import { CEOOversight } from '@/components/dashboard/CEOOversight';
 import { RecentDocuments } from '@/components/dashboard/RecentDocuments';
 import { PARAgingChart } from '@/components/dashboard/PARAgingChart';
 import { ProfitabilityChart } from '@/components/dashboard/ProfitabilityChart';
@@ -214,9 +213,6 @@ export const Dashboard: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-              {/* Oversight Queue is now in the header. Detailed view remains below for deep-dive. */}
-              {isExec && <CEOOversight />}
-
               {isExec && <PARAgingChart data={parAgingData} />}
 
               <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-2xl p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
