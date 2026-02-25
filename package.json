@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.96.0",
     "@types/express": "^5.0.6",
     "@types/leaflet": "^1.9.21",
+    "decimal.js": "^10.6.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jspdf": "^4.2.0",
