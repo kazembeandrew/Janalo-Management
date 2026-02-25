@@ -126,7 +126,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin'] },
-    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin'] },
+    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin', 'ceo'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
   ];
 
