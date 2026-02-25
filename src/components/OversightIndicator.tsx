@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { ShieldAlert, CheckCircle, ChevronRight, AlertCircle } from 'lucide-react';
+import { ShieldAlert, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const OversightIndicator: React.FC = () => {
@@ -50,10 +50,10 @@ export const OversightIndicator: React.FC = () => {
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-red-50 border border-red-100 rounded-full text-red-600 animate-pulse hover:bg-red-100 transition-all"
+        className="flex items-center gap-2 px-3 py-1.5 bg-red-600 border border-red-500 rounded-full text-white shadow-lg shadow-red-200 animate-[pulse_1.5s_infinite] hover:scale-105 transition-all"
       >
         <ShieldAlert className="h-4 w-4" />
-        <span className="text-[10px] font-extrabold uppercase tracking-wider">{pendingCount} Actions Required</span>
+        <span className="text-[10px] font-extrabold uppercase tracking-wider">{pendingCount} Actions</span>
       </button>
 
       {isOpen && (
@@ -68,11 +68,11 @@ export const OversightIndicator: React.FC = () => {
                     There are <strong>{pendingCount}</strong> items awaiting executive authorization.
                 </p>
                 <Link 
-                    to="/" 
+                    to="/oversight" 
                     onClick={() => setIsOpen(false)}
                     className="w-full flex items-center justify-between p-3 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-all"
                 >
-                    Go to Oversight Queue
+                    Manage Approvals
                     <ChevronRight className="h-4 w-4" />
                 </Link>
             </div>

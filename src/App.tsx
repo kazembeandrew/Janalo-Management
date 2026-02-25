@@ -30,6 +30,7 @@ import { RepaymentSchedule } from '@/pages/RepaymentSchedule';
 import { SystemSettings } from '@/pages/SystemSettings';
 import { ImportData } from '@/pages/ImportData';
 import { DocumentCenter } from '@/pages/DocumentCenter';
+import { Oversight } from '@/pages/Oversight';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -253,6 +254,14 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <DocumentCenter />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/oversight"
+            element={
+              <ProtectedRoute>
+                <Oversight />
               </ProtectedRoute>
             }
           />
