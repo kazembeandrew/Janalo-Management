@@ -34,7 +34,6 @@ export const SystemSettings: React.FC = () => {
 
   const fetchPendingReset = async () => {
       try {
-          // Fetch the latest of each relevant action type
           const { data: logs } = await supabase
             .from('audit_logs')
             .select('*, users!user_id(full_name)')
@@ -43,7 +42,6 @@ export const SystemSettings: React.FC = () => {
             .limit(1);
           
           const latest = logs?.[0];
-          // A request is only pending if the absolute latest system action is the request itself
           if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
               setPendingRequest(latest);
           } else {
@@ -86,14 +84,33 @@ export const SystemSettings: React.FC = () => {
 
       setIsProcessing(true);
       try {
-          const { error } = await supabase.from('audit_logs').insert({
+          // 1. Log the request
+          const { error: logError } = await supabase.from('audit_logs').insert({
               user_id: profile?.id,
               action: 'SYSTEM_RESET_REQUESTED',
               entity_type: 'system',
               details: { status: 'pending', requested_at: new Date().toISOString() }
           });
 
-          if (error) throw error;
+          if (logError) throw logError;
+
+          // 2. Notify all CEOs (The "Wiring")
+          const { data: ceos } = await supabase.from('users').select('id').eq('role', 'ceo');
+          if (ceos && ceos.length > 0) {
+              const notifications = ceos
+                .filter(c => c.id !== profile?.id) // Don't notify self
+                .map(c => ({
+                  user_id: c.id,
+                  title: 'CRITICAL: System Reset Requested',
+                  message: `${profile?.full_name} has requested a factory reset. Your authorization is required to proceed.`,
+                  link: '/',
+                  type: 'error'
+                }));
+              
+              if (notifications.length > 0) {
+                  await supabase.from('notifications').insert(notifications);
+              }
+          }
 
           toast.success("Reset request submitted. A second administrator must now authorize this.");
           setShowWipeModal(false);
@@ -110,7 +127,6 @@ export const SystemSettings: React.FC = () => {
       if (!profile) return;
       setIsProcessing(true);
       try {
-          // Instead of updating the log (which is restricted), we insert a cancellation log
           const { error } = await supabase.from('audit_logs').insert({
               user_id: profile.id,
               action: 'SYSTEM_RESET_CANCELLED',

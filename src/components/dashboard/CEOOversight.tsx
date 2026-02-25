@@ -25,7 +25,6 @@ export const CEOOversight: React.FC = () => {
     
     try {
         // 1. Fetch Reset State (Resilient Query)
-        // We fetch without the join first to ensure we get the data even if the join fails
         const { data: logs, error: logError } = await supabase
             .from('audit_logs')
             .select('id, action, user_id, created_at, details')
@@ -38,7 +37,6 @@ export const CEOOversight: React.FC = () => {
         } else {
             const latest = logs?.[0];
             if (latest && latest.action === 'SYSTEM_RESET_REQUESTED') {
-                // Attempt to get the requester's name separately
                 const { data: userData } = await supabase
                     .from('users')
                     .select('full_name')
@@ -51,18 +49,13 @@ export const CEOOversight: React.FC = () => {
             }
         }
 
-        // 2. Fetch other pending items independently to prevent one failure from blocking others
+        // 2. Fetch other pending items independently
         const [loansRes, usersRes, expensesRes, tasksRes] = await Promise.all([
             supabase.from('loans').select('*, borrowers(full_name)').eq('status', 'pending').order('created_at', { ascending: false }),
             supabase.from('users').select('*').eq('deletion_status', 'pending_approval'),
             supabase.from('expenses').select('*, users!recorded_by(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false }),
             supabase.from('tasks').select('*, users!assigned_to(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false })
         ]);
-
-        if (loansRes.error) console.error("[CEOOversight] Loans fetch error:", loansRes.error);
-        if (usersRes.error) console.error("[CEOOversight] Users fetch error:", usersRes.error);
-        if (expensesRes.error) console.error("[CEOOversight] Expenses fetch error:", expensesRes.error);
-        if (tasksRes.error) console.error("[CEOOversight] Tasks fetch error:", tasksRes.error);
 
         setPendingLoans(loansRes.data || []);
         setPendingUsers(usersRes.data || []);
