@@ -49,9 +49,11 @@ export const NotificationBell: React.FC = () => {
   }, [profile]);
 
   const fetchNotifications = async () => {
+    if (!profile) return;
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
+      .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
       .limit(15);
     

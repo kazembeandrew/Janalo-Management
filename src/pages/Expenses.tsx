@@ -10,6 +10,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid
 } from 'recharts';
 import toast from 'react-hot-toast';
+import { notifyExpenseApproved } from '@/utils/notifications';
 
 export const Expenses: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
@@ -77,15 +78,6 @@ export const Expenses: React.FC = () => {
       });
   };
 
-  const createNotification = async (userId: string, title: string, message: string) => {
-      await supabase.from('notifications').insert({
-          user_id: userId,
-          title,
-          message,
-          link: '/expenses',
-          type: 'info'
-      });
-  };
 
   const handleAmountChange = (val: string) => {
       const numeric = parseFormattedNumber(val);
@@ -152,7 +144,7 @@ export const Expenses: React.FC = () => {
           );
 
           await logAudit('Expense Approved', { amount: selectedExpense.amount, description: selectedExpense.description }, selectedExpense.id);
-          await createNotification(selectedExpense.recorded_by, 'Expense Approved', `Your expense for "${selectedExpense.description}" (${formatCurrency(selectedExpense.amount)}) has been authorized.`);
+          await notifyExpenseApproved(selectedExpense.recorded_by, selectedExpense.description, formatCurrency(selectedExpense.amount));
           
           toast.success('Expense approved and posted to ledger');
           setShowApproveModal(false);
@@ -358,12 +350,12 @@ export const Expenses: React.FC = () => {
                                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                       <div className="flex justify-end gap-2">
                                           {isCEO && expense.status === 'pending_approval' && (
-                                              <button onClick={() => { setSelectedExpense(expense); setShowApproveModal(true); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all">
+                                              <button onClick={() => { setSelectedExpense(expense); setShowApproveModal(true); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all" title="Approve expense">
                                                   <CheckCircle2 className="h-4 w-4" />
                                               </button>
                                           )}
                                           {(isAccountant || isCEO) && (
-                                              <button onClick={() => handleDelete(expense)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100">
+                                              <button onClick={() => handleDelete(expense)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100" title="Delete expense">
                                                   <Trash2 className="h-4 w-4" />
                                               </button>
                                           )}
@@ -383,12 +375,12 @@ export const Expenses: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><Receipt className="mr-3 h-6 w-6 text-indigo-300" /> Propose Expense</h3>
-                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <form onSubmit={handleSubmit} className="p-8 space-y-5">
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Category</label>
-                          <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                          <select className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white" title="Select category" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
                               {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                           </select>
                       </div>
@@ -403,7 +395,7 @@ export const Expenses: React.FC = () => {
                           </div>
                           <div>
                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Date</label>
-                              <input required type="date" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                              <input required type="date" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" title="Select date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                           </div>
                       </div>
                       <div className="pt-4">
@@ -422,7 +414,7 @@ export const Expenses: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><Landmark className="mr-3 h-6 w-6 text-indigo-300" /> Authorize Payment</h3>
-                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
@@ -435,6 +427,7 @@ export const Expenses: React.FC = () => {
                           <select 
                             required 
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                            title="Select source account"
                             value={targetAccountId}
                             onChange={e => setTargetAccountId(e.target.value)}
                           >

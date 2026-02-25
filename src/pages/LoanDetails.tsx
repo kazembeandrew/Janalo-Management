@@ -24,6 +24,8 @@ import { LoanVisitations } from '@/components/loans/LoanVisitations';
 import { MapPicker } from '@/components/MapPicker';
 import { LoanDecisionModals } from '@/components/loans/LoanDecisionModals';
 import { RepaymentModal } from '@/components/loans/RepaymentModal';
+import { PDFViewer } from '@/components/PDFViewer';
+import { ExcelViewer } from '@/components/ExcelViewer';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -43,6 +45,8 @@ export const LoanDetails: React.FC = () => {
   
   // UI State
   const [viewImage, setViewImage] = useState<string | null>(null);
+  const [viewPdf, setViewPdf] = useState<{url: string, name: string} | null>(null);
+  const [viewExcel, setViewExcel] = useState<{url: string, name: string} | null>(null);
   const [activeModal, setActiveModal] = useState<'repay' | 'approve' | 'reassess' | 'reject' | 'visit' | 'reverse' | 'writeoff' | null>(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [processingAction, setProcessingAction] = useState(false);
@@ -416,7 +420,7 @@ export const LoanDetails: React.FC = () => {
                         <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
                     </button>
                     <Link to={`/loans/restructure/${loan.id}`} className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all flex items-center">
-                        <RefreshCcw className="h-4 w-4 mr-1.5" /> Restructure
+                        <RefreshCw className="h-4 w-4 mr-1.5" /> Restructure
                     </Link>
                 </>
             )}
@@ -438,12 +442,12 @@ export const LoanDetails: React.FC = () => {
                     <button onClick={() => setActiveModal('reject')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
                         <Ban className="h-4 w-4 mr-1.5" /> Reject
                     </button>
-                    <button onClick={() => setActiveModal('approve')} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center">
+                    <button onClick={() => setActiveModal('approve')} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center" title="Approve and Disburse Loan">
                         <ThumbsUp className="h-4 w-4 mr-1.5" /> Approve & Disburse
                     </button>
                 </>
             )}
-            <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all">
+            <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all" title="Print">
                 <Printer className="h-5 w-5 text-gray-600" />
             </button>
          </div>
@@ -490,6 +494,8 @@ export const LoanDetails: React.FC = () => {
                 documents={documents}
                 documentUrls={documentUrls}
                 onViewImage={setViewImage}
+                onViewPdf={(url, name) => setViewPdf({url, name})}
+                onViewExcel={(url, name) => setViewExcel({url, name})}
               />
 
               <LoanRepaymentHistory 
@@ -555,7 +561,7 @@ export const LoanDetails: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><MapPin className="mr-3 h-6 w-6 text-indigo-300" /> Log Field Visit</h3>
-                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <form onSubmit={handleLogVisit} className="p-8 space-y-5">
                       <div>
@@ -610,7 +616,7 @@ export const LoanDetails: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><RotateCcw className="mr-3 h-6 w-6 text-red-200" /> Reverse Repayment</h3>
-                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-red-200" /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
@@ -637,7 +643,7 @@ export const LoanDetails: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-red-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><ShieldAlert className="mr-3 h-6 w-6 text-red-300" /> Loan Write-Off</h3>
-                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-300" /></button>
+                      <button onClick={() => setActiveModal(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-red-300" /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
@@ -697,10 +703,16 @@ export const LoanDetails: React.FC = () => {
       {/* Image Viewer */}
       {viewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4" onClick={() => setViewImage(null)}>
-            <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"><X className="h-6 w-6" /></button>
+            <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all" title="Close"><X className="h-6 w-6" /></button>
             <img src={viewImage} alt="Full View" className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" />
         </div>
       )}
+
+      {/* PDF Viewer */}
+      {viewPdf && <PDFViewer url={viewPdf.url} fileName={viewPdf.name} onClose={() => setViewPdf(null)} />}
+
+      {/* Excel Viewer */}
+      {viewExcel && <ExcelViewer url={viewExcel.url} fileName={viewExcel.name} onClose={() => setViewExcel(null)} />}
     </div>
   );
 };

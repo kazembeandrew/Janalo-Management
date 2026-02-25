@@ -7,6 +7,7 @@ import {
     User, RefreshCw, Trash2, Check, Filter, Calendar, Info, ArrowRight,
     ChevronRight, LayoutGrid, ListFilter
 } from 'lucide-react';
+import { notifyTaskAssigned, notifyTaskCompleted } from '@/utils/notifications';
 import toast from 'react-hot-toast';
 
 export const Tasks: React.FC = () => {
@@ -76,16 +77,6 @@ export const Tasks: React.FC = () => {
       });
   };
 
-  const createNotification = async (userId: string, title: string, message: string, taskId: string) => {
-      await supabase.from('notifications').insert({
-          user_id: userId,
-          title,
-          message,
-          link: '/tasks',
-          type: 'success'
-      });
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile) return;
@@ -121,9 +112,9 @@ export const Tasks: React.FC = () => {
           await logAudit(`Task ${newStatus.replace('_', ' ')}`, { title: task.title }, task.id);
           
           if (newStatus === 'approved') {
-              await createNotification(task.assigned_to, 'New Task Assigned', `CEO has authorized the task: "${task.title}". You can now start working on it.`, task.id);
+              await notifyTaskAssigned(task.assigned_to, task.title);
           } else if (newStatus === 'completed') {
-              await createNotification(task.assigned_to, 'Task Completed', `CEO has marked your task "${task.title}" as completed.`, task.id);
+              await notifyTaskCompleted(task.assigned_to, task.title);
           }
 
           toast.success(`Task updated to ${newStatus.replace('_', ' ')}`);
@@ -275,6 +266,7 @@ export const Tasks: React.FC = () => {
               <ListFilter className="h-4 w-4 text-gray-400" />
               <select 
                 className="bg-gray-50 border-none rounded-xl text-sm py-2 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500 transition-all"
+                title="Filter by priority"
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
               >
@@ -334,7 +326,7 @@ export const Tasks: React.FC = () => {
                           </div>
                           <h3 className="font-bold text-white">Task Details</h3>
                       </div>
-                      <button onClick={() => setSelectedTask(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                      <button onClick={() => setSelectedTask(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close">
                           <X className="h-5 w-5 text-indigo-300" />
                       </button>
                   </div>
@@ -381,6 +373,7 @@ export const Tasks: React.FC = () => {
                               <button 
                                 onClick={() => handleUpdateStatus(selectedTask, 'approved')}
                                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100"
+                                title="Approve task"
                               >
                                   Approve Task
                               </button>
@@ -389,6 +382,7 @@ export const Tasks: React.FC = () => {
                               <button 
                                 onClick={() => handleUpdateStatus(selectedTask, 'in_progress')}
                                 className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                                title="Start working on task"
                               >
                                   Start Working
                               </button>
@@ -397,6 +391,7 @@ export const Tasks: React.FC = () => {
                               <button 
                                 onClick={() => handleUpdateStatus(selectedTask, 'completed')}
                                 className="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-green-700 transition-all shadow-lg shadow-green-100"
+                                title="Mark task as completed"
                               >
                                   Mark as Completed
                               </button>
@@ -405,6 +400,7 @@ export const Tasks: React.FC = () => {
                               <button 
                                 onClick={() => handleDelete(selectedTask)}
                                 className="px-4 py-3 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-all"
+                                title="Delete task"
                               >
                                   <Trash2 className="h-5 w-5" />
                               </button>
@@ -421,7 +417,7 @@ export const Tasks: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><ClipboardList className="mr-3 h-6 w-6 text-indigo-300" /> Propose Task</h3>
-                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <form onSubmit={handleSubmit} className="p-8 space-y-5">
                       <div>
@@ -451,8 +447,9 @@ export const Tasks: React.FC = () => {
                               <select 
                                 required 
                                 className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white transition-all" 
+                                title="Assign to staff"
                                 value={formData.assigned_to} 
-                                onChange={e => setFormData({...formData, assigned_to: e.target.value})}
+                                onChange={e => setFormData({...formData, assigned_to: e.target.value})} 
                               >
                                   <option value="">-- Select Staff --</option>
                                   {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
@@ -462,8 +459,9 @@ export const Tasks: React.FC = () => {
                               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Priority</label>
                               <select 
                                 className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white transition-all" 
+                                title="Select priority"
                                 value={formData.priority} 
-                                onChange={e => setFormData({...formData, priority: e.target.value as any})}
+                                onChange={e => setFormData({...formData, priority: e.target.value as any})} 
                               >
                                   <option value="low">Low</option>
                                   <option value="medium">Medium</option>

@@ -96,11 +96,46 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const performGlobalSearch = async () => {
       setIsSearching(true);
       try {
-          const [bRes, lRes] = await Promise.all([
-              supabase.from('borrowers').select('id, full_name').ilike('full_name', `%${searchQuery}%`).limit(5),
-              supabase.from('loans').select('id, reference_no, borrowers(full_name)').or(`reference_no.ilike.%${searchQuery}%, borrowers.full_name.ilike.%${searchQuery}%`).limit(5)
-          ]);
-          setSearchResults({ borrowers: bRes.data || [], loans: lRes.data || [] });
+          // Search borrowers by name
+          const bRes = await supabase
+              .from('borrowers')
+              .select('id, full_name')
+              .ilike('full_name', `%${searchQuery}%`)
+              .limit(5);
+          
+          // Search loans by reference number
+          const lResByRef = await supabase
+              .from('loans')
+              .select('id, reference_no, borrowers(full_name)')
+              .ilike('reference_no', `%${searchQuery}%`)
+              .limit(5);
+          
+          // Search loans by borrower name through the borrowers table
+          const { data: matchingBorrowers } = await supabase
+              .from('borrowers')
+              .select('id')
+              .ilike('full_name', `%${searchQuery}%`);
+          
+          let lResByBorrower: any = { data: [] };
+          if (matchingBorrowers && matchingBorrowers.length > 0) {
+              const borrowerIds = matchingBorrowers.map(b => b.id);
+              lResByBorrower = await supabase
+                  .from('loans')
+                  .select('id, reference_no, borrowers(full_name)')
+                  .in('borrower_id', borrowerIds)
+                  .limit(5);
+          }
+          
+          // Combine loan results and remove duplicates
+          const allLoans = [...(lResByRef.data || []), ...(lResByBorrower.data || [])];
+          const uniqueLoans = allLoans.filter((loan, index, self) => 
+              index === self.findIndex(l => l.id === loan.id)
+          ).slice(0, 5);
+          
+          setSearchResults({ 
+              borrowers: bRes.data || [], 
+              loans: uniqueLoans 
+          });
       } finally {
           setIsSearching(false);
       }
@@ -149,7 +184,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <PieChart className="h-8 w-8 text-indigo-300" />
             <span className="text-xl font-bold tracking-wider">JANALO</span>
           </div>
-          <button className="md:hidden" onClick={() => setIsMobileMenuOpen(false)}><X className="h-6 w-6" /></button>
+          <button className="md:hidden" onClick={() => setIsMobileMenuOpen(false)} title="Close menu"><X className="h-6 w-6" /></button>
         </div>
 
         <div className="px-6 py-4 border-b border-indigo-800">
@@ -197,7 +232,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white shadow-sm z-40">
             <div className="flex items-center flex-1">
-                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700 mr-4">
+                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700 mr-4" title="Open menu">
                     <Menu className="h-6 w-6" />
                 </button>
                 

@@ -40,3 +40,56 @@ DO $$ BEGIN
         CREATE POLICY "Create Visitations" ON visitations FOR INSERT TO authenticated WITH CHECK (true);
     END IF;
 END $$;
+
+-- 4. Fix infinite recursion in document_permissions RLS policy
+-- Drop the recursive policy and create non-recursive version
+DROP POLICY IF EXISTS "Users can view permissions for accessible docs" ON public.document_permissions;
+CREATE POLICY "Users can view permissions for accessible docs" ON public.document_permissions
+FOR SELECT TO authenticated
+USING (
+    role = get_auth_role()
+    OR 
+    get_auth_role() IN ('admin', 'ceo', 'hr')
+);
+
+-- Fix system_documents policy to prevent recursion
+DROP POLICY IF EXISTS "Users can view documents they have access to" ON public.system_documents;
+CREATE POLICY "Users can view documents they have access to" ON public.system_documents
+FOR SELECT TO authenticated 
+USING (
+    uploaded_by = auth.uid() OR 
+    get_auth_role() IN ('admin', 'ceo') OR
+    EXISTS (
+        SELECT 1 FROM document_permissions dp 
+        WHERE dp.document_id = id 
+        AND dp.role = get_auth_role()
+    )
+);
+
+ALTER TABLE public.document_permissions FORCE ROW LEVEL SECURITY;
+
+-- 5. Fix missing loan-documents storage bucket
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('loan-documents', 'loan-documents', false, 52428800,
+    ARRAY['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 
+          'application/vnd.ms-excel', 'text/csv'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS policies
+DROP POLICY IF EXISTS "Staff can view loan documents" ON storage.objects;
+CREATE POLICY "Staff can view loan documents" ON storage.objects FOR SELECT TO authenticated
+USING (bucket_id = 'loan-documents' AND (
+    get_auth_role() = ANY (ARRAY['admin', 'ceo', 'accountant', 'hr'])
+    OR EXISTS (SELECT 1 FROM public.loans WHERE officer_id = auth.uid() 
+               AND id::text = (storage.foldername(name))[1])));
+
+DROP POLICY IF EXISTS "Staff can upload loan documents" ON storage.objects;
+CREATE POLICY "Staff can upload loan documents" ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'loan-documents' AND 
+    get_auth_role() = ANY (ARRAY['admin', 'ceo', 'accountant', 'hr', 'loan_officer']));
+
+DROP POLICY IF EXISTS "Staff can delete loan documents" ON storage.objects;
+CREATE POLICY "Staff can delete loan documents" ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'loan-documents' AND (
+    get_auth_role() = ANY (ARRAY['admin', 'ceo']) OR owner = auth.uid()));

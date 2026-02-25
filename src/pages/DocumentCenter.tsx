@@ -24,6 +24,7 @@ export const DocumentCenter: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<SystemDocument | null>(null);
   const [viewingExcel, setViewingExcel] = useState<{url: string, name: string} | null>(null);
   const [viewingPdf, setViewingPdf] = useState<{url: string, name: string} | null>(null);
+  const [viewingImage, setViewingImage] = useState<{url: string, name: string} | null>(null);
   
   // Role Checks
   const isCEO = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
@@ -138,17 +139,66 @@ export const DocumentCenter: React.FC = () => {
   };
 
   const handleView = async (file: SystemDocument) => {
-      const { data } = supabase.storage
-        .from('loan-documents')
-        .getPublicUrl(file.storage_path);
-      
-      const name = file.name.toLowerCase();
-      if (name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv')) {
-          setViewingExcel({ url: data.publicUrl, name: file.name });
-      } else if (name.endsWith('.pdf')) {
-          setViewingPdf({ url: data.publicUrl, name: file.name });
-      } else {
-          window.open(data.publicUrl, '_blank');
+      try {
+          // Try signed URL first (more reliable)
+          const { data: signedData } = await supabase.storage
+            .from('loan-documents')
+            .createSignedUrl(file.storage_path, 3600); // 1 hour expiry
+          
+          const url = signedData?.signedUrl;
+          if (!url) {
+              // Fallback to public URL
+              const { data } = supabase.storage
+                .from('loan-documents')
+                .getPublicUrl(file.storage_path);
+              
+              const fileType = file.file_type?.toLowerCase() || file.name.toLowerCase();
+              if (fileType.includes('excel') || fileType.includes('spreadsheet') || 
+                  file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls') || 
+                  file.name.toLowerCase().endsWith('.csv')) {
+                  setViewingExcel({ url: data.publicUrl, name: file.name });
+              } else if (fileType.includes('pdf') || file.name.toLowerCase().endsWith('.pdf')) {
+                  setViewingPdf({ url: data.publicUrl, name: file.name });
+              } else if (fileType.includes('image') || 
+                  file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg') || 
+                  file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.gif')) {
+                  setViewingImage({ url: data.publicUrl, name: file.name });
+              } else {
+                  // For unknown types, try to determine by extension
+                  const name = file.name.toLowerCase();
+                  if (name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv')) {
+                      setViewingExcel({ url: data.publicUrl, name: file.name });
+                  } else if (name.endsWith('.pdf')) {
+                      setViewingPdf({ url: data.publicUrl, name: file.name });
+                  } else if (name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.gif')) {
+                      setViewingImage({ url: data.publicUrl, name: file.name });
+                  } else {
+                      // Fallback: open in new tab for unknown types
+                      window.open(data.publicUrl, '_blank');
+                  }
+              }
+              return;
+          }
+          
+          // Use signed URL with better type detection
+          const fileType = file.file_type?.toLowerCase() || file.name.toLowerCase();
+          if (fileType.includes('excel') || fileType.includes('spreadsheet') || 
+              file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls') || 
+              file.name.toLowerCase().endsWith('.csv')) {
+              setViewingExcel({ url, name: file.name });
+          } else if (fileType.includes('pdf') || file.name.toLowerCase().endsWith('.pdf')) {
+              setViewingPdf({ url, name: file.name });
+          } else if (fileType.includes('image') || 
+              file.name.toLowerCase().endsWith('.jpg') || file.name.toLowerCase().endsWith('.jpeg') || 
+              file.name.toLowerCase().endsWith('.png') || file.name.toLowerCase().endsWith('.gif')) {
+              setViewingImage({ url, name: file.name });
+          } else {
+              // Fallback: open in new tab for unknown types
+              window.open(url, '_blank');
+          }
+      } catch (error) {
+          console.error('Error generating URL:', error);
+          toast.error('Failed to load document. Please try again.');
       }
   };
 
@@ -301,7 +351,13 @@ export const DocumentCenter: React.FC = () => {
                                                           {isExcel ? <FileSpreadsheet className="h-5 w-5" /> : isPdf ? <FileText className="h-5 w-5" /> : <File className="h-5 w-5" />}
                                                       </div>
                                                       <div className="min-w-0">
-                                                          <p className="text-sm font-bold text-gray-900 truncate max-w-xs">{file.name}</p>
+                                                          <button 
+                                                            onClick={() => handleView(file)}
+                                                            className="text-sm font-bold text-gray-900 truncate max-w-xs text-left hover:text-indigo-600 transition-colors"
+                                                            title={`View ${file.name}`}
+                                                          >
+                                                            {file.name}
+                                                          </button>
                                                           <p className="text-[10px] text-gray-400 font-medium uppercase">{formatSize(file.file_size)}</p>
                                                       </div>
                                                   </div>
@@ -481,6 +537,20 @@ export const DocumentCenter: React.FC = () => {
                       <button onClick={() => setViewingPdf(null)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <iframe src={viewingPdf.url} className="flex-1 w-full border-none" title="PDF Viewer" />
+              </div>
+          </div>
+      )}
+      {viewingImage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-sm" onClick={() => setViewingImage(null)}>
+              <div className="relative max-w-full max-h-full">
+                  <img src={viewingImage.url} alt={viewingImage.name} className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl" />
+                  <button 
+                      onClick={() => setViewingImage(null)}
+                      className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"
+                      title="Close"
+                  >
+                      <X className="h-6 w-6 text-white" />
+                  </button>
               </div>
           </div>
       )}
