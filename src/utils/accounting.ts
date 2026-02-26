@@ -22,8 +22,8 @@ export const isPeriodClosed = async (date: string): Promise<boolean> => {
 };
 
 /**
- * Centralized engine to post balanced journal entries.
- * Now includes a mandatory check for closed periods.
+ * Enhanced journal entry posting with backdate checking and atomic operations.
+ * Uses database RPC for ACID compliance.
  */
 export const postJournalEntry = async (
     reference_type: 'loan_disbursement' | 'repayment' | 'expense' | 'transfer' | 'injection' | 'adjustment' | 'reversal' | 'write_off',
@@ -35,48 +35,38 @@ export const postJournalEntry = async (
 ) => {
     const date = entryDate || new Date().toISOString().split('T')[0];
 
-    // 1. Security Check: Prevent posting to closed periods
-    const closed = await isPeriodClosed(date);
-    if (closed) {
-        throw new Error(`Cannot post transaction. The financial period for ${date.substring(0, 7)} is closed and locked.`);
+    // Use RPC function with backdate checking
+    const { data, error } = await supabase.rpc('post_journal_entry_with_backdate_check', {
+        p_reference_type: reference_type,
+        p_reference_id: reference_id,
+        p_description: description,
+        p_lines: JSON.stringify(lines),
+        p_user_id: userId,
+        p_entry_date: date,
+        p_max_backdate_days: 3
+    });
+
+    if (error) throw error;
+    
+    const result = data as any;
+    
+    if (!result.success) {
+        // Check if backdate approval required
+        if (result.requires_approval) {
+            throw new Error(
+                `Backdate approval required: ${result.error}. ` +
+                `Please request approval from an executive.`
+            );
+        }
+        throw new Error(result.error || 'Failed to post journal entry');
     }
 
-    // 2. Balance Check
-    const totalDebit = lines.reduce((sum, l) => sum + Number(l.debit), 0);
-    const totalCredit = lines.reduce((sum, l) => sum + Number(l.credit), 0);
-
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-        throw new Error(`Journal entry is not balanced. Debits (${totalDebit}) must equal Credits (${totalCredit}).`);
-    }
-
-    // 3. Create Header
-    const { data: entry, error: entryError } = await supabase
-        .from('journal_entries')
-        .insert([{
-            reference_type,
-            reference_id,
-            description,
-            created_by: userId,
-            date: date
-        }])
-        .select()
-        .single();
-
-    if (entryError) throw entryError;
-
-    // 4. Create Lines
-    const linesWithHeader = lines.map(l => ({
-        ...l,
-        journal_entry_id: entry.id
-    }));
-
-    const { error: linesError } = await supabase
-        .from('journal_lines')
-        .insert(linesWithHeader);
-
-    if (linesError) throw linesError;
-
-    return entry;
+    return {
+        id: result.journal_entry_id,
+        date: date,
+        debits: result.debits,
+        credits: result.credits
+    };
 };
 
 /**

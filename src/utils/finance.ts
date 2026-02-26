@@ -100,7 +100,18 @@ export const calculateRepaymentDistribution = (
     penaltyOutstanding: number,
     interestOutstanding: number,
     principalOutstanding: number
-): { principalPaid: number; interestPaid: number; penaltyPaid: number } => {
+): { 
+    principalPaid: number; 
+    interestPaid: number; 
+    penaltyPaid: number;
+    overpayment: number;
+    isFullyPaid: boolean;
+    remainingAfterPayment: {
+        penalty: number;
+        interest: number;
+        principal: number;
+    };
+} => {
     let remaining = new Decimal(paymentAmount);
     let penaltyPaid = new Decimal(0);
     let interestPaid = new Decimal(0);
@@ -108,6 +119,7 @@ export const calculateRepaymentDistribution = (
 
     const pO = new Decimal(penaltyOutstanding);
     const iO = new Decimal(interestOutstanding);
+    const principal = new Decimal(principalOutstanding);
 
     // 1. Pay Penalty First
     if (pO.gt(0)) {
@@ -133,12 +145,95 @@ export const calculateRepaymentDistribution = (
 
     // 3. Pay Principal Last
     if (remaining.gt(0)) {
-        principalPaid = remaining;
+        if (remaining.gte(principal)) {
+            principalPaid = principal;
+            remaining = remaining.sub(principal);
+        } else {
+            principalPaid = remaining;
+            remaining = new Decimal(0);
+        }
     }
+
+    const totalOutstanding = pO.add(iO).add(principal);
+    const isFullyPaid = paymentAmount >= totalOutstanding.toNumber();
+    const overpayment = remaining.gt(0) ? remaining.toNumber() : 0;
 
     return { 
         principalPaid: principalPaid.toNumber(), 
         interestPaid: interestPaid.toNumber(), 
-        penaltyPaid: penaltyPaid.toNumber() 
+        penaltyPaid: penaltyPaid.toNumber(),
+        overpayment,
+        isFullyPaid,
+        remainingAfterPayment: {
+            penalty: pO.sub(penaltyPaid).toNumber(),
+            interest: iO.sub(interestPaid).toNumber(),
+            principal: principal.sub(principalPaid).toNumber()
+        }
     };
-}
+};
+
+export const recalculateLoanSchedule = (
+    originalSchedule: AmortizationScheduleItem[],
+    principalOutstanding: number,
+    interestRate: number,
+    originalTerm: number
+): AmortizationScheduleItem[] => {
+    if (principalOutstanding <= 0 || interestRate === 0) {
+        return originalSchedule;
+    }
+
+    // Calculate remaining term based on current balance
+    const currentPrincipal = new Decimal(principalOutstanding);
+    const monthlyRate = new Decimal(interestRate).div(100);
+    
+    // Estimate remaining months using current payment amount
+    const currentMonthlyPayment = originalSchedule[0]?.installment || 0;
+    if (currentMonthlyPayment === 0) return originalSchedule;
+
+    // Calculate remaining months using formula for reducing balance
+    let remainingMonths = Math.ceil(
+        currentPrincipal.mul(monthlyRate).add(currentMonthlyPayment)
+            .div(currentMonthlyPayment)
+            .ln()
+            .div(monthlyRate.add(1).ln())
+            .toNumber()
+    );
+
+    // Generate new schedule for remaining balance
+    const newSchedule: AmortizationScheduleItem[] = [];
+    let balance = currentPrincipal;
+    const startMonth = originalSchedule.length - remainingMonths + 1;
+
+    for (let i = startMonth; i <= originalTerm; i++) {
+        const interestPayment = balance.mul(monthlyRate);
+        const principalPayment = new Decimal(currentMonthlyPayment).sub(interestPayment);
+        
+        if (principalPayment.gt(balance)) {
+            // Final payment
+            newSchedule.push({
+                month: i,
+                installment: balance.add(interestPayment).toNumber(),
+                principal: balance.toNumber(),
+                interest: interestPayment.toNumber(),
+                balance: 0
+            });
+            break;
+        }
+
+        balance = balance.sub(principalPayment);
+        
+        newSchedule.push({
+            month: i,
+            installment: currentMonthlyPayment,
+            principal: principalPayment.toNumber(),
+            interest: interestPayment.toNumber(),
+            balance: Decimal.max(0, balance).toNumber()
+        });
+
+        if (balance.lte(0)) break;
+    }
+
+    // Combine original paid schedule with new calculated schedule
+    const paidSchedule = originalSchedule.slice(0, startMonth - 1);
+    return [...paidSchedule, ...newSchedule];
+};

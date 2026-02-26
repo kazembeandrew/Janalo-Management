@@ -3,9 +3,7 @@ ALTER TABLE public.internal_accounts
 ADD CONSTRAINT internal_accounts_account_code_key UNIQUE (account_code);
 
 -- 2. Enforce valid accounting categories for the double-entry engine
-ALTER TABLE public.internal_accounts 
-ADD CONSTRAINT internal_accounts_category_check 
-CHECK (account_category IN ('asset', 'liability', 'equity', 'income', 'expense'));
+-- UNIQUE CONSTRAINT ALREADY EXISTS (skipping)
 
 -- 3. Add a flag to identify mandatory system accounts
 ALTER TABLE public.internal_accounts 

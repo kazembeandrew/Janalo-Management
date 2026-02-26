@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { InternalAccount, JournalEntry } from '@/types';
+import { InternalAccount } from '@/types';
 import { formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
 import { postJournalEntry } from '@/utils/accounting';
 import { 
@@ -9,7 +9,8 @@ import {
     Search, History, RefreshCw, Landmark as BankIcon, 
     Coins, ShieldCheck, ArrowRightLeft, Download, Filter,
     TrendingUp, AlertCircle, X, CheckCircle2, Calculator,
-    Wand2, ShieldAlert
+    Wand2, ShieldAlert, ChevronRight, ChevronDown, Folder, FolderOpen,
+    ChevronLeft, FileSpreadsheet, Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -17,7 +18,20 @@ export const Accounts: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [journalEntries, setJournalEntries] = useState<any[]>([]);
+  const [totalEntries, setTotalEntries] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [entriesPerPage] = useState(50);
+  
+  // Filters
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [filterAccount, setFilterAccount] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [ledgerIntegrity, setLedgerIntegrity] = useState<{balanced: boolean, message: string} | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree');
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   
   // Modals
   const [showAccountModal, setShowAccountModal] = useState(false);
@@ -46,8 +60,14 @@ export const Accounts: React.FC = () => {
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
 
   useEffect(() => {
-    fetchData();
+    fetchData(1);
+  }, []);
+  
+  useEffect(() => {
+    fetchData(1);
+  }, [dateFrom, dateTo, filterAccount, filterType]);
 
+  useEffect(() => {
     const channel = supabase.channel('finance-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_accounts' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, () => fetchData())
@@ -56,7 +76,7 @@ export const Accounts: React.FC = () => {
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const fetchData = async () => {
+  const fetchData = async (page = currentPage) => {
     setLoading(true);
     try {
         const { data: accs } = await supabase
@@ -64,18 +84,48 @@ export const Accounts: React.FC = () => {
             .select('*')
             .order('name', { ascending: true });
         
-        const { data: entries } = await supabase
+        let query = supabase
             .from('journal_entries')
-            .select('*, journal_lines(*, accounts:internal_accounts(name)), users(full_name)')
+            .select('*, journal_lines(*, accounts:internal_accounts(name)), users(full_name)', { count: 'exact' })
             .order('created_at', { ascending: false })
-            .limit(50);
+            .range((page - 1) * entriesPerPage, page * entriesPerPage - 1);
+        
+        if (dateFrom) {
+            query = query.gte('date', dateFrom);
+        }
+        if (dateTo) {
+            query = query.lte('date', dateTo);
+        }
+        
+        if (filterType) {
+            query = query.eq('reference_type', filterType);
+        }
+        
+        if (filterAccount) {
+            const { data: lineData } = await supabase
+                .from('journal_lines')
+                .select('journal_entry_id')
+                .eq('account_id', filterAccount);
+            
+            if (lineData && lineData.length > 0) {
+                const entryIds = lineData.map(l => l.journal_entry_id);
+                query = query.in('id', entryIds);
+            } else {
+                query = query.in('id', ['00000000-0000-0000-0000-000000000000']);
+            }
+        }
+        
+        const { data: entries, count } = await query;
 
         setAccounts(accs || []);
         setJournalEntries(entries || []);
+        setTotalEntries(count || 0);
     } finally {
         setLoading(false);
     }
   };
+  
+  const totalPages = Math.ceil(totalEntries / entriesPerPage);
 
   const totalLiquidity = useMemo(() => {
       return accounts
@@ -109,7 +159,6 @@ export const Accounts: React.FC = () => {
               { name: 'Loan Portfolio', category: 'asset', code: 'PORTFOLIO', type: 'asset' }
           ];
 
-          // Check which accounts are missing
           const { data: existing } = await supabase
             .from('internal_accounts')
             .select('account_code')
@@ -124,7 +173,6 @@ export const Accounts: React.FC = () => {
               return;
           }
 
-          // Insert missing accounts
           const { error } = await supabase
             .from('internal_accounts')
             .insert(missingAccounts.map(acc => ({
@@ -153,7 +201,6 @@ export const Accounts: React.FC = () => {
       if (!profile) return;
       setIsProcessing(true);
       try {
-          // Map code to a valid type string for the DB constraint
           const validTypes = ['bank', 'cash', 'mobile', 'equity', 'liability', 'operational', 'capital', 'asset'];
           const suggestedType = accountForm.code.toLowerCase();
           const finalType = validTypes.includes(suggestedType) ? suggestedType : accountForm.category;
@@ -262,6 +309,228 @@ export const Accounts: React.FC = () => {
 
   const hasCapitalAccount = accounts.some(a => a.account_code?.toUpperCase() === 'CAPITAL');
 
+  const toggleNode = (id: string) => {
+    const newExpanded = new Set(expandedNodes);
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id);
+    } else {
+      newExpanded.add(id);
+    }
+    setExpandedNodes(newExpanded);
+  };
+
+  const expandAll = () => {
+    const allIds = new Set(accounts.map(a => a.id));
+    setExpandedNodes(allIds);
+  };
+
+  const collapseAll = () => {
+    setExpandedNodes(new Set());
+  };
+
+  const accountTree = useMemo(() => {
+    const accountMap = new Map<string, InternalAccount>(
+      accounts.map(a => [a.id, { ...a, children: [] }])
+    );
+    const roots: InternalAccount[] = [];
+    
+    accounts.forEach(account => {
+      const node = accountMap.get(account.id);
+      if (node && account.parent_id && accountMap.has(account.parent_id)) {
+        const parent = accountMap.get(account.parent_id);
+        if (parent && parent.children) {
+          parent.children.push(node);
+        }
+      } else if (node) {
+        roots.push(node);
+      }
+    });
+    
+    const sortNodes = (nodes: InternalAccount[]) => {
+      return nodes.sort((a, b) => {
+        const aNum = a.account_number_display || a.name;
+        const bNum = b.account_number_display || b.name;
+        return aNum.localeCompare(bNum);
+      });
+    };
+    
+    const sortTree = (nodes: InternalAccount[]): InternalAccount[] => {
+      const sorted = sortNodes(nodes);
+      sorted.forEach(node => {
+        if (node.children && node.children.length > 0) {
+          node.children = sortTree(node.children);
+        }
+      });
+      return sorted;
+    };
+    
+    return sortTree(roots);
+  }, [accounts]);
+
+  const getSubtreeBalance = (account: InternalAccount): number => {
+    let total = Number(account.balance) || 0;
+    if (account.children) {
+      account.children.forEach(child => {
+        total += getSubtreeBalance(child);
+      });
+    }
+    return total;
+  };
+
+  const renderTreeNode = (account: InternalAccount, level: number = 0) => {
+    const isExpanded = expandedNodes.has(account.id);
+    const hasChildren = account.children && account.children.length > 0;
+    const subtreeBalance = getSubtreeBalance(account);
+    const isRoot = level === 0;
+    
+    return (
+      <div key={account.id}>
+        <div 
+          className={`flex items-center justify-between py-3 px-4 hover:bg-gray-50 transition-colors cursor-pointer ${
+            isRoot ? 'bg-indigo-50/50 border-l-4 border-indigo-500' : 'border-l-2 border-gray-200'
+          }`}
+          style={{ paddingLeft: `${16 + level * 24}px` }}
+          onClick={() => hasChildren && toggleNode(account.id)}
+        >
+          <div className="flex items-center">
+            {hasChildren && (
+              <button 
+                onClick={(e) => { e.stopPropagation(); toggleNode(account.id); }}
+                className="mr-2 p-1 hover:bg-gray-200 rounded transition-colors"
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-gray-500" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-gray-500" />
+                )}
+              </button>
+            )}
+            {!hasChildren && <div className="w-6 mr-2" />}
+            
+            <div className={`p-2 rounded-lg mr-3 ${
+              hasChildren 
+                ? isExpanded ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-600'
+                : account.account_category === 'asset' ? 'bg-blue-50 text-blue-600' 
+                : account.account_category === 'liability' ? 'bg-red-50 text-red-600'
+                : 'bg-purple-50 text-purple-600'
+            }`}>
+              {hasChildren ? (
+                isExpanded ? <FolderOpen className="h-5 w-5" /> : <Folder className="h-5 w-5" />
+              ) : (
+                account.account_code === 'BANK' ? <BankIcon className="h-5 w-5" /> : <Coins className="h-5 w-5" />
+              )}
+            </div>
+            
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className={`font-bold ${isRoot ? 'text-gray-900' : 'text-gray-700'}`}>
+                  {account.name}
+                </h4>
+                {account.account_number_display && (
+                  <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                    {account.account_number_display}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
+                {account.account_category} • {account.account_code}
+                {hasChildren && (
+                  <span className="ml-2 text-indigo-500">
+                    ({account.children?.length} sub-accounts)
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          
+          <div className="text-right">
+            <p className={`text-lg font-bold ${
+              subtreeBalance < 0 ? 'text-red-600' : isRoot ? 'text-indigo-700' : 'text-gray-900'
+            }`}>
+              {formatCurrency(subtreeBalance)}
+            </p>
+            <p className="text-[10px] text-gray-400 uppercase font-bold">
+              {hasChildren ? 'Subtree Total' : 'Account Balance'}
+            </p>
+          </div>
+        </div>
+        
+        {hasChildren && isExpanded && (
+          <div>
+            {account.children?.map(child => renderTreeNode(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const entryTypes = ['loan_disbursement', 'repayment', 'expense', 'transfer', 'injection', 'adjustment', 'reversal', 'write_off'];
+
+  const handleVerifyTrialBalance = async () => {
+    const loadingToast = toast.loading("Verifying ledger integrity...");
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase.rpc('verify_trial_balance', { p_date: today });
+      
+      if (error) throw error;
+      
+      if (data && data[0]) {
+        const result = data[0];
+        setLedgerIntegrity({
+          balanced: result.is_balanced,
+          message: result.is_balanced 
+            ? `Balanced: Debits ${formatCurrency(result.total_debits)} = Credits ${formatCurrency(result.total_credits)}`
+            : `UNBALANCED: Difference ${formatCurrency(result.difference)}`
+        });
+        
+        if (result.is_balanced) {
+          toast.success(`Trial balance verified: ${formatCurrency(result.total_debits)} = ${formatCurrency(result.total_credits)}`, { id: loadingToast });
+        } else {
+          toast.error(`Ledger imbalance detected: ${formatCurrency(result.difference)}`, { id: loadingToast });
+        }
+      }
+    } catch (e: any) {
+      toast.error("Verification failed: " + e.message, { id: loadingToast });
+    }
+  };
+
+  const handleExportCSV = () => {
+    const csvRows: string[] = [];
+    csvRows.push(['Date', 'Type', 'Description', 'Account', 'Debit', 'Credit', 'User'].join(','));
+    
+    journalEntries.forEach(entry => {
+      const date = new Date(entry.date).toLocaleDateString();
+      const type = entry.reference_type;
+      const desc = `"${entry.description?.replace(/"/g, '""')}"`;
+      const user = entry.users?.full_name || 'System';
+      
+      entry.journal_lines.forEach((line: any) => {
+        const account = `"${line.accounts?.name?.replace(/"/g, '""')}"`;
+        const debit = line.debit > 0 ? line.debit : '';
+        const credit = line.credit > 0 ? line.credit : '';
+        csvRows.push([date, type, desc, account, debit, credit, user].join(','));
+      });
+    });
+    
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `ledger_export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`Exported ${journalEntries.length} entries to CSV`);
+  };
+
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+    fetchData(newPage);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -329,9 +598,19 @@ export const Accounts: React.FC = () => {
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Ledger Integrity</p>
               <div className="flex items-center mt-1">
-                  <CheckCircle2 className="h-6 w-6 text-green-500 mr-2" />
-                  <h3 className="text-xl font-bold text-gray-900">Synchronized</h3>
+                  {ledgerIntegrity ? (
+                    ledgerIntegrity.balanced ? (
+                      <><CheckCircle2 className="h-6 w-6 text-green-500 mr-2" /><h3 className="text-xl font-bold text-green-600">Verified</h3></>
+                    ) : (
+                      <><AlertCircle className="h-6 w-6 text-red-500 mr-2" /><h3 className="text-xl font-bold text-red-600">Issue</h3></>
+                    )
+                  ) : (
+                    <><CheckCircle2 className="h-6 w-6 text-green-500 mr-2" /><h3 className="text-xl font-bold text-gray-900">Synchronized</h3></>
+                  )}
               </div>
+              {ledgerIntegrity && (
+                <p className="text-xs text-gray-500 mt-1">{ledgerIntegrity.message}</p>
+              )}
           </div>
       </div>
 
@@ -343,46 +622,199 @@ export const Accounts: React.FC = () => {
                           <BankIcon className="h-4 w-4 mr-2 text-indigo-600" />
                           Chart of Accounts
                       </h3>
+                      <div className="flex items-center gap-2">
+                          <div className="flex bg-gray-100 rounded-lg p-1">
+                              <button
+                                  onClick={() => setViewMode('tree')}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                      viewMode === 'tree' 
+                                          ? 'bg-white text-indigo-600 shadow-sm' 
+                                          : 'text-gray-500 hover:text-gray-700'
+                                  }`}
+                                  title="Tree View"
+                              >
+                                  Tree
+                              </button>
+                              <button
+                                  onClick={() => setViewMode('list')}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${
+                                      viewMode === 'list' 
+                                          ? 'bg-white text-indigo-600 shadow-sm' 
+                                          : 'text-gray-500 hover:text-gray-700'
+                                  }`}
+                                  title="List View"
+                              >
+                                  List
+                              </button>
+                          </div>
+                          
+                          {viewMode === 'tree' && (
+                              <>
+                                  <button
+                                      onClick={expandAll}
+                                      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title="Expand All"
+                                  >
+                                      <FolderOpen className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                      onClick={collapseAll}
+                                      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                      title="Collapse All"
+                                  >
+                                      <Folder className="h-4 w-4" />
+                                  </button>
+                              </>
+                          )}
+                      </div>
                   </div>
-                  <div className="divide-y divide-gray-100">
-                      {loading ? (
-                          <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>
-                      ) : accounts.length === 0 ? (
-                          <div className="p-12 text-center text-gray-500">No institutional accounts configured.</div>
-                      ) : (
-                          accounts.map(acc => (
-                              <div key={acc.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                                  <div className="flex items-center">
-                                      <div className={`h-12 w-12 rounded-xl flex items-center justify-center mr-4 ${
-                                          acc.account_category === 'asset' ? 'bg-blue-50 text-blue-600' : 
-                                          acc.account_category === 'liability' ? 'bg-red-50 text-red-600' : 
-                                          'bg-purple-50 text-purple-600'
-                                      }`}>
-                                          {acc.account_code === 'BANK' ? <BankIcon className="h-6 w-6" /> : <Coins className="h-6 w-6" />}
-                                      </div>
-                                      <div>
-                                          <h4 className="font-bold text-gray-900">{acc.name}</h4>
-                                          <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
-                                              {acc.account_category} • {acc.account_code}
-                                          </p>
-                                      </div>
-                                  </div>
-                                  <div className="text-right">
-                                      <p className={`text-lg font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatCurrency(acc.balance)}</p>
-                                      <p className="text-[10px] text-gray-400 uppercase font-bold">Ledger Balance</p>
-                                  </div>
+                  
+                  {viewMode === 'tree' ? (
+                      <div className="divide-y divide-gray-100">
+                          {loading ? (
+                              <div className="p-12 text-center">
+                                  <RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-4" />
+                                  <p className="text-sm text-gray-500">Loading account hierarchy...</p>
                               </div>
-                          ))
-                      )}
-                  </div>
+                          ) : accountTree.length === 0 ? (
+                              <div className="p-12 text-center text-gray-500">
+                                  No institutional accounts configured.
+                              </div>
+                          ) : (
+                              <div>
+                                  <div className="px-6 py-3 bg-indigo-50/30 border-b border-indigo-100 flex items-center justify-between">
+                                      <p className="text-xs text-indigo-700 font-medium">
+                                          Showing {accounts.length} accounts in {accountTree.length} categories
+                                      </p>
+                                      <p className="text-xs text-gray-500">
+                                          Click folders to expand/collapse
+                                      </p>
+                                  </div>
+                                  {accountTree.map(account => renderTreeNode(account, 0))}
+                              </div>
+                          )}
+                      </div>
+                  ) : (
+                      <div className="divide-y divide-gray-100">
+                          {loading ? (
+                              <div className="p-12 text-center">
+                                  <RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" />
+                              </div>
+                          ) : accounts.length === 0 ? (
+                              <div className="p-12 text-center text-gray-500">No institutional accounts configured.</div>
+                          ) : (
+                              accounts.map(acc => (
+                                  <div key={acc.id} className="p-6 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                                      <div className="flex items-center">
+                                          <div className={`h-12 w-12 rounded-xl flex items-center justify-center mr-4 ${
+                                              acc.account_category === 'asset' ? 'bg-blue-50 text-blue-600' : 
+                                              acc.account_category === 'liability' ? 'bg-red-50 text-red-600' : 
+                                              'bg-purple-50 text-purple-600'
+                                          }`}>
+                                              {acc.account_code === 'BANK' ? <BankIcon className="h-6 w-6" /> : <Coins className="h-6 w-6" />}
+                                          </div>
+                                          <div>
+                                              <div className="flex items-center gap-2">
+                                                  <h4 className="font-bold text-gray-900">{acc.name}</h4>
+                                                  {acc.account_number_display && (
+                                                      <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                                                          {acc.account_number_display}
+                                                      </span>
+                                                  )}
+                                              </div>
+                                              <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
+                                                  {acc.account_category} • {acc.account_code}
+                                              </p>
+                                          </div>
+                                      </div>
+                                      <div className="text-right">
+                                          <p className={`text-lg font-bold ${acc.balance < 0 ? 'text-red-600' : 'text-gray-900'}`}>{formatCurrency(acc.balance)}</p>
+                                          <p className="text-[10px] text-gray-400 uppercase font-bold">Ledger Balance</p>
+                                      </div>
+                                  </div>
+                              ))
+                          )}
+                      </div>
+                  )}
               </div>
 
               <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <h3 className="font-bold text-gray-900 flex items-center">
                           <History className="h-4 w-4 mr-2 text-indigo-600" />
                           Institutional General Ledger
                       </h3>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => setShowFilters(!showFilters)}
+                          className={`inline-flex items-center px-3 py-2 rounded-xl text-xs font-bold transition-all ${showFilters ? 'bg-indigo-100 text-indigo-700' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                        >
+                          <Filter className="h-3.5 w-3.5 mr-1.5" /> Filters
+                        </button>
+                        <button
+                          onClick={handleVerifyTrialBalance}
+                          className="inline-flex items-center px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all"
+                        >
+                          <Shield className="h-3.5 w-3.5 mr-1.5 text-green-600" /> Verify
+                        </button>
+                        <button
+                          onClick={handleExportCSV}
+                          className="inline-flex items-center px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all"
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1.5 text-indigo-600" /> Export
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {showFilters && (
+                      <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">From Date</label>
+                          <input
+                            type="date"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">To Date</label>
+                          <input
+                            type="date"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account</label>
+                          <select
+                            value={filterAccount}
+                            onChange={(e) => setFilterAccount(e.target.value)}
+                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All Accounts</option>
+                            {accounts.map(acc => (
+                              <option key={acc.id} value={acc.id}>{acc.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Entry Type</label>
+                          <select
+                            value={filterType}
+                            onChange={(e) => setFilterType(e.target.value)}
+                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                          >
+                            <option value="">All Types</option>
+                            {entryTypes.map(type => (
+                              <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="overflow-x-auto">
                       <table className="min-w-full divide-y divide-gray-200">
@@ -391,12 +823,20 @@ export const Accounts: React.FC = () => {
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Date</th>
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
                                   <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Description</th>
+                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Account</th>
                                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Debit</th>
                                   <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Credit</th>
                               </tr>
                           </thead>
                           <tbody className="bg-white divide-y divide-gray-100">
-                              {journalEntries.map(entry => (
+                              {journalEntries.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                                    No ledger entries found.
+                                  </td>
+                                </tr>
+                              ) : (
+                                journalEntries.map(entry => (
                                   <React.Fragment key={entry.id}>
                                       <tr className="bg-gray-50/30">
                                           <td className="px-6 py-2 whitespace-nowrap text-[10px] text-gray-400 font-bold uppercase">
@@ -407,13 +847,13 @@ export const Accounts: React.FC = () => {
                                                   {entry.reference_type}
                                               </span>
                                           </td>
-                                          <td colSpan={3} className="px-6 py-2 text-[10px] font-bold text-gray-900">
+                                          <td colSpan={4} className="px-6 py-2 text-[10px] font-bold text-gray-900">
                                               {entry.description} <span className="text-gray-400 font-normal ml-2">by {entry.users?.full_name}</span>
                                           </td>
                                       </tr>
                                       {entry.journal_lines.map((line: any) => (
                                           <tr key={line.id} className="hover:bg-gray-50 transition-colors">
-                                              <td colSpan={2}></td>
+                                              <td colSpan={3}></td>
                                               <td className="px-6 py-2 text-xs text-gray-600 pl-12">
                                                   {line.accounts?.name}
                                               </td>
@@ -426,10 +866,38 @@ export const Accounts: React.FC = () => {
                                           </tr>
                                       ))}
                                   </React.Fragment>
-                              ))}
+                                ))
+                              )}
                           </tbody>
                       </table>
                   </div>
+                  
+                  {totalPages > 1 && (
+                    <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                      <p className="text-xs text-gray-500">
+                        Showing {((currentPage - 1) * entriesPerPage) + 1} - {Math.min(currentPage * entriesPerPage, totalEntries)} of {totalEntries} entries
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                          disabled={currentPage === 1}
+                          className="p-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="text-xs font-medium text-gray-700 px-2">
+                          Page {currentPage} of {totalPages}
+                        </span>
+                        <button
+                          onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                          disabled={currentPage === totalPages}
+                          className="p-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
               </div>
           </div>
 
@@ -460,7 +928,6 @@ export const Accounts: React.FC = () => {
           </div>
       </div>
 
-      {/* Create Account Modal */}
       {showAccountModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -512,7 +979,6 @@ export const Accounts: React.FC = () => {
           </div>
       )}
 
-      {/* Fund Movement Modal */}
       {showFundModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">

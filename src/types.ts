@@ -58,10 +58,15 @@ export interface InternalAccount {
     account_category: 'asset' | 'liability' | 'equity' | 'income' | 'expense';
     account_code: string;
     parent_id?: string | null;
+    account_number_display?: string | null;
+    description?: string | null;
+    is_active?: boolean;
     balance: number;
     is_system_account: boolean;
     created_at: string;
     updated_at: string;
+    // Tree view computed properties
+    children?: InternalAccount[];
 }
 
 export interface JournalEntry {

@@ -115,55 +115,36 @@ export const Loans: React.FC = () => {
       
       setIsProcessing(true);
       const ids = Array.from(selectedIds);
-      const selectedLoans = loans.filter(l => ids.includes(l.id));
       
       try {
-          // 1. Update Statuses
-          const { error: statusError } = await supabase
-            .from('loans')
-            .update({ status: 'active' })
-            .in('id', ids);
+          // Call atomic bulk disbursement RPC
+          const { data, error } = await supabase.rpc('bulk_disburse_loans', {
+              p_loan_ids: ids,
+              p_source_account_id: targetAccountId,
+              p_user_id: profile.id
+          });
+
+          if (error) throw error;
           
-          if (statusError) throw statusError;
-
-          // 2. Record Disbursements & Notes
-          for (const loan of selectedLoans) {
-              // Record Fund Transaction
-              await supabase.from('fund_transactions').insert([{
-                  from_account_id: targetAccountId,
-                  amount: loan.principal_amount,
-                  type: 'disbursement',
-                  description: `Bulk disbursement to ${loan.borrowers?.full_name}`,
-                  reference_id: loan.id,
-                  recorded_by: profile.id
-              }]);
-
-              // Add System Note
-              await supabase.from('loan_notes').insert([{
-                  loan_id: loan.id,
-                  user_id: profile.id,
-                  content: `Approved via bulk action. Disbursed from ${accounts.find(a => a.id === targetAccountId)?.name}.`,
-                  is_system: true
-              }]);
-
-              // Audit Log
-              await supabase.from('audit_logs').insert({
-                  user_id: profile.id,
-                  action: 'Bulk Loan Approval',
-                  entity_type: 'loan',
-                  entity_id: loan.id,
-                  details: { amount: loan.principal_amount }
-              });
+          const result = data as any;
+          
+          if (!result.success) {
+              // Partial failure - some loans disbursed, some failed
+              if (result.disbursed_count > 0) {
+                  toast.success(`${result.disbursed_count} loans disbursed, ${result.failed_count} failed`);
+              } else {
+                  throw new Error(result.error || 'Bulk disbursement failed');
+              }
+          } else {
+              toast.success(`Successfully approved and disbursed ${result.disbursed_count} loans.`);
           }
-
-          toast.success(`Successfully approved and disbursed ${ids.length} loans.`);
+          
           setShowApproveModal(false);
           setSelectedIds(new Set());
           setTargetAccountId('');
           fetchLoans();
-      } catch (error: any) {
-          console.error(error);
-          toast.error('Bulk approval failed: ' + error.message);
+      } catch (e: any) {
+          toast.error(`Bulk approval failed: ${e.message}`);
       } finally {
           setIsProcessing(false);
       }
@@ -312,10 +293,12 @@ export const Loans: React.FC = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                             <div>
-                                <div className="text-sm font-bold text-gray-900">{loan.borrowers?.full_name}</div>
-                                <div className="text-[10px] text-indigo-600 font-bold flex items-center mt-0.5">
+                                <Link to={`/loans/${loan.id}`} className="text-sm font-bold text-gray-900 hover:text-indigo-600 hover:underline">
+                                    {loan.borrowers?.full_name}
+                                </Link>
+                                <Link to={`/loans/${loan.id}`} className="text-[10px] text-indigo-600 font-bold flex items-center mt-0.5 hover:text-indigo-800 hover:underline">
                                     <Hash className="h-2.5 w-2.5 mr-0.5" /> {loan.reference_no || 'NO REF'}
-                                </div>
+                                </Link>
                             </div>
                             {overdue && (
                                 <div className="ml-3 text-red-600" title="Overdue (30d+)">

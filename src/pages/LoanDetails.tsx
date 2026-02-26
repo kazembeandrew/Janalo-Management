@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
-import { formatCurrency, calculateRepaymentDistribution } from '@/utils/finance';
+import { formatCurrency, calculateRepaymentDistribution, recalculateLoanSchedule } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { postJournalEntry, getAccountByCode } from '@/utils/accounting';
 import { 
@@ -200,66 +200,58 @@ export const LoanDetails: React.FC = () => {
     e.preventDefault();
     if (!loan || !profile || !targetAccountId) return;
     setProcessingAction(true);
+    
     try {
         const amount = Number(repayAmount);
-        const { principalPaid, interestPaid, penaltyPaid } = calculateRepaymentDistribution(
-            amount,
-            loan.penalty_outstanding || 0,
-            loan.interest_outstanding,
-            loan.principal_outstanding
-        );
+        
+        // Generate idempotency key to prevent duplicates
+        const idempotencyKey = `repayment-${loan.id}-${Date.now()}`;
+        
+        // Call atomic RPC function
+        const { data, error } = await supabase.rpc('process_repayment', {
+            p_loan_id: loan.id,
+            p_amount: amount,
+            p_account_id: targetAccountId,
+            p_user_id: profile.id,
+            p_idempotency_key: idempotencyKey
+        });
 
-        const { data: rData, error: rError } = await supabase.from('repayments').insert([{
-            loan_id: loan.id,
+        if (error) throw error;
+        
+        const result = data as any;
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Repayment processing failed');
+        }
+
+        const distribution = result.distribution;
+
+        // Generate receipt
+        generateReceiptPDF(loan, { 
+            id: result.repayment_id,
             amount_paid: amount,
-            principal_paid: principalPaid,
-            interest_paid: interestPaid,
-            penalty_paid: penaltyPaid,
-            payment_date: new Date().toISOString().split('T')[0],
-            recorded_by: profile.id
-        }]).select().single();
+            payment_date: new Date().toISOString(),
+            principal_paid: distribution.principal_paid,
+            interest_paid: distribution.interest_paid,
+            penalty_paid: distribution.penalty_paid
+        }, profile.full_name || 'System');
 
-        if (rError) throw rError;
-
-        // Record in Ledger (Balanced Entry)
-        const portfolioAcc = await getAccountByCode('PORTFOLIO');
-        const interestAcc = await getAccountByCode('EQUITY');
-
-        await postJournalEntry(
-            'repayment',
-            loan.id,
-            `Repayment from ${loan.borrowers?.full_name}`,
-            [
-                { account_id: targetAccountId, debit: amount, credit: 0 },
-                { account_id: portfolioAcc.id, debit: 0, credit: principalPaid },
-                { account_id: interestAcc.id, debit: 0, credit: interestPaid + penaltyPaid }
-            ],
-            profile.id
-        );
-
-        await supabase.from('loan_notes').insert([{
-            loan_id: id,
-            user_id: profile.id,
-            content: `Repayment of ${formatCurrency(amount)} recorded. Principal: ${formatCurrency(principalPaid)}, Interest: ${formatCurrency(interestPaid)}, Penalty: ${formatCurrency(penaltyPaid)}.`,
-            is_system: true
-        }]);
-
-        const isCompleted = (loan.principal_outstanding - principalPaid) <= 0.01;
-        await supabase.from('loans').update({
-            penalty_outstanding: Math.max(0, (loan.penalty_outstanding || 0) - penaltyPaid),
-            interest_outstanding: Math.max(0, loan.interest_outstanding - interestPaid),
-            principal_outstanding: Math.max(0, loan.principal_outstanding - principalPaid),
-            status: isCompleted ? 'completed' : 'active'
-        }).eq('id', loan.id);
-
-        toast.success('Repayment recorded');
+        // Show appropriate success message
+        if (distribution.overpayment > 0) {
+            toast.success(`Repayment recorded with overpayment of ${formatCurrency(distribution.overpayment)}`);
+        } else if (distribution.is_fully_paid) {
+            toast.success('Loan fully paid! Receipt generated.');
+        } else {
+            toast.success('Repayment recorded. Receipt generated.');
+        }
+        
         setActiveModal(null);
         setDisplayRepayAmount('');
         setRepayAmount(0);
-        fetchData();
-        if (rData) generateReceiptPDF(loan, rData, profile.full_name);
-    } catch (e: any) {
-        toast.error(e.message);
+        fetchData(); // Refresh loan data
+    } catch (error: any) {
+        console.error('Repayment error:', error);
+        toast.error(error.message || 'Failed to record repayment');
     } finally {
         setProcessingAction(false);
     }
