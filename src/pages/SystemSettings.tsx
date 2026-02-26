@@ -94,10 +94,10 @@ export const SystemSettings: React.FC = () => {
 
           if (logError) throw logError;
 
-          // 2. Notify all CEOs (The "Wiring")
-          const { data: ceos } = await supabase.from('users').select('id').eq('role', 'ceo');
-          if (ceos && ceos.length > 0) {
-              const notifications = ceos
+          // 2. Notify all CEOs and Admins (The "Wiring")
+          const { data: executives } = await supabase.from('users').select('id').or('role.eq.ceo,role.eq.admin');
+          if (executives && executives.length > 0) {
+              const notifications = executives
                 .filter(c => c.id !== profile?.id) // Don't notify self
                 .map(c => ({
                   user_id: c.id,

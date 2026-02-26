@@ -30,7 +30,13 @@ import {
   FolderOpen,
   Search,
   ChevronRight,
-  Hash
+  Hash,
+  BarChart3,
+  Zap,
+  Server,
+  Megaphone,
+  PiggyBank,
+  Heart
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { OversightIndicator } from './OversightIndicator';
@@ -164,6 +170,15 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin'] },
     { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin', 'ceo'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
+    // New Admin Features
+    { name: 'Advanced Analytics', href: '/analytics', icon: BarChart3, roles: ['admin', 'ceo'] },
+    { name: 'Compliance Management', href: '/compliance', icon: Shield, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Workflow Automation', href: '/workflows', icon: Zap, roles: ['admin', 'ceo'] },
+    { name: 'Security Management', href: '/security', icon: Shield, roles: ['admin'] },
+    { name: 'System Administration', href: '/system-admin', icon: Server, roles: ['admin'] },
+    { name: 'Communication Hub', href: '/communication', icon: Megaphone, roles: ['admin', 'ceo', 'hr'] },
+    { name: 'Financial Management', href: '/financial-management', icon: PiggyBank, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Customer Relations', href: '/crm', icon: Heart, roles: ['admin', 'ceo', 'loan_officer'] },
   ];
 
   const handleSignOut = async () => {

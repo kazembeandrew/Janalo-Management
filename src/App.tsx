@@ -32,6 +32,16 @@ import { ImportData } from '@/pages/ImportData';
 import { DocumentCenter } from '@/pages/DocumentCenter';
 import { Oversight } from '@/pages/Oversight';
 import { RestructureLoan } from '@/pages/RestructureLoan';
+import { NotificationsPage } from '@/pages/NotificationsPage';
+import { NotificationSettingsPage } from '@/pages/NotificationSettingsPage';
+import { AdvancedAnalytics } from '@/pages/AdvancedAnalytics';
+import { ComplianceManagement } from '@/pages/ComplianceManagement';
+import { WorkflowAutomation } from '@/pages/WorkflowAutomation';
+import { SecurityManagement } from '@/pages/SecurityManagement';
+import { SystemAdministration } from '@/pages/SystemAdministration';
+import { CommunicationHub } from '@/pages/CommunicationHub';
+import { FinancialManagement } from '@/pages/FinancialManagement';
+import { CustomerRelationshipManagement } from '@/pages/CustomerRelationshipManagement';
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -279,6 +289,86 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <ProtectedRoute>
+                <NotificationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/notifications/settings"
+            element={
+              <ProtectedRoute>
+                <NotificationSettingsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/analytics"
+            element={
+              <ProtectedRoute>
+                <AdvancedAnalytics />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/compliance"
+            element={
+              <ProtectedRoute>
+                <ComplianceManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/workflows"
+            element={
+              <ProtectedRoute>
+                <WorkflowAutomation />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/security"
+            element={
+              <ProtectedRoute>
+                <SecurityManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/system-admin"
+            element={
+              <ProtectedRoute>
+                <SystemAdministration />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/communication"
+            element={
+              <ProtectedRoute>
+                <CommunicationHub />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/financial-management"
+            element={
+              <ProtectedRoute>
+                <FinancialManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/crm"
+            element={
+              <ProtectedRoute>
+                <CustomerRelationshipManagement />
               </ProtectedRoute>
             }
           />

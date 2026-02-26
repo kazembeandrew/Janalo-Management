@@ -79,14 +79,19 @@ export const Accounts: React.FC = () => {
   const fetchData = async (page = currentPage) => {
     setLoading(true);
     try {
-        const { data: accs } = await supabase
+        const { data: accs, error: accsError } = await supabase
             .from('internal_accounts')
             .select('*')
             .order('name', { ascending: true });
         
+        if (accsError) {
+            console.error('Error fetching accounts:', accsError);
+            toast.error('Failed to load accounts: ' + accsError.message);
+        }
+        
         let query = supabase
             .from('journal_entries')
-            .select('*, journal_lines(*, accounts:internal_accounts(name)), users(full_name)', { count: 'exact' })
+            .select('*, journal_lines(*, accounts:internal_accounts(name)), users!journal_entries_created_by_fkey(full_name)', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range((page - 1) * entriesPerPage, page * entriesPerPage - 1);
         
@@ -102,10 +107,14 @@ export const Accounts: React.FC = () => {
         }
         
         if (filterAccount) {
-            const { data: lineData } = await supabase
+            const { data: lineData, error: lineError } = await supabase
                 .from('journal_lines')
                 .select('journal_entry_id')
                 .eq('account_id', filterAccount);
+            
+            if (lineError) {
+                console.error('Error fetching journal lines:', lineError);
+            }
             
             if (lineData && lineData.length > 0) {
                 const entryIds = lineData.map(l => l.journal_entry_id);
@@ -115,11 +124,19 @@ export const Accounts: React.FC = () => {
             }
         }
         
-        const { data: entries, count } = await query;
+        const { data: entries, count, error: entriesError } = await query;
+
+        if (entriesError) {
+            console.error('Error fetching journal entries:', entriesError);
+            toast.error('Failed to load ledger entries: ' + entriesError.message);
+        }
 
         setAccounts(accs || []);
         setJournalEntries(entries || []);
         setTotalEntries(count || 0);
+    } catch (e: any) {
+        console.error('Unexpected error in fetchData:', e);
+        toast.error('An unexpected error occurred: ' + e.message);
     } finally {
         setLoading(false);
     }
