@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import L, { Icon, DivIcon } from 'leaflet';
+import type { MapContainerProps, TileLayerProps, MarkerProps, PopupProps } from 'react-leaflet';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/utils/finance';
@@ -17,7 +18,7 @@ const MapController = ({ center, zoom }: { center: [number, number], zoom: numbe
 };
 
 // Helper to create colored markers using DivIcon
-const createColoredIcon = (color: string) => {
+const createColoredIcon = (color: string): DivIcon => {
     return L.divIcon({
         className: 'custom-div-icon',
         html: `<div style="background-color: ${color}; width: 12px; height: 12px; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></div>`,
@@ -195,6 +196,7 @@ export const ClientMap: React.FC = () => {
                             className="flex-1 bg-gray-50 border-none rounded-lg text-xs py-1.5 focus:ring-2 focus:ring-indigo-500"
                             value={selectedOfficer}
                             onChange={(e) => setSelectedOfficer(e.target.value)}
+                            aria-label="Filter by loan officer"
                         >
                             <option value="all">All Officers</option>
                             {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}

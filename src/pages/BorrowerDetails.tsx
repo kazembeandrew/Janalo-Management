@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import L, { Icon } from 'leaflet';
+import type { MapContainerProps, TileLayerProps, MarkerProps, PopupProps } from 'react-leaflet';
 import { supabase } from '@/lib/supabase';
 import { Borrower, Loan, LoanDocument } from '@/types';
 import { formatCurrency } from '@/utils/finance';
@@ -17,7 +18,7 @@ import {
 const markerIcon = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href;
 const markerShadow = new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href;
 
-let DefaultIcon = L.icon({
+let DefaultIcon: Icon = L.icon({
     iconUrl: markerIcon,
     shadowUrl: markerShadow,
     iconSize: [25, 41],
@@ -397,7 +398,7 @@ export const BorrowerDetails: React.FC = () => {
 
       {viewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4" onClick={() => setViewImage(null)}>
-            <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all"><X className="h-6 w-6" /></button>
+            <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all" title="Close image viewer"><X className="h-6 w-6" /></button>
             <img src={viewImage} alt="Full View" className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" />
         </div>
       )}

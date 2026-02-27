@@ -36,11 +36,14 @@ import {
   Server,
   Megaphone,
   PiggyBank,
-  Heart
+  Heart,
+  Filter,
+  Clock
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { OversightIndicator } from './OversightIndicator';
 import { ToastProvider } from './ToastProvider';
+import { SearchBar } from './ui/SearchBar';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, effectiveRoles, signOut } = useAuth();
@@ -49,11 +52,50 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [counts, setCounts] = useState({ inbox: 0, loans: 0 });
   
-  // Global Search State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<{borrowers: any[], loans: any[]}>({ borrowers: [], loans: [] });
-  const [isSearching, setIsSearching] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const performGlobalSearch = async (query: string) => {
+    try {
+      // Search borrowers by name
+      const bRes = await supabase
+        .from('borrowers')
+        .select('id, full_name')
+        .ilike('full_name', `%${query}%`)
+        .limit(5);
+      
+      // Search loans by reference number
+      const lResByRef = await supabase
+        .from('loans')
+        .select('id, reference_no, borrowers(full_name)')
+        .ilike('reference_no', `%${query}%`)
+        .limit(5);
+      
+      // Search loans by borrower name through the borrowers table
+      const { data: matchingBorrowers } = await supabase
+        .from('borrowers')
+        .select('id')
+        .ilike('full_name', `%${query}%`);
+      
+      let lResByBorrower: any = { data: [] };
+      if (matchingBorrowers && matchingBorrowers.length > 0) {
+        const borrowerIds = matchingBorrowers.map(b => b.id);
+        lResByBorrower = await supabase
+          .from('loans')
+          .select('id, reference_no, borrowers(full_name)')
+          .in('borrower_id', borrowerIds)
+          .limit(5);
+      }
+      
+      // Combine loan results and remove duplicates
+      const allLoans = [...(lResByRef.data || []), ...(lResByBorrower.data || [])];
+      const uniqueLoans = allLoans.filter((loan, index, self) => 
+        index === self.findIndex(l => l.id === loan.id)
+      ).slice(0, 5);
+      
+      return { borrowers: bRes.data || [], loans: uniqueLoans };
+    } catch (error) {
+      console.error('Search error:', error);
+      return { borrowers: [], loans: [] };
+    }
+  };
 
   useEffect(() => {
     fetchCounts();
@@ -64,87 +106,15 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => fetchCounts())
       .subscribe();
 
-    const handleClickOutside = (e: MouseEvent) => {
-        if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-            setSearchQuery('');
-        }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
     return () => {
       supabase.removeChannel(channel);
-      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
-  useEffect(() => {
-      fetchCounts();
-      setSearchQuery(''); // Clear search on navigation
-  }, [location.pathname]);
-
-  useEffect(() => {
-      const delayDebounce = setTimeout(() => {
-          if (searchQuery.trim().length > 1) {
-              performGlobalSearch();
-          } else {
-              setSearchResults({ borrowers: [], loans: [] });
-          }
-      }, 300);
-      return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
-
   const fetchCounts = async () => {
-      if (!profile) return;
-      const { data } = await supabase.rpc('get_notification_counts');
-      if (data) setCounts(data);
-  };
-
-  const performGlobalSearch = async () => {
-      setIsSearching(true);
-      try {
-          // Search borrowers by name
-          const bRes = await supabase
-              .from('borrowers')
-              .select('id, full_name')
-              .ilike('full_name', `%${searchQuery}%`)
-              .limit(5);
-          
-          // Search loans by reference number
-          const lResByRef = await supabase
-              .from('loans')
-              .select('id, reference_no, borrowers(full_name)')
-              .ilike('reference_no', `%${searchQuery}%`)
-              .limit(5);
-          
-          // Search loans by borrower name through the borrowers table
-          const { data: matchingBorrowers } = await supabase
-              .from('borrowers')
-              .select('id')
-              .ilike('full_name', `%${searchQuery}%`);
-          
-          let lResByBorrower: any = { data: [] };
-          if (matchingBorrowers && matchingBorrowers.length > 0) {
-              const borrowerIds = matchingBorrowers.map(b => b.id);
-              lResByBorrower = await supabase
-                  .from('loans')
-                  .select('id, reference_no, borrowers(full_name)')
-                  .in('borrower_id', borrowerIds)
-                  .limit(5);
-          }
-          
-          // Combine loan results and remove duplicates
-          const allLoans = [...(lResByRef.data || []), ...(lResByBorrower.data || [])];
-          const uniqueLoans = allLoans.filter((loan, index, self) => 
-              index === self.findIndex(l => l.id === loan.id)
-          ).slice(0, 5);
-          
-          setSearchResults({ 
-              borrowers: bRes.data || [], 
-              loans: uniqueLoans 
-          });
-      } finally {
-          setIsSearching(false);
-      }
+    if (!profile) return;
+    const { data } = await supabase.rpc('get_notification_counts');
+    if (data) setCounts(data);
   };
 
   const navigation = [
@@ -251,64 +221,22 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                     <Menu className="h-6 w-6" />
                 </button>
                 
-                {/* Global Search Bar */}
-                <div className="relative max-w-md w-full hidden sm:block" ref={searchRef}>
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Search className="h-4 w-4 text-gray-400" />
-                    </div>
-                    <input 
-                        type="text"
-                        className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-xl bg-gray-50 text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 transition-all"
+                {/* Enhanced Global Search Bar */}
+                <div className="max-w-md w-full hidden sm:block">
+                    <SearchBar
                         placeholder="Search clients or loan references..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onSearch={async (query) => {
+                            const results = await performGlobalSearch(query);
+                            // Handle navigation based on results
+                            if (results.borrowers.length === 1 && results.loans.length === 0) {
+                                navigate(`/borrowers/${results.borrowers[0].id}`);
+                            } else if (results.loans.length === 1 && results.borrowers.length === 0) {
+                                navigate(`/loans/${results.loans[0].id}`);
+                            }
+                        }}
+                        showFilterButton={true}
+                        showHistory={true}
                     />
-                    
-                    {searchQuery.trim().length > 1 && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="p-2 max-h-96 overflow-y-auto custom-scrollbar">
-                                {isSearching ? (
-                                    <div className="p-4 text-center text-xs text-gray-400 font-bold uppercase tracking-widest">Searching...</div>
-                                ) : searchResults.borrowers.length === 0 && searchResults.loans.length === 0 ? (
-                                    <div className="p-4 text-center text-xs text-gray-400">No matches found</div>
-                                ) : (
-                                    <>
-                                        {searchResults.borrowers.length > 0 && (
-                                            <div className="mb-2">
-                                                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Clients</p>
-                                                {searchResults.borrowers.map(b => (
-                                                    <button key={b.id} onClick={() => navigate(`/borrowers/${b.id}`)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-50 rounded-xl transition-colors group">
-                                                        <div className="flex items-center">
-                                                            <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs mr-3">{b.full_name.charAt(0)}</div>
-                                                            <span className="text-sm font-bold text-gray-700">{b.full_name}</span>
-                                                        </div>
-                                                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-400" />
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {searchResults.loans.length > 0 && (
-                                            <div>
-                                                <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Loans</p>
-                                                {searchResults.loans.map(l => (
-                                                    <button key={l.id} onClick={() => navigate(`/loans/${l.id}`)} className="w-full flex items-center justify-between p-3 hover:bg-indigo-50 rounded-xl transition-colors group">
-                                                        <div className="flex items-center">
-                                                            <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-700 font-bold text-xs mr-3"><Hash className="h-4 w-4" /></div>
-                                                            <div className="text-left">
-                                                                <span className="text-sm font-bold text-gray-700 block">{l.reference_no}</span>
-                                                                <span className="text-[10px] text-gray-400 font-medium">{l.borrowers?.full_name}</span>
-                                                            </div>
-                                                        </div>
-                                                        <ChevronRight className="h-4 w-4 text-gray-300 group-hover:text-indigo-400" />
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
             

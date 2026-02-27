@@ -3,45 +3,50 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { PresenceProvider } from '@/context/PresenceContext';
 import { Layout } from '@/components/Layout';
+import { lazyLoad } from '@/utils/lazyLoad';
+
+// Critical components - loaded immediately
 import { Login } from '@/pages/Login';
 import { Dashboard } from '@/pages/Dashboard';
-import { Borrowers } from '@/pages/Borrowers';
-import { BorrowerDetails } from '@/pages/BorrowerDetails';
-import { Loans } from '@/pages/Loans';
-import { CreateLoan } from '@/pages/CreateLoan';
-import { EditLoan } from '@/pages/EditLoan';
-import { LoanDetails } from '@/pages/LoanDetails';
-import { Reports } from '@/pages/Reports';
-import { Expenses } from '@/pages/Expenses';
-import { Messages } from '@/pages/Messages';
-import { Users } from '@/pages/Users';
-import { AuditLogs } from '@/pages/AuditLogs';
-import { Collections } from '@/pages/Collections';
-import { Performance } from '@/pages/Performance';
-import { Calculator } from '@/pages/Calculator';
-import { Profile } from '@/pages/Profile';
-import { ClientMap } from '@/pages/ClientMap';
-import { Tasks } from '@/pages/Tasks';
-import { Repayments } from '@/pages/Repayments';
-import { Accounts } from '@/pages/Accounts';
-import { FinancialStatements } from '@/pages/FinancialStatements';
-import { Budgets } from '@/pages/Budgets';
-import { RepaymentSchedule } from '@/pages/RepaymentSchedule';
-import { SystemSettings } from '@/pages/SystemSettings';
-import { ImportData } from '@/pages/ImportData';
-import { DocumentCenter } from '@/pages/DocumentCenter';
-import { Oversight } from '@/pages/Oversight';
-import { RestructureLoan } from '@/pages/RestructureLoan';
-import { NotificationsPage } from '@/pages/NotificationsPage';
-import { NotificationSettingsPage } from '@/pages/NotificationSettingsPage';
-import { AdvancedAnalytics } from '@/pages/AdvancedAnalytics';
-import { ComplianceManagement } from '@/pages/ComplianceManagement';
-import { WorkflowAutomation } from '@/pages/WorkflowAutomation';
-import { SecurityManagement } from '@/pages/SecurityManagement';
-import { SystemAdministration } from '@/pages/SystemAdministration';
-import { CommunicationHub } from '@/pages/CommunicationHub';
-import { FinancialManagement } from '@/pages/FinancialManagement';
-import { CustomerRelationshipManagement } from '@/pages/CustomerRelationshipManagement';
+
+// Lazy loaded heavy components
+const LazyBorrowers = lazyLoad(() => import('@/pages/Borrowers'));
+const LazyBorrowerDetails = lazyLoad(() => import('@/pages/BorrowerDetails'));
+const LazyLoans = lazyLoad(() => import('@/pages/Loans'));
+const LazyCreateLoan = lazyLoad(() => import('@/pages/CreateLoan'));
+const LazyEditLoan = lazyLoad(() => import('@/pages/EditLoan'));
+const LazyLoanDetails = lazyLoad(() => import('@/pages/LoanDetails'));
+const LazyReports = lazyLoad(() => import('@/pages/Reports'));
+const LazyExpenses = lazyLoad(() => import('@/pages/Expenses'));
+const LazyMessages = lazyLoad(() => import('@/pages/Messages'));
+const LazyUsers = lazyLoad(() => import('@/pages/Users'));
+const LazyAuditLogs = lazyLoad(() => import('@/pages/AuditLogs'));
+const LazyCollections = lazyLoad(() => import('@/pages/Collections'));
+const LazyPerformance = lazyLoad(() => import('@/pages/Performance'));
+const LazyCalculator = lazyLoad(() => import('@/pages/Calculator'));
+const LazyProfile = lazyLoad(() => import('@/pages/Profile'));
+const LazyClientMap = lazyLoad(() => import('@/pages/ClientMap'));
+const LazyTasks = lazyLoad(() => import('@/pages/Tasks'));
+const LazyRepayments = lazyLoad(() => import('@/pages/Repayments'));
+const LazyAccounts = lazyLoad(() => import('@/pages/Accounts'));
+const LazyFinancialStatements = lazyLoad(() => import('@/pages/FinancialStatements'));
+const LazyBudgets = lazyLoad(() => import('@/pages/Budgets'));
+const LazyRepaymentSchedule = lazyLoad(() => import('@/pages/RepaymentSchedule'));
+const LazySystemSettings = lazyLoad(() => import('@/pages/SystemSettings'));
+const LazyImportData = lazyLoad(() => import('@/pages/ImportData'));
+const LazyDocumentCenter = lazyLoad(() => import('@/pages/DocumentCenter'));
+const LazyOversight = lazyLoad(() => import('@/pages/Oversight'));
+const LazyRestructureLoan = lazyLoad(() => import('@/pages/RestructureLoan'));
+const LazyNotificationsPage = lazyLoad(() => import('@/pages/NotificationsPage'));
+const LazyNotificationSettingsPage = lazyLoad(() => import('@/pages/NotificationSettingsPage'));
+const LazyAdvancedAnalytics = lazyLoad(() => import('@/pages/AdvancedAnalytics'));
+const LazyComplianceManagement = lazyLoad(() => import('@/pages/ComplianceManagement'));
+const LazyWorkflowAutomation = lazyLoad(() => import('@/pages/WorkflowAutomation'));
+const LazySecurityManagement = lazyLoad(() => import('@/pages/SecurityManagement'));
+const LazySystemAdministration = lazyLoad(() => import('@/pages/SystemAdministration'));
+const LazyCommunicationHub = lazyLoad(() => import('@/pages/CommunicationHub'));
+const LazyFinancialManagement = lazyLoad(() => import('@/pages/FinancialManagement'));
+const LazyCustomerRelationshipManagement = lazyLoad(() => import('@/pages/CustomerRelationshipManagement'));
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -80,7 +85,7 @@ const App: React.FC = () => {
             path="/borrowers"
             element={
               <ProtectedRoute>
-                <Borrowers />
+                <LazyBorrowers />
               </ProtectedRoute>
             }
           />
@@ -88,7 +93,7 @@ const App: React.FC = () => {
             path="/borrowers/:id"
             element={
               <ProtectedRoute>
-                <BorrowerDetails />
+                <LazyBorrowerDetails />
               </ProtectedRoute>
             }
           />
@@ -96,7 +101,7 @@ const App: React.FC = () => {
             path="/loans"
             element={
               <ProtectedRoute>
-                <Loans />
+                <LazyLoans />
               </ProtectedRoute>
             }
           />
@@ -104,7 +109,7 @@ const App: React.FC = () => {
             path="/repayments"
             element={
               <ProtectedRoute>
-                <Repayments />
+                <LazyRepayments />
               </ProtectedRoute>
             }
           />
@@ -112,7 +117,7 @@ const App: React.FC = () => {
             path="/schedule"
             element={
               <ProtectedRoute>
-                <RepaymentSchedule />
+                <LazyRepaymentSchedule />
               </ProtectedRoute>
             }
           />
@@ -120,7 +125,7 @@ const App: React.FC = () => {
             path="/accounts"
             element={
               <ProtectedRoute>
-                <Accounts />
+                <LazyAccounts />
               </ProtectedRoute>
             }
           />
@@ -128,7 +133,7 @@ const App: React.FC = () => {
             path="/budgets"
             element={
               <ProtectedRoute>
-                <Budgets />
+                <LazyBudgets />
               </ProtectedRoute>
             }
           />
@@ -136,7 +141,7 @@ const App: React.FC = () => {
             path="/statements"
             element={
               <ProtectedRoute>
-                <FinancialStatements />
+                <LazyFinancialStatements />
               </ProtectedRoute>
             }
           />
@@ -144,7 +149,7 @@ const App: React.FC = () => {
             path="/collections"
             element={
               <ProtectedRoute>
-                <Collections />
+                <LazyCollections />
               </ProtectedRoute>
             }
           />
@@ -152,7 +157,7 @@ const App: React.FC = () => {
             path="/performance"
             element={
               <ProtectedRoute>
-                <Performance />
+                <LazyPerformance />
               </ProtectedRoute>
             }
           />
@@ -160,7 +165,7 @@ const App: React.FC = () => {
             path="/calculator"
             element={
               <ProtectedRoute>
-                <Calculator />
+                <LazyCalculator />
               </ProtectedRoute>
             }
           />
@@ -168,7 +173,7 @@ const App: React.FC = () => {
             path="/map"
             element={
               <ProtectedRoute>
-                <ClientMap />
+                <LazyClientMap />
               </ProtectedRoute>
             }
           />
@@ -176,7 +181,7 @@ const App: React.FC = () => {
             path="/loans/new"
             element={
               <ProtectedRoute>
-                <CreateLoan />
+                <LazyCreateLoan />
               </ProtectedRoute>
             }
           />
@@ -184,7 +189,7 @@ const App: React.FC = () => {
             path="/loans/edit/:id"
             element={
               <ProtectedRoute>
-                <EditLoan />
+                <LazyEditLoan />
               </ProtectedRoute>
             }
           />
@@ -192,7 +197,7 @@ const App: React.FC = () => {
             path="/loans/restructure/:id"
             element={
               <ProtectedRoute>
-                <RestructureLoan />
+                <LazyRestructureLoan />
               </ProtectedRoute>
             }
           />
@@ -200,7 +205,7 @@ const App: React.FC = () => {
             path="/loans/:id"
             element={
               <ProtectedRoute>
-                <LoanDetails />
+                <LazyLoanDetails />
               </ProtectedRoute>
             }
           />
@@ -208,7 +213,7 @@ const App: React.FC = () => {
             path="/messages"
             element={
               <ProtectedRoute>
-                <Messages />
+                <LazyMessages />
               </ProtectedRoute>
             }
           />
@@ -216,7 +221,7 @@ const App: React.FC = () => {
             path="/reports"
             element={
               <ProtectedRoute>
-                <Reports />
+                <LazyReports />
               </ProtectedRoute>
             }
           />
@@ -224,7 +229,7 @@ const App: React.FC = () => {
             path="/expenses"
             element={
               <ProtectedRoute>
-                <Expenses />
+                <LazyExpenses />
               </ProtectedRoute>
             }
           />
@@ -232,7 +237,7 @@ const App: React.FC = () => {
             path="/tasks"
             element={
               <ProtectedRoute>
-                <Tasks />
+                <LazyTasks />
               </ProtectedRoute>
             }
           />
@@ -240,7 +245,7 @@ const App: React.FC = () => {
             path="/users"
             element={
               <ProtectedRoute>
-                <Users />
+                <LazyUsers />
               </ProtectedRoute>
             }
           />
@@ -248,7 +253,7 @@ const App: React.FC = () => {
             path="/audit-logs"
             element={
               <ProtectedRoute>
-                <AuditLogs />
+                <LazyAuditLogs />
               </ProtectedRoute>
             }
           />
@@ -256,7 +261,7 @@ const App: React.FC = () => {
             path="/settings"
             element={
               <ProtectedRoute>
-                <SystemSettings />
+                <LazySystemSettings />
               </ProtectedRoute>
             }
           />
@@ -264,7 +269,7 @@ const App: React.FC = () => {
             path="/import"
             element={
               <ProtectedRoute>
-                <ImportData />
+                <LazyImportData />
               </ProtectedRoute>
             }
           />
@@ -272,7 +277,7 @@ const App: React.FC = () => {
             path="/documents"
             element={
               <ProtectedRoute>
-                <DocumentCenter />
+                <LazyDocumentCenter />
               </ProtectedRoute>
             }
           />
@@ -280,7 +285,7 @@ const App: React.FC = () => {
             path="/oversight"
             element={
               <ProtectedRoute>
-                <Oversight />
+                <LazyOversight />
               </ProtectedRoute>
             }
           />
@@ -288,7 +293,7 @@ const App: React.FC = () => {
             path="/profile"
             element={
               <ProtectedRoute>
-                <Profile />
+                <LazyProfile />
               </ProtectedRoute>
             }
           />
@@ -296,7 +301,7 @@ const App: React.FC = () => {
             path="/notifications"
             element={
               <ProtectedRoute>
-                <NotificationsPage />
+                <LazyNotificationsPage />
               </ProtectedRoute>
             }
           />
@@ -304,7 +309,7 @@ const App: React.FC = () => {
             path="/notifications/settings"
             element={
               <ProtectedRoute>
-                <NotificationSettingsPage />
+                <LazyNotificationSettingsPage />
               </ProtectedRoute>
             }
           />
@@ -312,7 +317,7 @@ const App: React.FC = () => {
             path="/analytics"
             element={
               <ProtectedRoute>
-                <AdvancedAnalytics />
+                <LazyAdvancedAnalytics />
               </ProtectedRoute>
             }
           />
@@ -320,7 +325,7 @@ const App: React.FC = () => {
             path="/compliance"
             element={
               <ProtectedRoute>
-                <ComplianceManagement />
+                <LazyComplianceManagement />
               </ProtectedRoute>
             }
           />
@@ -328,7 +333,7 @@ const App: React.FC = () => {
             path="/workflows"
             element={
               <ProtectedRoute>
-                <WorkflowAutomation />
+                <LazyWorkflowAutomation />
               </ProtectedRoute>
             }
           />
@@ -336,7 +341,7 @@ const App: React.FC = () => {
             path="/security"
             element={
               <ProtectedRoute>
-                <SecurityManagement />
+                <LazySecurityManagement />
               </ProtectedRoute>
             }
           />
@@ -344,7 +349,7 @@ const App: React.FC = () => {
             path="/system-admin"
             element={
               <ProtectedRoute>
-                <SystemAdministration />
+                <LazySystemAdministration />
               </ProtectedRoute>
             }
           />
@@ -352,7 +357,7 @@ const App: React.FC = () => {
             path="/communication"
             element={
               <ProtectedRoute>
-                <CommunicationHub />
+                <LazyCommunicationHub />
               </ProtectedRoute>
             }
           />
@@ -360,7 +365,7 @@ const App: React.FC = () => {
             path="/financial-management"
             element={
               <ProtectedRoute>
-                <FinancialManagement />
+                <LazyFinancialManagement />
               </ProtectedRoute>
             }
           />
@@ -368,7 +373,7 @@ const App: React.FC = () => {
             path="/crm"
             element={
               <ProtectedRoute>
-                <CustomerRelationshipManagement />
+                <LazyCustomerRelationshipManagement />
               </ProtectedRoute>
             }
           />

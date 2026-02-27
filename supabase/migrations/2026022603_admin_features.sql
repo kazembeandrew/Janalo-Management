@@ -439,18 +439,18 @@ ALTER TABLE customer_segments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Admin and CEO access to analytics" ON revenue_forecasts
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role IN ('admin', 'ceo')
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) IN ('admin', 'ceo')
         )
     );
 
 CREATE POLICY "Admin and CEO access to risk assessments" ON risk_assessments
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role IN ('admin', 'ceo')
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) IN ('admin', 'ceo')
         )
     );
 
@@ -458,9 +458,9 @@ CREATE POLICY "Admin and CEO access to risk assessments" ON risk_assessments
 CREATE POLICY "Admin, CEO, and Accountant access to compliance" ON compliance_requirements
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role IN ('admin', 'ceo', 'accountant')
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) IN ('admin', 'ceo', 'accountant')
         )
     );
 
@@ -468,18 +468,18 @@ CREATE POLICY "Admin, CEO, and Accountant access to compliance" ON compliance_re
 CREATE POLICY "Admin only access to security" ON user_sessions
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role = 'admin'
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) = 'admin'
         )
     );
 
 CREATE POLICY "Admin only access to IP whitelist" ON ip_whitelist
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role = 'admin'
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) = 'admin'
         )
     );
 
@@ -494,9 +494,9 @@ CREATE POLICY "All authenticated users can read announcements" ON announcements
 CREATE POLICY "Admin full access to announcements" ON announcements
     FOR ALL USING (
         EXISTS (
-            SELECT 1 FROM profiles 
-            WHERE profiles.id = auth.uid() 
-            AND profiles.role IN ('admin', 'ceo')
+            SELECT 1 FROM public.users 
+            WHERE public.users.id = auth.uid() 
+            AND (SELECT role FROM public.users WHERE id = auth.uid()) IN ('admin', 'ceo')
         )
     );
 
@@ -563,11 +563,11 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE VIEW active_user_sessions AS
 SELECT 
     us.*,
-    p.full_name,
+    p.email as full_name,
     p.email,
-    p.role
+    p.role as role
 FROM user_sessions us
-JOIN profiles p ON us.user_id = p.id
+JOIN public.users p ON us.user_id = p.id
 WHERE us.is_active = true
 AND us.expires_at > NOW();
 
@@ -575,9 +575,9 @@ AND us.expires_at > NOW();
 CREATE OR REPLACE VIEW pending_compliance AS
 SELECT 
     cr.*,
-    p.full_name as assigned_name
+    p.email as assigned_name
 FROM compliance_requirements cr
-LEFT JOIN profiles p ON cr.assigned_to = p.id
+LEFT JOIN public.users p ON cr.assigned_to = p.id
 WHERE cr.status IN ('pending', 'in_progress')
 AND (cr.due_date IS NULL OR cr.due_date >= CURRENT_DATE);
 
@@ -610,31 +610,28 @@ SELECT
 -- ============================================================================
 
 -- Insert sample compliance requirements
-INSERT INTO compliance_requirements (requirement_name, regulatory_body, description, frequency, due_date, assigned_to, created_by) VALUES
+INSERT INTO compliance_requirements (requirement_name, regulatory_body, description, frequency, due_date, assigned_to) VALUES
 ('Monthly Financial Report', 'Central Bank', 'Submit monthly financial statements and loan portfolio reports', 'monthly', CURRENT_DATE + INTERVAL '7 days', 
- (SELECT id FROM profiles WHERE role = 'accountant' LIMIT 1),
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1)),
+ (SELECT id FROM public.users WHERE role = 'accountant' LIMIT 1)),
 ('Anti-Money Laundering Check', 'Financial Intelligence Unit', 'Conduct AML checks on all new borrowers', 'weekly', CURRENT_DATE + INTERVAL '3 days',
- (SELECT id FROM profiles WHERE role = 'loan_officer' LIMIT 1),
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1)),
+ (SELECT id FROM public.users WHERE role = 'loan_officer' LIMIT 1)),
 ('Loan Portfolio Review', 'Banking Supervisor', 'Quarterly review of loan portfolio quality and risk assessment', 'quarterly', CURRENT_DATE + INTERVAL '30 days',
- (SELECT id FROM profiles WHERE role = 'ceo' LIMIT 1),
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1));
+ (SELECT id FROM public.users WHERE role = 'ceo' LIMIT 1));
 
 -- Insert sample communication templates
 INSERT INTO communication_templates (template_name, template_type, subject, content, variables, created_by) VALUES
 ('Loan Approval Notification', 'sms', 'Loan Approved', 'Dear {borrower_name}, your loan application for {loan_amount} has been approved. Reference: {loan_reference}', ARRAY['borrower_name', 'loan_amount', 'loan_reference'],
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1)),
+ (SELECT id FROM public.users WHERE role = 'admin' LIMIT 1)),
 ('Payment Reminder', 'email', 'Payment Reminder', 'This is a reminder that your loan payment of {payment_amount} is due on {due_date}. Please ensure timely payment.', ARRAY['payment_amount', 'due_date'],
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1)),
+ (SELECT id FROM public.users WHERE role = 'admin' LIMIT 1)),
 ('Welcome Message', 'sms', 'Welcome to Janalo', 'Welcome {borrower_name}! Thank you for choosing Janalo for your financial needs. We are committed to serving you.', ARRAY['borrower_name'],
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1));
+ (SELECT id FROM public.users WHERE role = 'admin' LIMIT 1));
 
 -- Insert sample announcements
 INSERT INTO announcements (title, content, priority, target_roles, created_by) VALUES
 ('System Maintenance Scheduled', 'The system will undergo maintenance on Saturday from 2:00 AM to 4:00 AM. Please save your work and log out before this time.', 'high', ARRAY['admin', 'ceo', 'loan_officer', 'accountant', 'hr'],
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1)),
+ (SELECT id FROM public.users WHERE role = 'admin' LIMIT 1)),
 ('New Compliance Requirements', 'Please review the updated compliance requirements in the Compliance section. Training sessions will be scheduled next week.', 'normal', ARRAY['admin', 'ceo', 'accountant'],
- (SELECT id FROM profiles WHERE role = 'admin' LIMIT 1));
+ (SELECT id FROM public.users WHERE role = 'admin' LIMIT 1));
 
 COMMIT;

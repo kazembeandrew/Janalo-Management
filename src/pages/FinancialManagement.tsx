@@ -89,7 +89,11 @@ export const FinancialManagement: React.FC = () => {
   
   const [showProjectionModal, setShowProjectionModal] = useState(false);
   const [showInvestmentModal, setShowInvestmentModal] = useState(false);
+  const [showVarianceModal, setShowVarianceModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [editingProjection, setEditingProjection] = useState<CashFlowProjection | null>(null);
+  const [editingInvestment, setEditingInvestment] = useState<InvestmentPortfolio | null>(null);
+  const [editingVariance, setEditingVariance] = useState<BudgetVariance | null>(null);
   
   const [newProjection, setNewProjection] = useState({
     projection_date: '',
@@ -107,6 +111,14 @@ export const FinancialManagement: React.FC = () => {
     maturity_date: '',
     interest_rate: 0,
     status: 'active'
+  });
+
+  const [newVariance, setNewVariance] = useState({
+    budget_id: '',
+    actual_amount: 0,
+    variance_amount: 0,
+    analysis_period: '',
+    notes: ''
   });
 
   const isAuthorized = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo' ) || effectiveRoles.includes('accountant');
@@ -197,6 +209,58 @@ export const FinancialManagement: React.FC = () => {
     }
   };
 
+  const updateCashFlowProjection = async () => {
+    if (!editingProjection) return;
+
+    try {
+      const { error } = await supabase
+        .from('cash_flow_projections')
+        .update({
+          ...newProjection,
+          net_cash_flow: newProjection.projected_inflow - newProjection.projected_outflow
+        })
+        .eq('id', editingProjection.id);
+
+      if (error) throw error;
+      
+      toast.success('Cash flow projection updated successfully');
+      setNewProjection({
+        projection_date: '',
+        projected_inflow: 0,
+        projected_outflow: 0,
+        confidence_level: 0.8,
+        notes: ''
+      });
+      setEditingProjection(null);
+      setShowProjectionModal(false);
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error updating cash flow projection:', error);
+      toast.error('Failed to update cash flow projection');
+    }
+  };
+
+  const deleteCashFlowProjection = async (projectionId: string) => {
+    if (!confirm('Are you sure you want to delete this cash flow projection?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('cash_flow_projections')
+        .delete()
+        .eq('id', projectionId);
+
+      if (error) throw error;
+      
+      toast.success('Cash flow projection deleted successfully');
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error deleting cash flow projection:', error);
+      toast.error('Failed to delete cash flow projection');
+    }
+  };
+
   const createInvestment = async () => {
     try {
       const { error } = await supabase
@@ -224,6 +288,36 @@ export const FinancialManagement: React.FC = () => {
     } catch (error) {
       console.error('Error creating investment:', error);
       toast.error('Failed to add investment');
+    }
+  };
+
+  const updateInvestment = async () => {
+    if (!editingInvestment) return;
+
+    try {
+      const { error } = await supabase
+        .from('investment_portfolio')
+        .update(newInvestment)
+        .eq('id', editingInvestment.id);
+
+      if (error) throw error;
+      
+      toast.success('Investment updated successfully');
+      setNewInvestment({
+        investment_name: '',
+        investment_type: 'stocks',
+        initial_investment: 0,
+        purchase_date: '',
+        maturity_date: '',
+        interest_rate: 0,
+        status: 'active'
+      });
+      setEditingInvestment(null);
+      setShowInvestmentModal(false);
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error updating investment:', error);
+      toast.error('Failed to update investment');
     }
   };
 
@@ -267,6 +361,86 @@ export const FinancialManagement: React.FC = () => {
     if (percentage > 10) return 'text-red-600';
     if (percentage > 5) return 'text-yellow-600';
     return 'text-green-600';
+  };
+
+  const createBudgetVariance = async () => {
+    try {
+      const { error } = await supabase
+        .from('budget_variance')
+        .insert({
+          ...newVariance,
+          variance_percentage: newVariance.budget_id ? (newVariance.actual_amount / parseFloat(newVariance.budget_id) - 1) * 100 : 0,
+          created_by: profile?.id
+        });
+
+      if (error) throw error;
+      
+      toast.success('Budget variance analysis created successfully');
+      setNewVariance({
+        budget_id: '',
+        actual_amount: 0,
+        variance_amount: 0,
+        analysis_period: '',
+        notes: ''
+      });
+      setShowVarianceModal(false);
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error creating budget variance:', error);
+      toast.error('Failed to create budget variance analysis');
+    }
+  };
+
+  const updateBudgetVariance = async () => {
+    if (!editingVariance) return;
+
+    try {
+      const { error } = await supabase
+        .from('budget_variance')
+        .update({
+          ...newVariance,
+          variance_percentage: newVariance.budget_id ? (newVariance.actual_amount / parseFloat(newVariance.budget_id) - 1) * 100 : 0
+        })
+        .eq('id', editingVariance.id);
+
+      if (error) throw error;
+      
+      toast.success('Budget variance analysis updated successfully');
+      setNewVariance({
+        budget_id: '',
+        actual_amount: 0,
+        variance_amount: 0,
+        analysis_period: '',
+        notes: ''
+      });
+      setEditingVariance(null);
+      setShowVarianceModal(false);
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error updating budget variance:', error);
+      toast.error('Failed to update budget variance analysis');
+    }
+  };
+
+  const deleteBudgetVariance = async (varianceId: string) => {
+    if (!confirm('Are you sure you want to delete this budget variance analysis?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('budget_variance')
+        .delete()
+        .eq('id', varianceId);
+
+      if (error) throw error;
+      
+      toast.success('Budget variance analysis deleted successfully');
+      fetchFinancialData();
+    } catch (error) {
+      console.error('Error deleting budget variance:', error);
+      toast.error('Failed to delete budget variance analysis');
+    }
   };
 
   if (!isAuthorized) {
@@ -462,6 +636,33 @@ export const FinancialManagement: React.FC = () => {
                         <p className="text-xs text-gray-500">{projection.notes}</p>
                       </div>
                     )}
+
+                    <div className="mt-4 flex items-center justify-end space-x-2">
+                      <button
+                        onClick={() => {
+                          setEditingProjection(projection);
+                          setNewProjection({
+                            projection_date: projection.projection_date,
+                            projected_inflow: projection.projected_inflow,
+                            projected_outflow: projection.projected_outflow,
+                            confidence_level: projection.confidence_level,
+                            notes: projection.notes || ''
+                          });
+                          setShowProjectionModal(true);
+                        }}
+                        className="text-indigo-600 hover:text-indigo-900"
+                        title="Edit projection"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => deleteCashFlowProjection(projection.id)}
+                        className="text-red-600 hover:text-red-900"
+                        title="Delete projection"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -558,6 +759,25 @@ export const FinancialManagement: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <button
+                            onClick={() => {
+                              setEditingInvestment(investment);
+                              setNewInvestment({
+                                investment_name: investment.investment_name,
+                                investment_type: investment.investment_type,
+                                initial_investment: investment.initial_investment,
+                                purchase_date: investment.purchase_date,
+                                maturity_date: investment.maturity_date || '',
+                                interest_rate: investment.interest_rate || 0,
+                                status: investment.status
+                              });
+                              setShowInvestmentModal(true);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-900 mr-2"
+                            title="Edit investment"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => deleteInvestment(investment.id)}
                             className="text-red-600 hover:text-red-900"
                             title="Delete investment"
@@ -576,7 +796,16 @@ export const FinancialManagement: React.FC = () => {
           {/* Budget Variance Tab */}
           {activeTab === 'variance' && (
             <div className="space-y-6">
-              <h3 className="text-lg font-semibold text-gray-900">Budget Variance Analysis</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Budget Variance Analysis</h3>
+                <button
+                  onClick={() => setShowVarianceModal(true)}
+                  className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Variance
+                </button>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {budgetVariances.map((variance) => (
@@ -632,7 +861,32 @@ export const FinancialManagement: React.FC = () => {
 
                     <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
                       <span>Analysis: {variance.analysis_period}</span>
-                      <span>By {variance.creator?.full_name}</span>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => {
+                            setEditingVariance(variance);
+                            setNewVariance({
+                              budget_id: variance.budget?.id || '',
+                              actual_amount: variance.actual_amount,
+                              variance_amount: variance.variance_amount,
+                              analysis_period: variance.analysis_period,
+                              notes: variance.notes || ''
+                            });
+                            setShowVarianceModal(true);
+                          }}
+                          className="text-indigo-600 hover:text-indigo-900"
+                          title="Edit variance"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteBudgetVariance(variance.id)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Delete variance"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -647,9 +901,21 @@ export const FinancialManagement: React.FC = () => {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-md shadow-lg rounded-xl bg-white">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">New Cash Flow Projection</h3>
+              <h3 className="text-xl font-bold text-gray-900">
+                {editingProjection ? 'Edit Cash Flow Projection' : 'New Cash Flow Projection'}
+              </h3>
               <button
-                onClick={() => setShowProjectionModal(false)}
+                onClick={() => {
+                  setShowProjectionModal(false);
+                  setEditingProjection(null);
+                  setNewProjection({
+                    projection_date: '',
+                    projected_inflow: 0,
+                    projected_outflow: 0,
+                    confidence_level: 0.8,
+                    notes: ''
+                  });
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <Trash2 className="h-6 w-6" />
@@ -724,19 +990,29 @@ export const FinancialManagement: React.FC = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-end space-x-4 pt-4 border-t">
+              <div className="flex justify-end space-x-3 pt-4">
                 <button
-                  onClick={() => setShowProjectionModal(false)}
+                  onClick={() => {
+                    setShowProjectionModal(false);
+                    setEditingProjection(null);
+                    setNewProjection({
+                      projection_date: '',
+                      projected_inflow: 0,
+                      projected_outflow: 0,
+                      confidence_level: 0.8,
+                      notes: ''
+                    });
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={createCashFlowProjection}
+                  onClick={editingProjection ? updateCashFlowProjection : createCashFlowProjection}
                   disabled={!newProjection.projection_date}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >
-                  Create Projection
+                  {editingProjection ? 'Update Projection' : 'Create Projection'}
                 </button>
               </div>
             </div>
@@ -749,9 +1025,23 @@ export const FinancialManagement: React.FC = () => {
         <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
           <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-md shadow-lg rounded-xl bg-white">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">Add Investment</h3>
+              <h3 className="text-xl font-bold text-gray-900">
+                {editingInvestment ? 'Edit Investment' : 'Add Investment'}
+              </h3>
               <button
-                onClick={() => setShowInvestmentModal(false)}
+                onClick={() => {
+                  setShowInvestmentModal(false);
+                  setEditingInvestment(null);
+                  setNewInvestment({
+                    investment_name: '',
+                    investment_type: 'stocks',
+                    initial_investment: 0,
+                    purchase_date: '',
+                    maturity_date: '',
+                    interest_rate: 0,
+                    status: 'active'
+                  });
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <Trash2 className="h-6 w-6" />
@@ -843,17 +1133,140 @@ export const FinancialManagement: React.FC = () => {
 
               <div className="flex items-center justify-end space-x-4 pt-4 border-t">
                 <button
-                  onClick={() => setShowInvestmentModal(false)}
+                  onClick={() => {
+                    setShowInvestmentModal(false);
+                    setEditingInvestment(null);
+                    setNewInvestment({
+                      investment_name: '',
+                      investment_type: 'stocks',
+                      initial_investment: 0,
+                      purchase_date: '',
+                      maturity_date: '',
+                      interest_rate: 0,
+                      status: 'active'
+                    });
+                  }}
                   className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={createInvestment}
+                  onClick={editingInvestment ? updateInvestment : createInvestment}
                   disabled={!newInvestment.investment_name || !newInvestment.purchase_date}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
                 >
-                  Add Investment
+                  {editingInvestment ? 'Update Investment' : 'Add Investment'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Budget Variance Modal */}
+      {showVarianceModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-md shadow-lg rounded-xl bg-white">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">
+                {editingVariance ? 'Edit Budget Variance' : 'New Budget Variance'}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowVarianceModal(false);
+                  setEditingVariance(null);
+                  setNewVariance({
+                    budget_id: '',
+                    actual_amount: 0,
+                    variance_amount: 0,
+                    analysis_period: '',
+                    notes: ''
+                  });
+                }}
+                className="text-gray-400 hover:text-gray-600"
+                title="Close modal"
+              >
+                <Trash2 className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Budget Category ID
+                </label>
+                <input
+                  type="text"
+                  value={newVariance.budget_id}
+                  onChange={(e) => setNewVariance({ ...newVariance, budget_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Enter budget category ID"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Actual Amount
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newVariance.actual_amount}
+                  onChange={(e) => setNewVariance({ ...newVariance, actual_amount: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="0.00"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Analysis Period
+                </label>
+                <input
+                  type="text"
+                  value={newVariance.analysis_period}
+                  onChange={(e) => setNewVariance({ ...newVariance, analysis_period: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="e.g., Q1 2024, January 2024"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Notes
+                </label>
+                <textarea
+                  value={newVariance.notes}
+                  onChange={(e) => setNewVariance({ ...newVariance, notes: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  rows={3}
+                  placeholder="Add any notes about this variance analysis..."
+                />
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  onClick={() => {
+                    setShowVarianceModal(false);
+                    setEditingVariance(null);
+                    setNewVariance({
+                      budget_id: '',
+                      actual_amount: 0,
+                      variance_amount: 0,
+                      analysis_period: '',
+                      notes: ''
+                    });
+                  }}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={editingVariance ? updateBudgetVariance : createBudgetVariance}
+                  disabled={!newVariance.budget_id || !newVariance.analysis_period}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {editingVariance ? 'Update Variance' : 'Create Variance'}
                 </button>
               </div>
             </div>

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import L, { Icon } from 'leaflet';
+import type { MapContainerProps, TileLayerProps, MarkerProps, PopupProps } from 'react-leaflet';
 import { MapPin, Navigation, X, Check, Locate } from 'lucide-react';
 
 // Fix for default marker icons
 const markerIcon = new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href;
 const markerShadow = new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href;
 
-let DefaultIcon = L.icon({
+let DefaultIcon: Icon = L.icon({
     iconUrl: markerIcon,
     shadowUrl: markerShadow,
     iconSize: [25, 41],
@@ -81,7 +82,7 @@ export const MapPicker: React.FC<MapPickerProps> = ({ onSelect, onClose, initial
                         <MapPin className="h-5 w-5 text-indigo-300 mr-2" />
                         <h3 className="font-bold text-white">Pin Client Location</h3>
                     </div>
-                    <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close map picker">
                         <X className="h-5 w-5 text-indigo-300" />
                     </button>
                 </div>
