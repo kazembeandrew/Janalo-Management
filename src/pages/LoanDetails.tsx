@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
-import { formatCurrency, calculateRepaymentDistribution, recalculateLoanSchedule } from '@/utils/finance';
+import { formatCurrency, calculateRepaymentDistribution, recalculateLoanSchedule, generateAutoReference } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { postJournalEntry, getAccountByCode } from '@/utils/accounting';
 import { 
@@ -58,6 +58,9 @@ export const LoanDetails: React.FC = () => {
   const [newNote, setNewNote] = useState('');
   const [decisionReason, setDecisionReason] = useState('');
   const [selectedRepayment, setSelectedRepayment] = useState<Repayment | null>(null);
+  
+  // Document upload states
+  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
   
   // Visit Form State
   const [visitForm, setVisitForm] = useState({
@@ -349,16 +352,19 @@ export const LoanDetails: React.FC = () => {
           fetchData();
       } catch (e: any) {
           toast.error("Write-off failed: " + e.message);
-      } finally {
-          setProcessingAction(false);
-      }
-  };
-
   const handleStatusUpdate = async (status: string, note: string, accountId?: string) => {
       if (!loan) return;
       setProcessingAction(true);
       try {
-          await supabase.from('loans').update({ status }).eq('id', loan.id);
+          // Generate reference number for approved loans
+          let updateData: any = { status };
+          
+          if (status === 'active') {
+              const referenceNo = await generateAutoReference();
+              updateData.reference_no = referenceNo;
+          }
+          
+          await supabase.from('loans').update(updateData).eq('id', loan.id);
           
           if (status === 'active' && accountId) {
               // Record Disbursement in Ledger (Balanced Entry)
@@ -396,6 +402,7 @@ export const LoanDetails: React.FC = () => {
   const handleDownloadStatement = () => {
       if (!loan) return;
       generateStatementPDF(loan, repayments);
+{{ ... }
       toast.success("Statement generated");
   };
 
@@ -497,6 +504,33 @@ export const LoanDetails: React.FC = () => {
                 onViewImage={setViewImage}
               />
 
+              {/* Loan Agreement Upload for Approved Loans */}
+              {loan.status === 'active' && !documents.some(doc => doc.type === 'application_form') && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-bold text-gray-900 flex items-center">
+                      <FileText className="h-4 w-4 mr-2 text-indigo-600" />
+                      Loan Agreement
+                    </h3>
+                    <span className="text-[10px] font-bold text-amber-600 uppercase bg-amber-50 px-2 py-1 rounded border border-amber-100">Upload Required</span>
+                  </div>
+                  <div className="space-y-4">
+                    <DocumentUpload label="Upload Loan Agreement" onUpload={setAppFormBlob} onRemove={() => setAppFormBlob(null)} />
+                    {appFormBlob && (
+                      <div className="flex justify-end">
+                        <button 
+                          onClick={handleAppFormUpload}
+                          disabled={processingAction}
+                          className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 disabled:bg-gray-400 transition-all"
+                        >
+                          {processingAction ? 'Uploading...' : 'Upload Agreement'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <LoanDocumentsList 
                 documents={documents}
                 documentUrls={documentUrls}
@@ -508,6 +542,7 @@ export const LoanDetails: React.FC = () => {
               <LoanRepaymentHistory 
                 repayments={repayments} 
                 onReverse={(r) => { setSelectedRepayment(r); setActiveModal('reverse'); }}
+{{ ... }
               />
           </div>
 

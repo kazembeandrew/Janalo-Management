@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Camera, Upload, X, Check, Scissors, RotateCw, Maximize } from 'lucide-react';
@@ -39,20 +39,14 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
     
-    // Initialize crop to 90% of the image
-    const initialCrop = centerCrop(
-      makeAspectCrop(
-        {
-          unit: '%',
-          width: 90,
-        },
-        undefined,
-        width,
-        height
-      ),
-      width,
-      height
-    );
+    // Initialize crop to 90% of the image, centered
+    const initialCrop: Crop = {
+      unit: '%',
+      x: 5,
+      y: 5,
+      width: 90,
+      height: 90
+    };
     
     setCrop(initialCrop);
   };

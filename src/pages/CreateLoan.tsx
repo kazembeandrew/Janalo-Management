@@ -34,7 +34,6 @@ export const CreateLoan: React.FC = () => {
 
   // Documents State
   const [idCardBlob, setIdCardBlob] = useState<Blob | null>(null);
-  const [appFormBlob, setAppFormBlob] = useState<Blob | null>(null);
   const [guarantorBlob, setGuarantorBlob] = useState<Blob | null>(null);
   const [collaterals, setCollaterals] = useState<{id: number, blob: Blob | null}[]>([
       { id: Date.now(), blob: null }
@@ -167,127 +166,58 @@ export const CreateLoan: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile || existingLoanError || !appFormBlob) return;
+    if (!profile || existingLoanError) return;
     setLoading(true);
 
-    let currentReference = formData.reference_no;
-    let retryCount = 0;
-    const maxRetries = 3;
+    const loanData = {
+      officer_id: profile.id,
+      borrower_id: formData.borrower_id,
+      principal_amount: formData.principal_amount,
+      interest_rate: formData.interest_rate,
+      interest_type: formData.interest_type,
+      term_months: formData.term_months,
+      disbursement_date: formData.disbursement_date,
+      monthly_installment: preview.monthlyInstallment,
+      total_payable: preview.totalPayable,
+      principal_outstanding: formData.principal_amount,
+      interest_outstanding: preview.totalInterest,
+      status: 'pending'
+    };
 
-    while (retryCount < maxRetries) {
-      try {
-        // Validate reference number format
-        if (!isValidReferenceFormat(currentReference)) {
-          toast.error('Invalid reference number format');
-          return;
-        }
+    const { data: loan, error } = await supabase.from('loans').insert([loanData]).select().single();
 
-        // Check uniqueness before attempting insert
-        const isUnique = await isReferenceUnique(currentReference);
-        if (!isUnique) {
-          // If not unique, regenerate and retry
-          if (retryCount < maxRetries - 1) {
-            currentReference = await generateAutoReference();
-            retryCount++;
-            continue; // Retry with new reference
-          } else {
-            toast.error('Unable to generate unique reference number. Please contact administrator.');
-            return;
-          }
-        }
+    if (loan) {
+      const uploads = [];
+      const addUpload = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
+        if (!blob) return;
+        const fileName = `${namePrefix}_${Date.now()}.jpg`;
+        const path = `${loan.id}/${fileName}`;
+        uploads.push(
+          uploadFile(blob, path)
+            .then(uploadedPath => supabase.from('loan_documents').insert({
+              loan_id: loan.id,
+              type: type,
+              file_name: friendlyName,
+              mime_type: blob.type || 'image/jpeg',
+              file_size: blob.size,
+              storage_path: uploadedPath
+            }))
+        );
+      };
 
-        const loanData = {
-          reference_no: currentReference.toUpperCase().trim(),
-          officer_id: profile.id,
-          borrower_id: formData.borrower_id,
-          principal_amount: formData.principal_amount,
-          interest_rate: formData.interest_rate,
-          interest_type: formData.interest_type,
-          term_months: formData.term_months,
-          disbursement_date: formData.disbursement_date,
-          monthly_installment: preview.monthlyInstallment,
-          total_payable: preview.totalPayable,
-          principal_outstanding: formData.principal_amount,
-          interest_outstanding: preview.totalInterest,
-          status: 'pending'
-        };
+      addUpload(idCardBlob, 'id_card', 'id_card', 'Client ID / Passport');
+      addUpload(guarantorBlob, 'guarantor', 'guarantor', 'Guarantor Form / ID');
 
-        const { data: loan, error } = await supabase.from('loans').insert([loanData]).select().single();
+      collaterals.forEach((c, index) => {
+        addUpload(c.blob, 'collateral', `collateral_${index}`, `Collateral ${index + 1}`);
+      });
 
-        // Handle unique constraint violation (another officer got the same reference)
-        if (error && error.code === '23505' && error.message.includes('reference_no')) {
-          if (retryCount < maxRetries - 1) {
-            // Regenerate reference and retry
-            currentReference = await generateAutoReference();
-            setFormData(prev => ({ ...prev, reference_no: currentReference }));
-            retryCount++;
-            continue; // Retry with new reference
-          } else {
-            toast.error('Reference number conflict detected. Please try again.');
-            return;
-          }
-        }
-
-        if (error) throw error;
-
-        if (loan) {
-            const uploads = [];
-            const addUpload = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
-                if (!blob) return;
-                const fileName = `${namePrefix}_${Date.now()}.jpg`;
-                const path = `${loan.id}/${fileName}`;
-                uploads.push(
-                   uploadFile(blob, path)
-                      .then(uploadedPath => supabase.from('loan_documents').insert({
-                          loan_id: loan.id,
-                          type: type,
-                          file_name: friendlyName,
-                          mime_type: blob.type || 'image/jpeg',
-                          file_size: blob.size,
-                          storage_path: uploadedPath
-                      }))
-                );
-            };
-
-            addUpload(idCardBlob, 'id_card', 'id_card', 'Client ID / Passport');
-            addUpload(appFormBlob, 'application_form', 'app_form', 'Application Form');
-            addUpload(guarantorBlob, 'guarantor', 'guarantor', 'Guarantor Form / ID');
-
-            collaterals.forEach((c, index) => {
-                addUpload(c.blob, 'collateral', `collateral_${index}`, `Collateral ${index + 1}`);
-            });
-
-           if (uploads.length > 0) await Promise.all(uploads);
-        }
-
-        toast.success("Loan application submitted successfully");
-        navigate('/loans');
-        return; // Success, exit the loop
-
-      } catch (error: any) {
-        // Handle unique constraint violation
-        if (error.code === '23505' && error.message.includes('reference_no')) {
-          if (retryCount < maxRetries - 1) {
-            // Regenerate reference and retry
-            currentReference = await generateAutoReference();
-            setFormData(prev => ({ ...prev, reference_no: currentReference }));
-            retryCount++;
-            continue; // Retry with new reference
-          } else {
-            toast.error('Unable to generate unique reference number. Please contact administrator.');
-            return;
-          }
-        }
-
-        // Other errors
-        console.error(error);
-        const errorMessage = error.message?.includes('Upload failed') 
-          ? `Document upload failed: ${error.message}` 
-          : 'Failed to create loan application. Please check your documents and try again.';
-        toast.error(errorMessage);
-        return;
-      }
+      if (uploads.length > 0) await Promise.all(uploads);
     }
+
+    toast.success("Loan application submitted successfully");
+    navigate('/loans');
+    return;
   };
 
   const steps = [
@@ -355,24 +285,6 @@ export const CreateLoan: React.FC = () => {
                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                        <h3 className="text-lg font-medium text-gray-900">Loan Identification</h3>
                        <div className="grid grid-cols-1 gap-6">
-                           <div>
-                               <label className="block text-sm font-medium text-gray-700" aria-label="Reference Number">Reference Number (Auto-generated)</label>
-                               <div className="mt-1 relative rounded-md shadow-sm">
-                                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                       <Hash className="h-4 w-4 text-gray-400" />
-                                   </div>
-                                   <input
-                                       type="text"
-                                       required
-                                       readOnly
-                                       className="block w-full pl-10 border border-gray-300 rounded-lg py-3 px-4 bg-gray-50 text-gray-700 cursor-not-allowed"
-                                       placeholder="Auto-generated reference number"
-                                       value={formData.reference_no}
-                                       aria-label="Loan Reference Number"
-                                   />
-                               </div>
-                               <p className="mt-2 text-xs text-gray-500 italic">Reference number is automatically generated based on existing records in the format: JANALO-YYMM-NNNN</p>
-                           </div>
                            <div>
                                <label className="block text-sm font-medium text-gray-700" aria-label="Select Borrower">Select Borrower</label>
                                <select 
@@ -459,10 +371,8 @@ export const CreateLoan: React.FC = () => {
                    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                        <div className="flex justify-between items-center">
                            <h3 className="text-lg font-medium text-gray-900">Documentation</h3>
-                           <span className="text-[10px] font-bold text-red-600 uppercase bg-red-50 px-2 py-1 rounded border border-red-100">Application Form Required</span>
                        </div>
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                           <DocumentUpload label="Application Form (Required)" onUpload={setAppFormBlob} onRemove={() => setAppFormBlob(null)} />
                            <DocumentUpload label="Client ID / Passport" onUpload={setIdCardBlob} onRemove={() => setIdCardBlob(null)} />
                            <DocumentUpload label="Guarantor ID / Form" onUpload={setGuarantorBlob} onRemove={() => setGuarantorBlob(null)} />
                        </div>
@@ -485,8 +395,6 @@ export const CreateLoan: React.FC = () => {
                        <h3 className="text-lg font-medium text-gray-900">Final Review</h3>
                        <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-100">
                            <div className="grid grid-cols-2 gap-y-4 text-sm">
-                               <div className="text-indigo-600">Reference No</div>
-                               <div className="font-bold text-indigo-900 uppercase">{formData.reference_no}</div>
                                <div className="text-indigo-600">Borrower</div>
                                <div className="font-bold text-indigo-900">{borrowers.find(b => b.id === formData.borrower_id)?.full_name}</div>
                                <div className="text-indigo-600">Principal</div>
@@ -525,7 +433,7 @@ export const CreateLoan: React.FC = () => {
                    type="button"
                    disabled={
                        loading || 
-                       (currentStep === 'borrower' && (!formData.borrower_id || !formData.reference_no || !!existingLoanError)) ||
+                       (currentStep === 'borrower' && (!formData.borrower_id || !!existingLoanError)) ||
                        (currentStep === 'documents' && !appFormBlob)
                    }
                    onClick={() => {
@@ -541,6 +449,5 @@ export const CreateLoan: React.FC = () => {
                </button>
            </div>
        </div>
-    </div>
-  );
-};
+   </div>
+);
