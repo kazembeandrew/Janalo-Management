@@ -237,3 +237,86 @@ export const recalculateLoanSchedule = (
     const paidSchedule = originalSchedule.slice(0, startMonth - 1);
     return [...paidSchedule, ...newSchedule];
 };
+
+/**
+ * Generates the next reference number based on existing loan records
+ * Format: JN{YY}{MM}{NNNN} where:
+ * - JN = JANALO (fixed)
+ * - YY = Current year (26 for 2026)
+ * - MM = Current month (01 for January)
+ * - NNNN = Sequential loan number (4 digits, padded with zeros)
+ */
+export const generateAutoReference = async (): Promise<string> => {
+    const now = new Date();
+    const year = now.getFullYear().toString().slice(-2); // Last 2 digits of year
+    const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 01-12
+    const prefix = `JN${year}${month}`;
+
+    // Import supabase dynamically to avoid circular dependency issues
+    const { supabase } = await import('@/lib/supabase');
+
+    try {
+        // Get the highest existing loan number for this year/month
+        const { data: existingLoans } = await supabase
+            .from('loans')
+            .select('reference_no')
+            .ilike('reference_no', `${prefix}%`)
+            .order('reference_no', { ascending: false })
+            .limit(1);
+
+        let nextNumber = 1; // Start from 0001 if no existing loans
+
+        if (existingLoans && existingLoans.length > 0) {
+            const lastRef = existingLoans[0].reference_no;
+            if (lastRef && lastRef.startsWith(prefix)) {
+                // Extract the 4-digit number from the end
+                const lastNumber = parseInt(lastRef.slice(-4));
+                nextNumber = lastNumber + 1;
+            }
+        }
+
+        // Format as 4-digit number with leading zeros
+        const formattedNumber = nextNumber.toString().padStart(4, '0');
+
+        return `${prefix}${formattedNumber}`;
+    } catch (error) {
+        console.error('Error generating auto reference:', error);
+        // Fallback to timestamp-based reference if database query fails
+        const timestamp = Date.now().toString().slice(-4);
+        return `${prefix}${timestamp}`;
+    }
+};
+
+/**
+ * Validates if a reference number follows the correct format
+ */
+export const isValidReferenceFormat = (reference: string): boolean => {
+    // Must be exactly 10 characters: JN + 2 digits year + 2 digits month + 4 digits number
+    const pattern = /^JN\d{2}\d{2}\d{4}$/;
+    return pattern.test(reference);
+};
+
+/**
+ * Checks if a reference number already exists in the database
+ */
+export const isReferenceUnique = async (reference: string): Promise<boolean> => {
+    const { supabase } = await import('@/lib/supabase');
+
+    try {
+        const { data, error } = await supabase
+            .from('loans')
+            .select('id')
+            .eq('reference_no', reference.toUpperCase())
+            .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" which is fine
+            console.error('Error checking reference uniqueness:', error);
+            return false;
+        }
+
+        return !data; // If no data found, it's unique
+    } catch (error) {
+        console.error('Error checking reference uniqueness:', error);
+        return false;
+    }
+};

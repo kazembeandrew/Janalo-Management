@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Borrower, InterestType } from '@/types';
-import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
+import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber, generateAutoReference, isValidReferenceFormat, isReferenceUnique } from '@/utils/finance';
 import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle, Hash } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
 import toast from 'react-hot-toast';
@@ -63,6 +63,20 @@ export const CreateLoan: React.FC = () => {
     };
     fetchBorrowers();
   }, [profile]);
+
+  useEffect(() => {
+    const autoGenerateReference = async () => {
+      try {
+        const autoRef = await generateAutoReference();
+        setFormData(prev => ({ ...prev, reference_no: autoRef }));
+      } catch (error) {
+        console.error('Failed to generate auto reference:', error);
+        toast.error('Failed to generate reference number. Please enter manually.');
+      }
+    };
+    
+    autoGenerateReference();
+  }, []);
 
   useEffect(() => {
     const details = calculateLoanDetails(
@@ -157,6 +171,18 @@ export const CreateLoan: React.FC = () => {
     setLoading(true);
 
     try {
+      // Validate reference number format and uniqueness
+      if (!isValidReferenceFormat(formData.reference_no)) {
+        toast.error('Invalid reference number format');
+        return;
+      }
+
+      const isUnique = await isReferenceUnique(formData.reference_no);
+      if (!isUnique) {
+        toast.error('Reference number already exists. Please regenerate or contact administrator.');
+        return;
+      }
+
       const loanData = {
         reference_no: formData.reference_no.toUpperCase().trim(),
         officer_id: profile.id,
@@ -285,7 +311,7 @@ export const CreateLoan: React.FC = () => {
                        <h3 className="text-lg font-medium text-gray-900">Loan Identification</h3>
                        <div className="grid grid-cols-1 gap-6">
                            <div>
-                               <label className="block text-sm font-medium text-gray-700" aria-label="Reference Number">Reference Number (from Form)</label>
+                               <label className="block text-sm font-medium text-gray-700" aria-label="Reference Number">Reference Number (Auto-generated)</label>
                                <div className="mt-1 relative rounded-md shadow-sm">
                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                        <Hash className="h-4 w-4 text-gray-400" />
@@ -293,14 +319,14 @@ export const CreateLoan: React.FC = () => {
                                    <input
                                        type="text"
                                        required
-                                       className="block w-full pl-10 border border-gray-300 rounded-lg py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm uppercase"
-                                       placeholder="e.g. JN26011097"
+                                       readOnly
+                                       className="block w-full pl-10 border border-gray-300 rounded-lg py-3 px-4 bg-gray-50 text-gray-700 cursor-not-allowed"
+                                       placeholder="Auto-generated reference number"
                                        value={formData.reference_no}
                                        aria-label="Loan Reference Number"
-                                       onChange={e => setFormData({...formData, reference_no: e.target.value})}
                                    />
                                </div>
-                               <p className="mt-2 text-xs text-gray-500 italic">Enter the unique reference number written on the physical application form.</p>
+                               <p className="mt-2 text-xs text-gray-500 italic">Reference number is automatically generated based on existing records in the format: JANALO-YYMM-NNNN</p>
                            </div>
                            <div>
                                <label className="block text-sm font-medium text-gray-700" aria-label="Select Borrower">Select Borrower</label>

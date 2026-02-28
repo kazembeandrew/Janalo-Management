@@ -1,7 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
-import { Camera, Upload, X, Check, Scissors } from 'lucide-react';
-import { getCroppedImg } from '@/utils/image';
+import 'react-image-crop/dist/ReactCrop.css';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Camera, Upload, X, Check, Scissors, RotateCw, Maximize } from 'lucide-react';
+import { getCroppedImg } from '../utils/image';
 
 interface DocumentUploadProps {
   label: string;
@@ -10,35 +12,23 @@ interface DocumentUploadProps {
   existingUrl?: string | null;
 }
 
-function centerAspectCrop(mediaWidth: number, mediaHeight: number, aspect: number) {
-  return centerCrop(
-    makeAspectCrop(
-      {
-        unit: '%',
-        width: 90,
-      },
-      aspect,
-      mediaWidth,
-      mediaHeight,
-    ),
-    mediaWidth,
-    mediaHeight,
-  )
-}
-
 export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload, onRemove, existingUrl }) => {
   const [imgSrc, setImgSrc] = useState('');
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop>();
+  const [rotation, setRotation] = useState(0);
   const [isCropping, setIsCropping] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(existingUrl || null);
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GOOGLE_API_KEY || '');
+
   const onSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setCrop(undefined); // Makes crop preview update between images
+      setCrop(undefined);
+      setRotation(0);
       const reader = new FileReader();
       reader.addEventListener('load', () => setImgSrc(reader.result?.toString() || ''));
       reader.readAsDataURL(e.target.files[0]);
@@ -48,20 +38,35 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
-    // Default to a somewhat central crop if needed, or just let user select
-    setCrop(centerAspectCrop(width, height, 16 / 9));
+    
+    // Initialize crop to 90% of the image
+    const initialCrop = centerCrop(
+      makeAspectCrop(
+        {
+          unit: '%',
+          width: 90,
+        },
+        undefined,
+        width,
+        height
+      ),
+      width,
+      height
+    );
+    
+    setCrop(initialCrop);
   };
 
   const handleSaveCrop = async () => {
     if (completedCrop && imgRef.current) {
         setIsProcessing(true);
         try {
-            // Calculate scale factors because the displayed image might be smaller than the actual image
             const image = imgRef.current;
+            
+            // Calculate scale factors relative to natural dimensions
             const scaleX = image.naturalWidth / image.width;
             const scaleY = image.naturalHeight / image.height;
 
-            // Apply scale to the crop coordinates
             const scaledCrop: PixelCrop = {
                 x: completedCrop.x * scaleX,
                 y: completedCrop.y * scaleY,
@@ -70,21 +75,73 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
                 unit: 'px',
             };
 
-            const blob = await getCroppedImg(imgSrc, scaledCrop);
+            // Pass rotation to the utility which will handle it
+            const blob = await getCroppedImg(imgSrc, scaledCrop, rotation);
             if (blob) {
                 const url = URL.createObjectURL(blob);
                 setPreviewUrl(url);
                 onUpload(blob);
+                setImgSrc('');
                 setIsCropping(false);
             }
         } catch (e) {
             console.error(e);
-            alert("Failed to crop image");
+            alert("Failed to process image. Please try again.");
         } finally {
             setIsProcessing(false);
         }
     } else {
+        setImgSrc('');
         setIsCropping(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setImgSrc('');
+    setIsCropping(false);
+  };
+
+  const handleAutoCrop = async () => {
+    if (!imgSrc) return;
+    setIsProcessing(true);
+    try {
+      const base64 = imgSrc.split(',')[1];
+      const mimeType = imgSrc.split(':')[1].split(';')[0];
+      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const prompt = "Analyze this image and provide crop coordinates for the main document in percentages: x, y, width, height. Format: x:10, y:10, width:80, height:60. If the document is rotated, suggest the rotation in degrees (0, 90, 180, 270).";
+      const imagePart = {
+        inlineData: {
+          data: base64,
+          mimeType: mimeType
+        }
+      };
+      const result = await model.generateContent([prompt, imagePart]);
+      const response = await result.response;
+      const text = response.text();
+      
+      const cropMatch = text.match(/x:(\d+),\s*y:(\d+),\s*width:(\d+),\s*height:(\d+)/);
+      const rotMatch = text.match(/rotation:(\d+)/);
+
+      if (cropMatch) {
+        const x = parseInt(cropMatch[1]);
+        const y = parseInt(cropMatch[2]);
+        const width = parseInt(cropMatch[3]);
+        const height = parseInt(cropMatch[4]);
+        setCrop({ unit: '%', x, y, width, height });
+      }
+      
+      if (rotMatch) {
+        setRotation(parseInt(rotMatch[1]));
+      }
+      
+      if (!cropMatch && !rotMatch) {
+        alert("Could not detect document area automatically. Please adjust manually.");
+      }
+    } catch (error) {
+      console.error("Auto crop failed:", error);
+      alert("Auto crop failed. Please try again.");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -93,6 +150,10 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
     setImgSrc('');
     onRemove();
     if(fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const rotate = () => {
+    setRotation((prev) => (prev + 90) % 360);
   };
 
   return (
@@ -118,8 +179,9 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
                         ref={fileInputRef}
                         type="file" 
                         accept="image/*" 
-                        capture="environment" // Hints mobile to use rear camera
+                        capture="environment"
                         className="sr-only" 
+                        aria-label="Upload or take photo"
                         onChange={onSelectFile}
                     />
                 </div>
@@ -128,51 +190,68 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
          </div>
       )}
 
-      {/* Cropping Modal / Overlay */}
       {isCropping && (
-          <div className="fixed inset-0 z-50 flex flex-col bg-black bg-opacity-90 p-4 overflow-auto">
-             <div className="flex justify-between items-center text-white mb-4">
-                 <h3 className="text-lg font-bold flex items-center"><Scissors className="mr-2"/> Crop & Compress</h3>
-                 <button onClick={() => setIsCropping(false)} className="p-2"><X className="h-6 w-6"/></button>
-             </div>
-             
-             <div className="flex-1 flex items-center justify-center p-4">
-                <ReactCrop
-                    crop={crop}
-                    onChange={(_, percentCrop) => setCrop(percentCrop)}
-                    onComplete={(c) => setCompletedCrop(c)}
-                >
-                    <img
-                        ref={imgRef}
-                        alt="Crop me"
-                        src={imgSrc}
-                        onLoad={onImageLoad}
-                        className="max-h-[70vh] max-w-full w-auto object-contain"
-                    />
-                </ReactCrop>
-             </div>
-
-             <div className="mt-4 flex justify-center pb-4">
-                 <button 
-                    type="button"
-                    onClick={handleSaveCrop}
-                    disabled={isProcessing}
-                    className="flex items-center px-6 py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 disabled:bg-gray-500"
-                 >
-                     {isProcessing ? 'Optimizing...' : (
-                        <><Check className="mr-2" /> Use Image</>
-                     )}
-                 </button>
-             </div>
+        <div className="fixed inset-0 z-[100] flex flex-col bg-black bg-opacity-95 p-4 overflow-hidden">
+          <div className="flex justify-between items-center text-white mb-4">
+            <h3 className="text-lg font-bold flex items-center"><Scissors className="mr-2"/> Edit Document</h3>
+            <button onClick={handleCancel} className="p-2 hover:bg-white/10 rounded-full" aria-label="Cancel cropping"><X className="h-6 w-6"/></button>
           </div>
+          
+          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
+            <div style={{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.2s' }}>
+                <ReactCrop
+                  crop={crop}
+                  onChange={(c) => setCrop(c)}
+                  onComplete={(c) => setCompletedCrop(c)}
+                  keepSelection
+                >
+                  <img
+                    ref={imgRef}
+                    alt="Crop me"
+                    src={imgSrc}
+                    onLoad={onImageLoad}
+                    className="max-h-[60vh] max-w-full w-auto object-contain"
+                  />
+                </ReactCrop>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 sm:flex sm:justify-center gap-3 pb-4">
+            <button 
+              type="button"
+              onClick={rotate}
+              className="flex items-center justify-center px-4 py-3 bg-gray-700 text-white rounded-lg font-medium hover:bg-gray-600"
+            >
+              <RotateCw className="mr-2 h-4 w-4" /> Rotate
+            </button>
+            <button 
+              type="button"
+              onClick={handleAutoCrop}
+              disabled={isProcessing}
+              className="flex items-center justify-center px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Maximize className="mr-2 h-4 w-4" /> Auto Detect
+            </button>
+            <button 
+              type="button"
+              onClick={handleSaveCrop}
+              disabled={isProcessing}
+              className="col-span-2 sm:col-auto flex items-center justify-center px-8 py-3 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700 disabled:bg-gray-500"
+            >
+              {isProcessing ? 'Processing...' : (
+                <><Check className="mr-2" /> Save & Use</>
+              )}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Preview */}
       {previewUrl && (
-          <div className="relative mt-2 rounded-lg overflow-hidden border border-gray-200">
-              <img src={previewUrl} alt="Preview" className="w-full h-48 object-cover" />
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 text-center">
-                  Ready to upload
+          <div className="relative mt-2 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+              <img src={previewUrl} alt="Preview" className="w-full h-48 object-contain bg-gray-200" />
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1.5 text-center font-medium">
+                  Document Ready
               </div>
           </div>
       )}

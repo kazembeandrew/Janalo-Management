@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber } from '@/utils/finance';
+import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber, generateAutoReference, isValidReferenceFormat, isReferenceUnique } from '@/utils/finance';
 import { 
     RefreshCw, ArrowLeft, Calculator, AlertTriangle, 
     CheckCircle2, Save, TrendingUp, Banknote, Hash 
@@ -58,13 +58,16 @@ export const RestructureLoan: React.FC = () => {
                                    Number(data.interest_outstanding) + 
                                    Number(data.penalty_outstanding || 0);
           
+          // Generate auto reference number for restructured loan
+          const autoRef = await generateAutoReference();
+          
           setFormData(prev => ({
               ...prev,
               principal_amount: totalOutstanding,
               interest_rate: data.interest_rate,
               interest_type: data.interest_type,
               term_months: data.term_months,
-              reference_no: `RSTR-${data.reference_no || data.id.slice(0,4)}`
+              reference_no: autoRef
           }));
           setDisplayPrincipal(formatNumberWithCommas(totalOutstanding));
 
@@ -103,6 +106,18 @@ export const RestructureLoan: React.FC = () => {
       const loadingToast = toast.loading("Processing restructure...");
 
       try {
+          // Validate reference number format and uniqueness
+          if (!isValidReferenceFormat(formData.reference_no)) {
+            toast.error('Invalid reference number format');
+            return;
+          }
+
+          const isUnique = await isReferenceUnique(formData.reference_no);
+          if (!isUnique) {
+            toast.error('Reference number already exists. Please try again.');
+            return;
+          }
+
           // 1. Create the NEW loan (Pending Approval)
           const { data: newLoan, error: newError } = await supabase
             .from('loans')
@@ -232,6 +247,7 @@ export const RestructureLoan: React.FC = () => {
                                 required
                                 type="text"
                                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 uppercase"
+                                placeholder="Auto-generated reference number"
                                 value={formData.reference_no}
                                 onChange={e => setFormData({...formData, reference_no: e.target.value})}
                               />
@@ -244,6 +260,7 @@ export const RestructureLoan: React.FC = () => {
                             required
                             type="text"
                             className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+                            placeholder="Enter amount"
                             value={displayPrincipal}
                             onChange={e => handlePrincipalChange(e.target.value)}
                           />
@@ -256,6 +273,7 @@ export const RestructureLoan: React.FC = () => {
                             type="number"
                             step="0.1"
                             className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+                            placeholder="e.g. 5.0"
                             value={formData.interest_rate}
                             onChange={e => setFormData({...formData, interest_rate: Number(e.target.value)})}
                           />
@@ -267,6 +285,7 @@ export const RestructureLoan: React.FC = () => {
                             required
                             type="number"
                             className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500"
+                            placeholder="e.g. 12"
                             value={formData.term_months}
                             onChange={e => setFormData({...formData, term_months: Number(e.target.value)})}
                           />
@@ -275,6 +294,7 @@ export const RestructureLoan: React.FC = () => {
                       <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Interest Type</label>
                           <select 
+                            title="Select Interest Type"
                             className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={formData.interest_type}
                             onChange={e => setFormData({...formData, interest_type: e.target.value as any})}

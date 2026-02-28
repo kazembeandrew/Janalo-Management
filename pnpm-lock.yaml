@@ -57,8 +57,8 @@ importers:
         specifier: ^2.6.0
         version: 2.6.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-image-crop:
-        specifier: 8.6.9
-        version: 8.6.9(react@18.3.1)
+        specifier: 10.0.0
+        version: 10.0.0(react@18.3.1)
       react-is:
         specifier: ^18.2.0
         version: 18.3.1
@@ -1691,8 +1691,8 @@ packages:
       react: '>=16'
       react-dom: '>=16'
 
-  react-image-crop@8.6.9:
-    resolution: {integrity: sha512-u9t9vtUsQBRtu/Z8A6dpQQcHiLhEDCmcFeaK/9E3fnV0noWSRKdChI0dN43m/IhgPZOdpALXrZaIfkNXVX7sDg==}
+  react-image-crop@10.0.0:
+    resolution: {integrity: sha512-KyNIY66R6T5LqDKDivXcFkvgy6MOjRvZQxURQDhGfW5AFDx/Mw+I32kGlR8g4657ArxHAHKPFhNsao440yAdow==}
     peerDependencies:
       react: '>=16.13.1'
 
@@ -2850,7 +2850,8 @@ snapshots:
 
   cookie@1.1.1: {}
 
-  core-js@3.48.0: {}
+  core-js@3.48.0:
+    optional: true
 
   crc-32@1.2.2: {}
 
@@ -3723,11 +3724,9 @@ snapshots:
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
 
-  react-image-crop@8.6.9(react@18.3.1):
+  react-image-crop@10.0.0(react@18.3.1):
     dependencies:
       clsx: 1.2.1
-      core-js: 3.48.0
-      prop-types: 15.8.1
       react: 18.3.1
 
   react-is@16.13.1: {}

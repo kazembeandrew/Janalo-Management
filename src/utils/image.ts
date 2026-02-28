@@ -18,25 +18,32 @@ export async function getCroppedImg(
   }
 
   const rotRad = getRadianAngle(rotation);
+
+  // Calculate the size of the rotated image
   const { width: bBoxWidth, height: bBoxHeight } = rotateSize(
-    image.width,
-    image.height,
+    image.naturalWidth,
+    image.naturalHeight,
     rotation
   );
 
   canvas.width = bBoxWidth;
   canvas.height = bBoxHeight;
 
+  ctx.save();
   ctx.translate(bBoxWidth / 2, bBoxHeight / 2);
   ctx.rotate(rotRad);
   ctx.scale(flip.horizontal ? -1 : 1, flip.vertical ? -1 : 1);
-  ctx.translate(-image.width / 2, -image.height / 2);
-
+  ctx.translate(-image.naturalWidth / 2, -image.naturalHeight / 2);
   ctx.drawImage(image, 0, 0);
+  ctx.restore();
 
+  // Now we have the full rotated image on 'canvas'
+  // We need to crop from it using pixelCrop
+  
   let width = pixelCrop.width;
   let height = pixelCrop.height;
   
+  // Limit initial dimensions to avoid huge files
   if (width > INITIAL_MAX_DIMENSION || height > INITIAL_MAX_DIMENSION) {
     const ratio = width / height;
     if (width > height) {
@@ -51,7 +58,7 @@ export async function getCroppedImg(
   let quality = 0.95;
   let blob: Blob | null = null;
   let attempts = 0;
-  const maxAttempts = 10;
+  const maxAttempts = 8;
 
   while (attempts < maxAttempts) {
       const attemptCanvas = document.createElement('canvas');
@@ -61,6 +68,7 @@ export async function getCroppedImg(
 
       if (!attemptCtx) break;
 
+      // Draw the cropped area from the rotated canvas to the attemptCanvas
       attemptCtx.drawImage(
           canvas,
           pixelCrop.x,
@@ -79,28 +87,28 @@ export async function getCroppedImg(
 
       if (!blob) break;
 
+      // If it's small enough, we're done
       if (blob.size <= TARGET_MAX_SIZE) {
           break;
       }
 
       attempts++;
       
-      if (quality > 0.7) {
+      // Reduce quality or dimensions to hit target size
+      if (quality > 0.6) {
           quality -= 0.15;
-      } else if (quality > 0.5) {
-          quality -= 0.1;
       } else {
-          width = Math.round(width * 0.85);
-          height = Math.round(height * 0.85);
+          width = Math.round(width * 0.8);
+          height = Math.round(height * 0.8);
       }
       
-      if (width < 300 || quality < 0.3) break; 
+      if (width < 200 || quality < 0.2) break; 
   }
 
   return blob;
 }
 
-const createImage = (url: string): Promise<HTMLImageElement> =>
+export const createImage = (url: string): Promise<HTMLImageElement> =>
   new Promise((resolve, reject) => {
     const image = new Image();
     image.addEventListener('load', () => resolve(image));
@@ -118,8 +126,8 @@ function rotateSize(width: number, height: number, rotation: number) {
 
   return {
     width:
-      Math.abs(Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height)),
+      Math.abs(Math.cos(rotRad) * width) + Math.abs(Math.sin(rotRad) * height),
     height:
-      Math.abs(Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height)),
+      Math.abs(Math.sin(rotRad) * width) + Math.abs(Math.cos(rotRad) * height),
   };
 }
