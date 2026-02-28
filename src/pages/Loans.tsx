@@ -1,38 +1,55 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Loan, InternalAccount } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
-import { 
-    Plus, Filter, ChevronRight, Clock, ChevronLeft, 
-    Download, AlertTriangle, TrendingUp, Hash, 
-    CheckSquare, Square, ThumbsUp, X, RefreshCw, Landmark,
-    Edit, Trash2
+
+import {
+  Plus, Filter, ChevronRight, Clock, ChevronLeft,
+  Download, AlertTriangle, TrendingUp, Hash,
+  CheckSquare, Square, ThumbsUp, X, RefreshCw, Landmark,
+  Edit, Trash2
 } from 'lucide-react';
-import toast from 'react-hot-toast';
 
 const ITEMS_PER_PAGE = 10;
 
+interface LoanWithBorrower extends Loan {
+  borrowers: {
+    full_name: string;
+  };
+}
+
+type FilterType = 'all' | 'active' | 'pending' | 'reassess' | 'completed' | 'defaulted' | 'rejected';
+
+interface ExportData {
+  Reference: string;
+  Borrower: string;
+  Principal: number;
+  Outstanding: number;
+  Term: number;
+  Status: string;
+  Date: string;
+}
+
 export const Loans: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
-  const [loans, setLoans] = useState<Loan[]>([]);
+  const [loans, setLoans] = useState<LoanWithBorrower[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState<FilterType>('all');
   
-  // Selection & Bulk Action State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [targetAccountId, setTargetAccountId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Delete State
   const [deleteLoanId, setDeleteLoanId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Pagination State
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
@@ -45,7 +62,7 @@ export const Loans: React.FC = () => {
     const channel = supabase
       .channel('loans-list-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
-          fetchLoans();
+        fetchLoans();
       })
       .subscribe();
 
@@ -55,14 +72,14 @@ export const Loans: React.FC = () => {
   }, [profile, filter, page]);
 
   const fetchAccounts = async () => {
-      const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
-      if (data) setAccounts(data);
+    const { data } = await supabase.from('internal_accounts').select('*').order('name', { ascending: true });
+    if (data) setAccounts(data);
   };
 
-  const handleFilterChange = (newFilter: string) => {
-      setFilter(newFilter);
-      setPage(1);
-      setSelectedIds(new Set());
+  const handleFilterChange = (newFilter: FilterType) => {
+    setFilter(newFilter);
+    setPage(1);
+    setSelectedIds(new Set());
   };
 
   const fetchLoans = async () => {
@@ -90,82 +107,85 @@ export const Loans: React.FC = () => {
 
       if (error) throw error;
       
-      setLoans(data as Loan[]);
+      setLoans(data as LoanWithBorrower[]);
       setTotalCount(count || 0);
     } catch (error) {
       console.error('Error fetching loans:', error);
+      toast.error('Failed to fetch loans');
     } finally {
       setLoading(false);
     }
   };
 
   const toggleSelect = (id: string) => {
-      const newSelected = new Set(selectedIds);
-      if (newSelected.has(id)) newSelected.delete(id);
-      else newSelected.add(id);
-      setSelectedIds(newSelected);
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
   };
 
   const toggleSelectAll = () => {
-      const pendingLoans = loans.filter(l => l.status === 'pending');
-      if (selectedIds.size === pendingLoans.length) {
-          setSelectedIds(new Set());
-      } else {
-          setSelectedIds(new Set(pendingLoans.map(l => l.id)));
-      }
+    const pendingLoans = loans.filter(l => l.status === 'pending');
+    if (selectedIds.size === pendingLoans.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingLoans.map(l => l.id)));
+    }
   };
 
   const handleBulkApprove = async () => {
-      if (selectedIds.size === 0 || !targetAccountId || !profile) return;
-      
-      setIsProcessing(true);
-      const ids = Array.from(selectedIds);
-      
-      try {
-          // Call atomic bulk disbursement RPC
-          const { data, error } = await supabase.rpc('bulk_disburse_loans', {
-              p_loan_ids: ids,
-              p_source_account_id: targetAccountId,
-              p_user_id: profile.id
-          });
+    if (selectedIds.size === 0 || !targetAccountId || !profile) return;
+    
+    setIsProcessing(true);
+    const ids = Array.from(selectedIds);
+    
+    try {
+      const { data, error } = await supabase.rpc('bulk_disburse_loans', {
+        p_loan_ids: ids,
+        p_source_account_id: targetAccountId,
+        p_user_id: profile.id
+      });
 
-          if (error) throw error;
-          
-          const result = data as any;
-          
-          if (!result.success) {
-              // Partial failure - some loans disbursed, some failed
-              if (result.disbursed_count > 0) {
-                  toast.success(`${result.disbursed_count} loans disbursed, ${result.failed_count} failed`);
-              } else {
-                  throw new Error(result.error || 'Bulk disbursement failed');
-              }
-          } else {
-              toast.success(`Successfully approved and disbursed ${result.disbursed_count} loans.`);
-          }
-          
-          setShowApproveModal(false);
-          setSelectedIds(new Set());
-          setTargetAccountId('');
-          fetchLoans();
-      } catch (e: any) {
-          toast.error(`Bulk approval failed: ${e.message}`);
-      } finally {
-          setIsProcessing(false);
+      if (error) throw error;
+      
+      const result = data as any;
+      
+      if (!result.success) {
+        if (result.disbursed_count > 0) {
+          toast.success(`${result.disbursed_count} loans disbursed, ${result.failed_count} failed`);
+        } else {
+          throw new Error(result.error || 'Bulk disbursement failed');
+        }
+      } else {
+        toast.success(`Successfully approved and disbursed ${result.disbursed_count} loans.`);
       }
+      
+      setShowApproveModal(false);
+      setSelectedIds(new Set());
+      setTargetAccountId('');
+      fetchLoans();
+    } catch (e: any) {
+      toast.error(`Bulk approval failed: ${e.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleExport = () => {
-      const exportData = loans.map(l => ({
-          Reference: l.reference_no,
-          Borrower: l.borrowers?.full_name,
-          Principal: l.principal_amount,
-          Outstanding: l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0),
-          Term: l.term_months,
-          Status: l.status,
-          Date: new Date(l.created_at).toLocaleDateString()
-      }));
-      exportToCSV(exportData, 'Janalo_Loans_Export');
+    const exportData: ExportData[] = loans.map(l => ({
+      Reference: l.reference_no,
+      Borrower: l.borrowers?.full_name || 'Unknown',
+      Principal: l.principal_amount,
+      Outstanding: l.principal_outstanding + l.interest_outstanding + (l.penalty_outstanding || 0),
+      Term: l.term_months,
+      Status: l.status,
+      Date: new Date(l.created_at).toLocaleDateString()
+    }));
+    exportToCSV(exportData, 'Janalo_Loans_Export');
+    toast.success('Export completed successfully');
   };
 
   const handleDelete = async () => {
@@ -173,26 +193,24 @@ export const Loans: React.FC = () => {
     
     setIsProcessing(true);
     try {
-        // Delete related records first due to foreign keys
-        await supabase.from('repayments').delete().eq('loan_id', deleteLoanId);
-        await supabase.from('loan_notes').delete().eq('loan_id', deleteLoanId);
-        await supabase.from('loan_documents').delete().eq('loan_id', deleteLoanId);
-        await supabase.from('borrower_documents').delete().eq('loan_id', deleteLoanId);
-        await supabase.from('visitations').delete().eq('loan_id', deleteLoanId);
-        
-        // Delete the loan
-        const { error } = await supabase.from('loans').delete().eq('id', deleteLoanId);
-        
-        if (error) throw error;
-        
-        toast.success('Loan deleted successfully');
-        setShowDeleteModal(false);
-        setDeleteLoanId(null);
-        fetchLoans();
+      await supabase.from('repayments').delete().eq('loan_id', deleteLoanId);
+      await supabase.from('loan_notes').delete().eq('loan_id', deleteLoanId);
+      await supabase.from('loan_documents').delete().eq('loan_id', deleteLoanId);
+      await supabase.from('borrower_documents').delete().eq('loan_id', deleteLoanId);
+      await supabase.from('visitations').delete().eq('loan_id', deleteLoanId);
+      
+      const { error } = await supabase.from('loans').delete().eq('id', deleteLoanId);
+      
+      if (error) throw error;
+      
+      toast.success('Loan deleted successfully');
+      setShowDeleteModal(false);
+      setDeleteLoanId(null);
+      fetchLoans();
     } catch (e: any) {
-        toast.error(`Delete failed: ${e.message}`);
+      toast.error(`Delete failed: ${e.message}`);
     } finally {
-        setIsProcessing(false);
+      setIsProcessing(false);
     }
   };
 
@@ -200,21 +218,28 @@ export const Loans: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'active': return 'bg-blue-100 text-blue-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'defaulted': return 'bg-red-100 text-red-800';
-      case 'rejected': return 'bg-gray-100 text-gray-500 line-through';
-      case 'reassess': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'active':
+        return 'bg-blue-100 text-blue-800';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'defaulted':
+        return 'bg-red-100 text-red-800';
+      case 'rejected':
+        return 'bg-gray-100 text-gray-500 line-through';
+      case 'reassess':
+        return 'bg-purple-100 text-purple-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
-  const isOverdue = (loan: Loan) => {
-      if (loan.status !== 'active') return false;
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      return new Date(loan.updated_at) < thirtyDaysAgo;
+  const isOverdue = (loan: LoanWithBorrower) => {
+    if (loan.status !== 'active') return false;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return new Date(loan.updated_at) < thirtyDaysAgo;
   };
 
   const pendingCount = loans.filter(l => l.status === 'pending').length;

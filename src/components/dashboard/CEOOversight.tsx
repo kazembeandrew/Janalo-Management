@@ -95,44 +95,36 @@ export const CEOOversight: React.FC = () => {
     const channel = supabase.channel('oversight-realtime-enhanced')
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'loans' }, 
-        (payload) => {
-          console.log('[CEOOversight] Real-time loan update:', payload);
+        () => {
           fetchOversightData();
         }
       )
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'users' }, 
-        (payload) => {
-          console.log('[CEOOversight] Real-time user update:', payload);
+        () => {
           fetchOversightData();
         }
       )
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'expenses' }, 
-        (payload) => {
-          console.log('[CEOOversight] Real-time expense update:', payload);
+        () => {
           fetchOversightData();
         }
       )
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'tasks' }, 
-        (payload) => {
-          console.log('[CEOOversight] Real-time task update:', payload);
+        () => {
           fetchOversightData();
         }
       )
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'audit_logs' }, 
-        (payload) => {
-          console.log('[CEOOversight] Real-time audit log update:', payload);
+        () => {
           fetchOversightData();
         }
       )
       .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[CEOOversight] Real-time subscriptions active');
-        } else if (status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.warn('[CEOOversight] Real-time subscription lost, attempting reconnect...');
+        if (status === 'TIMED_OUT' || status === 'CLOSED') {
           // Fallback: refresh data every 30 seconds if real-time fails
           const fallbackInterval = setInterval(fetchOversightData, 30000);
           setTimeout(() => clearInterval(fallbackInterval), 300000); // Stop fallback after 5 minutes
@@ -140,7 +132,6 @@ export const CEOOversight: React.FC = () => {
       });
 
     return () => { 
-      console.log('[CEOOversight] Cleaning up real-time subscriptions');
       supabase.removeChannel(channel); 
     };
   }, [fetchOversightData]);

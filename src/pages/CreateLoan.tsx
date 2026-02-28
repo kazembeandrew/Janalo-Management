@@ -143,21 +143,17 @@ export const CreateLoan: React.FC = () => {
         contentType = 'application/pdf';
       }
 
-      console.log('Uploading file:', { path, contentType, size: blob.size });
-
       const { data, error } = await supabase.storage
         .from('loan-documents')
         .upload(path, blob, {
-            contentType: contentType,
-            upsert: false // Changed to false to avoid overwriting existing files
+          contentType,
+          upsert: false
         });
 
       if (error) {
-        console.error('Storage upload error:', error);
         throw new Error(`Upload failed: ${error.message}`);
       }
 
-      console.log('Upload successful:', data.path);
       return data.path;
     } catch (error: any) {
       console.error('uploadFile error:', error);

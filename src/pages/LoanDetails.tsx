@@ -3,19 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { Repayment, LoanNote, LoanDocument, InternalAccount, Visitation } from '@/types';
-import { formatCurrency, calculateRepaymentDistribution, recalculateLoanSchedule, generateAutoReference } from '@/utils/finance';
+import { formatCurrency, generateAutoReference } from '@/utils/finance';
 import { generateReceiptPDF, generateStatementPDF } from '@/utils/export';
 import { postJournalEntry, getAccountByCode } from '@/utils/accounting';
-import { 
-    ArrowLeft, User, Phone, MapPin, Building2, 
-    ThumbsUp, Printer, RefreshCw, 
-    ChevronRight, X, Landmark, 
-    RotateCcw, Ban, Receipt, FileText, Download,
-    TrendingUp, Camera, Navigation, Check, ShieldAlert, Trash2
-} from 'lucide-react';
 import toast from 'react-hot-toast';
 
-// Sub-components
 import { LoanSummaryCard } from '@/components/loans/LoanSummaryCard';
 import { LoanDocumentsList } from '@/components/loans/LoanDocumentsList';
 import { LoanRepaymentHistory } from '@/components/loans/LoanRepaymentHistory';
@@ -27,6 +19,19 @@ import { RepaymentModal } from '@/components/loans/RepaymentModal';
 import { PDFViewer } from '@/components/PDFViewer';
 import { ExcelViewer } from '@/components/ExcelViewer';
 import { DocumentUpload } from '@/components/DocumentUpload';
+
+import {
+    ArrowLeft, User, Phone, MapPin, Building2,
+    ThumbsUp, Printer, RefreshCw,
+    ChevronRight, X, Landmark,
+    RotateCcw, Ban, Receipt, FileText, Download,
+    TrendingUp, Camera, Navigation, Check, ShieldAlert, Trash2
+} from 'lucide-react';
+
+// Constants
+const LOAN_DOCUMENTS_BUCKET = 'loan-documents';
+const VISIT_IMAGE_PREFIX = 'visit_';
+const APPLICATION_FORM_PREFIX = 'application_form_';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -108,47 +113,41 @@ export const LoanDetails: React.FC = () => {
       setBorrowerDocuments(borrowerDocRes.data || []);
       setVisitations(visitRes.data || []);
       
-      console.log('Loan documents:', docRes.data);
-      console.log('Borrower documents:', borrowerDocRes.data);
-      
-      // Combine URLs for both types
       const urlMap: {[key: string]: string} = {};
       const mimeMap: {[key: string]: string} = {};
 
-      // Loan documents
       if (docRes.data) {
-          for (const doc of docRes.data) {
-              const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
-              if (data) urlMap[doc.id] = data.publicUrl;
-              mimeMap[doc.id] = doc.mime_type;
-          }
+        for (const doc of docRes.data) {
+          const { data } = supabase.storage.from(LOAN_DOCUMENTS_BUCKET).getPublicUrl(doc.storage_path);
+          if (data) urlMap[doc.id] = data.publicUrl;
+          mimeMap[doc.id] = doc.mime_type;
+        }
       }
 
-      // Borrower documents
       if (borrowerDocRes.data) {
-          for (const doc of borrowerDocRes.data) {
-              const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
-              if (data) urlMap[doc.id] = data.publicUrl;
-              mimeMap[doc.id] = doc.mime_type;
-          }
+        for (const doc of borrowerDocRes.data) {
+          const { data } = supabase.storage.from(LOAN_DOCUMENTS_BUCKET).getPublicUrl(doc.storage_path);
+          if (data) urlMap[doc.id] = data.publicUrl;
+          mimeMap[doc.id] = doc.mime_type;
+        }
       }
 
       setDocumentUrls(urlMap);
       setDocumentMimeTypes(mimeMap);
 
       if (visitRes.data) {
-          const vUrlMap: {[key: string]: string} = {};
-          for (const v of visitRes.data) {
-              if (v.image_path) {
-                  const { data } = supabase.storage.from('loan-documents').getPublicUrl(v.image_path);
-                  if (data) vUrlMap[v.id] = data.publicUrl;
-              }
+        const vUrlMap: {[key: string]: string} = {};
+        for (const v of visitRes.data) {
+          if (v.image_path) {
+            const { data } = supabase.storage.from(LOAN_DOCUMENTS_BUCKET).getPublicUrl(v.image_path);
+            if (data) vUrlMap[v.id] = data.publicUrl;
           }
-          setVisitImageUrls(vUrlMap);
+        }
+        setVisitImageUrls(vUrlMap);
       }
     } catch (error) {
-      console.error(error);
-      toast.error("Error loading loan details");
+      console.error('Error loading loan details:', error);
+      toast.error('Error loading loan details');
     } finally {
       setLoading(false);
     }
@@ -185,11 +184,11 @@ export const LoanDetails: React.FC = () => {
       try {
           let imagePath = null;
           if (visitForm.imageBlob) {
-              const fileName = `visit_${Date.now()}.jpg`;
-              const path = `${id}/${fileName}`;
-              const { data, error: uploadError } = await supabase.storage
-                .from('loan-documents')
-                .upload(path, visitForm.imageBlob);
+            const fileName = `${VISIT_IMAGE_PREFIX}${Date.now()}.jpg`;
+            const path = `${id}/${fileName}`;
+            const { data, error: uploadError } = await supabase.storage
+              .from(LOAN_DOCUMENTS_BUCKET)
+              .upload(path, visitForm.imageBlob);
               if (uploadError) throw uploadError;
               imagePath = data.path;
           }
@@ -206,7 +205,7 @@ export const LoanDetails: React.FC = () => {
 
           if (error) throw error;
 
-          toast.success("Field visit logged");
+          toast.success('Field visit logged');
           setActiveModal(null);
           setVisitForm({ notes: '', lat: null, lng: null, imageBlob: null });
           fetchData();
@@ -465,11 +464,11 @@ const handleAppFormUpload = async () => {
     setProcessingAction(true);
     
     try {
-        const fileName = `application_form_${Date.now()}.pdf`;
+        const fileName = `${APPLICATION_FORM_PREFIX}${Date.now()}.pdf`;
         const path = `${loan.id}/${fileName}`;
         
         const { data, error: uploadError } = await supabase.storage
-            .from('loan-documents')
+            .from(LOAN_DOCUMENTS_BUCKET)
             .upload(path, appFormBlob);
         
         if (uploadError) throw uploadError;
