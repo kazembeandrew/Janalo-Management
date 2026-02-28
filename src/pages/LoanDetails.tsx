@@ -564,25 +564,25 @@ return (
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2 space-y-6">
-                  <div className="flex justify-between items-center mb-4">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <TrendingUp className="h-4 w-4 mr-2 text-indigo-600" />
-                          Repayment Progress
-                      </h3>
-                      <span className="text-xs font-bold text-indigo-600">{recoveryPercent.toFixed(1)}% Recovered</span>
-                  </div>
-                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                      <div 
-                        className="bg-indigo-600 h-full transition-all duration-1000 ease-out" 
-                        style={{ width: `${recoveryPercent}%` }}
-                      />
-                  </div>
-                  <div className="flex justify-between mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      <span>Disbursed: {formatCurrency(loan.principal_amount)}</span>
-                      <span>Outstanding: {formatCurrency(loan.principal_outstanding)}</span>
-                  </div>
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-gray-900 flex items-center">
+                    <TrendingUp className="h-4 w-4 mr-2 text-indigo-600" />
+                    Repayment Progress
+                  </h3>
+                  <span className="text-xs font-bold text-indigo-600">{recoveryPercent.toFixed(1)}% Recovered</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                  <div 
+                    className="bg-indigo-600 h-full transition-all duration-1000 ease-out" 
+                    style={{ width: `${recoveryPercent}%` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  <span>Disbursed: {formatCurrency(loan.principal_amount)}</span>
+                  <span>Outstanding: {formatCurrency(loan.principal_outstanding)}</span>
+                </div>
               </div>
-
               <LoanSummaryCard 
                 referenceNo={loan.reference_no}
                 principalAmount={loan.principal_amount}
