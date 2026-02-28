@@ -170,78 +170,123 @@ export const CreateLoan: React.FC = () => {
     if (!profile || existingLoanError || !appFormBlob) return;
     setLoading(true);
 
-    try {
-      // Validate reference number format and uniqueness
-      if (!isValidReferenceFormat(formData.reference_no)) {
-        toast.error('Invalid reference number format');
+    let currentReference = formData.reference_no;
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        // Validate reference number format
+        if (!isValidReferenceFormat(currentReference)) {
+          toast.error('Invalid reference number format');
+          return;
+        }
+
+        // Check uniqueness before attempting insert
+        const isUnique = await isReferenceUnique(currentReference);
+        if (!isUnique) {
+          // If not unique, regenerate and retry
+          if (retryCount < maxRetries - 1) {
+            currentReference = await generateAutoReference();
+            retryCount++;
+            continue; // Retry with new reference
+          } else {
+            toast.error('Unable to generate unique reference number. Please contact administrator.');
+            return;
+          }
+        }
+
+        const loanData = {
+          reference_no: currentReference.toUpperCase().trim(),
+          officer_id: profile.id,
+          borrower_id: formData.borrower_id,
+          principal_amount: formData.principal_amount,
+          interest_rate: formData.interest_rate,
+          interest_type: formData.interest_type,
+          term_months: formData.term_months,
+          disbursement_date: formData.disbursement_date,
+          monthly_installment: preview.monthlyInstallment,
+          total_payable: preview.totalPayable,
+          principal_outstanding: formData.principal_amount,
+          interest_outstanding: preview.totalInterest,
+          status: 'pending'
+        };
+
+        const { data: loan, error } = await supabase.from('loans').insert([loanData]).select().single();
+
+        // Handle unique constraint violation (another officer got the same reference)
+        if (error && error.code === '23505' && error.message.includes('reference_no')) {
+          if (retryCount < maxRetries - 1) {
+            // Regenerate reference and retry
+            currentReference = await generateAutoReference();
+            setFormData(prev => ({ ...prev, reference_no: currentReference }));
+            retryCount++;
+            continue; // Retry with new reference
+          } else {
+            toast.error('Reference number conflict detected. Please try again.');
+            return;
+          }
+        }
+
+        if (error) throw error;
+
+        if (loan) {
+            const uploads = [];
+            const addUpload = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
+                if (!blob) return;
+                const fileName = `${namePrefix}_${Date.now()}.jpg`;
+                const path = `${loan.id}/${fileName}`;
+                uploads.push(
+                   uploadFile(blob, path)
+                      .then(uploadedPath => supabase.from('loan_documents').insert({
+                          loan_id: loan.id,
+                          type: type,
+                          file_name: friendlyName,
+                          mime_type: blob.type || 'image/jpeg',
+                          file_size: blob.size,
+                          storage_path: uploadedPath
+                      }))
+                );
+            };
+
+            addUpload(idCardBlob, 'id_card', 'id_card', 'Client ID / Passport');
+            addUpload(appFormBlob, 'application_form', 'app_form', 'Application Form');
+            addUpload(guarantorBlob, 'guarantor', 'guarantor', 'Guarantor Form / ID');
+
+            collaterals.forEach((c, index) => {
+                addUpload(c.blob, 'collateral', `collateral_${index}`, `Collateral ${index + 1}`);
+            });
+
+           if (uploads.length > 0) await Promise.all(uploads);
+        }
+
+        toast.success("Loan application submitted successfully");
+        navigate('/loans');
+        return; // Success, exit the loop
+
+      } catch (error: any) {
+        // Handle unique constraint violation
+        if (error.code === '23505' && error.message.includes('reference_no')) {
+          if (retryCount < maxRetries - 1) {
+            // Regenerate reference and retry
+            currentReference = await generateAutoReference();
+            setFormData(prev => ({ ...prev, reference_no: currentReference }));
+            retryCount++;
+            continue; // Retry with new reference
+          } else {
+            toast.error('Unable to generate unique reference number. Please contact administrator.');
+            return;
+          }
+        }
+
+        // Other errors
+        console.error(error);
+        const errorMessage = error.message?.includes('Upload failed') 
+          ? `Document upload failed: ${error.message}` 
+          : 'Failed to create loan application. Please check your documents and try again.';
+        toast.error(errorMessage);
         return;
       }
-
-      const isUnique = await isReferenceUnique(formData.reference_no);
-      if (!isUnique) {
-        toast.error('Reference number already exists. Please regenerate or contact administrator.');
-        return;
-      }
-
-      const loanData = {
-        reference_no: formData.reference_no.toUpperCase().trim(),
-        officer_id: profile.id,
-        borrower_id: formData.borrower_id,
-        principal_amount: formData.principal_amount,
-        interest_rate: formData.interest_rate,
-        interest_type: formData.interest_type,
-        term_months: formData.term_months,
-        disbursement_date: formData.disbursement_date,
-        monthly_installment: preview.monthlyInstallment,
-        total_payable: preview.totalPayable,
-        principal_outstanding: formData.principal_amount,
-        interest_outstanding: preview.totalInterest,
-        status: 'pending'
-      };
-
-      const { data: loan, error } = await supabase.from('loans').insert([loanData]).select().single();
-      if (error) throw error;
-
-      if (loan) {
-          const uploads = [];
-          const addUpload = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
-              if (!blob) return;
-              const fileName = `${namePrefix}_${Date.now()}.jpg`;
-              const path = `${loan.id}/${fileName}`;
-              uploads.push(
-                 uploadFile(blob, path)
-                    .then(uploadedPath => supabase.from('loan_documents').insert({
-                        loan_id: loan.id,
-                        type: type,
-                        file_name: friendlyName,
-                        mime_type: blob.type || 'image/jpeg',
-                        file_size: blob.size,
-                        storage_path: uploadedPath
-                    }))
-              );
-          };
-
-          addUpload(idCardBlob, 'id_card', 'id_card', 'Client ID / Passport');
-          addUpload(appFormBlob, 'application_form', 'app_form', 'Application Form');
-          addUpload(guarantorBlob, 'guarantor', 'guarantor', 'Guarantor Form / ID');
-
-          collaterals.forEach((c, index) => {
-              addUpload(c.blob, 'collateral', `collateral_${index}`, `Collateral ${index + 1}`);
-          });
-
-         if (uploads.length > 0) await Promise.all(uploads);
-      }
-
-      toast.success("Loan application submitted successfully");
-      navigate('/loans');
-    } catch (error: any) {
-      console.error(error);
-      const errorMessage = error.message?.includes('Upload failed') 
-        ? `Document upload failed: ${error.message}` 
-        : 'Failed to create loan application. Please check your documents and try again.';
-      toast.error(errorMessage);
-    } finally {
-      setLoading(false);
     }
   };
 

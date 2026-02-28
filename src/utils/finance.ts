@@ -243,20 +243,19 @@ export const recalculateLoanSchedule = (
  * Format: JN{YY}{MM}{NNNN} where:
  * - JN = JANALO (fixed)
  * - YY = Current year (26 for 2026)
- * - MM = Current month (01 for January)
  * - NNNN = Sequential loan number (4 digits, padded with zeros)
  */
 export const generateAutoReference = async (): Promise<string> => {
     const now = new Date();
     const year = now.getFullYear().toString().slice(-2); // Last 2 digits of year
     const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 01-12
-    const prefix = `JN${year}${month}`;
+    const prefix = `JN${year}`; // Year-based prefix for continuous sequence across months
 
     // Import supabase dynamically to avoid circular dependency issues
     const { supabase } = await import('@/lib/supabase');
 
     try {
-        // Get the highest existing loan number for this year/month
+        // Get the highest existing loan number for this year
         const { data: existingLoans } = await supabase
             .from('loans')
             .select('reference_no')
@@ -278,12 +277,12 @@ export const generateAutoReference = async (): Promise<string> => {
         // Format as 4-digit number with leading zeros
         const formattedNumber = nextNumber.toString().padStart(4, '0');
 
-        return `${prefix}${formattedNumber}`;
+        return `${prefix}${month}${formattedNumber}`;
     } catch (error) {
         console.error('Error generating auto reference:', error);
         // Fallback to timestamp-based reference if database query fails
         const timestamp = Date.now().toString().slice(-4);
-        return `${prefix}${timestamp}`;
+        return `${prefix}${month}${timestamp}`;
     }
 };
 

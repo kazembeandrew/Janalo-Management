@@ -105,24 +105,36 @@ export const RestructureLoan: React.FC = () => {
       setIsProcessing(true);
       const loadingToast = toast.loading("Processing restructure...");
 
-      try {
+      let currentReference = formData.reference_no;
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      while (retryCount < maxRetries) {
+        try {
           // Validate reference number format and uniqueness
-          if (!isValidReferenceFormat(formData.reference_no)) {
+          if (!isValidReferenceFormat(currentReference)) {
             toast.error('Invalid reference number format');
             return;
           }
 
-          const isUnique = await isReferenceUnique(formData.reference_no);
+          const isUnique = await isReferenceUnique(currentReference);
           if (!isUnique) {
-            toast.error('Reference number already exists. Please try again.');
-            return;
+            // If not unique, regenerate and retry
+            if (retryCount < maxRetries - 1) {
+              currentReference = await generateAutoReference();
+              retryCount++;
+              continue; // Retry with new reference
+            } else {
+              toast.error('Reference number already exists. Please try again.');
+              return;
+            }
           }
 
           // 1. Create the NEW loan (Pending Approval)
           const { data: newLoan, error: newError } = await supabase
             .from('loans')
             .insert([{
-                reference_no: formData.reference_no.toUpperCase(),
+                reference_no: currentReference.toUpperCase(),
                 borrower_id: oldLoan.borrower_id,
                 officer_id: profile.id,
                 principal_amount: formData.principal_amount,
@@ -138,6 +150,20 @@ export const RestructureLoan: React.FC = () => {
             }])
             .select()
             .single();
+
+          // Handle unique constraint violation (another officer got the same reference)
+          if (newError && newError.code === '23505' && newError.message.includes('reference_no')) {
+            if (retryCount < maxRetries - 1) {
+              // Regenerate reference and retry
+              currentReference = await generateAutoReference();
+              setFormData(prev => ({ ...prev, reference_no: currentReference }));
+              retryCount++;
+              continue; // Retry with new reference
+            } else {
+              toast.error('Reference number conflict detected. Please try again.');
+              return;
+            }
+          }
 
           if (newError) throw newError;
 
@@ -159,7 +185,7 @@ export const RestructureLoan: React.FC = () => {
               supabase.from('loan_notes').insert({
                   loan_id: oldLoan.id,
                   user_id: profile.id,
-                  content: `Loan restructured into new application: ${formData.reference_no}. Outstanding balance of ${formatCurrency(formData.principal_amount)} transferred.`,
+                  content: `Loan restructured into new application: ${currentReference}. Outstanding balance of ${formatCurrency(formData.principal_amount)} transferred.`,
                   is_system: true
               }),
               supabase.from('loan_notes').insert({
@@ -179,13 +205,28 @@ export const RestructureLoan: React.FC = () => {
 
           toast.success("Loan restructured successfully. New application is pending approval.", { id: loadingToast });
           navigate(`/loans/${newLoan.id}`);
+          return; // Success, exit the loop
 
-      } catch (e: any) {
-          toast.error(e.message, { id: loadingToast });
-      } finally {
-          setIsProcessing(false);
+        } catch (error: any) {
+          // Handle unique constraint violation
+          if (error.code === '23505' && error.message.includes('reference_no')) {
+            if (retryCount < maxRetries - 1) {
+              // Regenerate reference and retry
+              currentReference = await generateAutoReference();
+              setFormData(prev => ({ ...prev, reference_no: currentReference }));
+              retryCount++;
+              continue; // Retry with new reference
+            } else {
+              toast.error('Reference number conflict detected. Please try again.');
+              return;
+            }
+          }
+
+          toast.error(error.message, { id: loadingToast });
+          return;
+        }
       }
-  };
+    };
 
   if (loading) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
 
