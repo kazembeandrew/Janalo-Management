@@ -144,10 +144,22 @@ export const EditLoan: React.FC = () => {
   };
 
   const uploadFile = async (blob: Blob, path: string) => {
+      // Determine content type based on blob type
+      let contentType = 'image/jpeg'; // default
+      if (blob.type) {
+        contentType = blob.type;
+      } else if (path.toLowerCase().endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (path.toLowerCase().endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (path.toLowerCase().endsWith('.pdf')) {
+        contentType = 'application/pdf';
+      }
+
       const { data, error } = await supabase.storage
         .from('loan-documents') 
         .upload(path, blob, {
-            contentType: 'image/jpeg',
+            contentType: contentType,
             upsert: true
         });
       if (error) throw error;
@@ -194,7 +206,7 @@ export const EditLoan: React.FC = () => {
                     loan_id: id,
                     type: type,
                     file_name: friendlyName,
-                    mime_type: 'image/jpeg',
+                    mime_type: blob.type || 'image/jpeg',
                     file_size: blob.size,
                     storage_path: uploadedPath
                 });
@@ -241,21 +253,6 @@ export const EditLoan: React.FC = () => {
 
        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Financial Details</h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Select Borrower</label>
-                        <select 
-                            required
-                            className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                            value={formData.borrower_id}
-                            onChange={e => setFormData({...formData, borrower_id: e.target.value})}
-                        >
-                            <option value="">-- Select Client --</option>
-                            {borrowers.map(b => (
-                                <option key={b.id} value={b.id}>{b.full_name}</option>
-                            ))}
                         </select>
                     </div>
 
@@ -267,6 +264,7 @@ export const EditLoan: React.FC = () => {
                             min="1"
                             className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                             value={formData.principal_amount}
+                            aria-label="Principal Amount"
                             onChange={e => setFormData({...formData, principal_amount: Number(e.target.value)})}
                         />
                     </div>
@@ -280,6 +278,7 @@ export const EditLoan: React.FC = () => {
                                 step="0.1"
                                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 value={formData.interest_rate}
+                                aria-label="Interest Rate"
                                 onChange={e => setFormData({...formData, interest_rate: Number(e.target.value)})}
                             />
                         </div>
@@ -291,6 +290,7 @@ export const EditLoan: React.FC = () => {
                                 min="1"
                                 className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                 value={formData.term_months}
+                                aria-label="Term Months"
                                 onChange={e => setFormData({...formData, term_months: Number(e.target.value)})}
                             />
                         </div>

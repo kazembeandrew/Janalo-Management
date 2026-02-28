@@ -74,25 +74,39 @@ export const Borrowers: React.FC = () => {
     try {
       let query = supabase
         .from('borrowers')
-        .select('*, loans(id, status)', { count: 'exact' })
+        .select('*, loans(id, status, officer_id)', { count: 'exact' })
         .order('created_at', { ascending: false });
-
-      if (effectiveRoles.includes('loan_officer') && !isExec) {
-        query = query.eq('created_by', profile.id);
-      }
-
-      if (searchTerm.trim()) {
-        query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
-      }
 
       const from = (page - 1) * ITEMS_PER_PAGE;
       const to = from + ITEMS_PER_PAGE - 1;
 
-      const { data, error, count } = await query.range(from, to);
+      if (effectiveRoles.includes('loan_officer') && !isExec) {
+        // For loan officers, we need to fetch borrowers they created AND borrowers with loans they manage
+        // Since PostgREST doesn't support OR with nested relations, we'll fetch all and filter in JS
+        const { data, error } = await query.range(from, to);
 
-      if (error) throw error;
-      setBorrowers(data || []);
-      setTotalCount(count || 0);
+        if (error) throw error;
+
+        // Filter borrowers: either created by officer OR have loans managed by officer
+        const filteredBorrowers = (data || []).filter(borrower =>
+          borrower.created_by === profile.id ||
+          (borrower.loans && borrower.loans.some((loan: any) => loan.officer_id === profile.id))
+        );
+
+        setBorrowers(filteredBorrowers);
+        // Note: count will be approximate since we're filtering client-side
+        setTotalCount(filteredBorrowers.length);
+      } else {
+        if (searchTerm.trim()) {
+          query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+        }
+
+        const { data, error, count } = await query.range(from, to);
+
+        if (error) throw error;
+        setBorrowers(data || []);
+        setTotalCount(count || 0);
+      }
     } catch (error) {
       console.error('Error fetching borrowers:', error);
     } finally {
@@ -455,6 +469,7 @@ export const Borrowers: React.FC = () => {
                           <button 
                             onClick={() => setShowReassignModal(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-900 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all"
+                            aria-label="Reassign selected clients"
                           >
                               <ArrowRightLeft className="h-3.5 w-3.5" /> Reassign
                           </button>
@@ -462,6 +477,7 @@ export const Borrowers: React.FC = () => {
                       <button 
                         onClick={() => setSelectedIds(new Set())}
                         className="p-2 text-indigo-300 hover:text-white transition-colors"
+                        aria-label="Clear selection"
                       >
                           <X className="h-5 w-5" />
                       </button>
@@ -485,8 +501,9 @@ export const Borrowers: React.FC = () => {
                     
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Target Officer</label>
+                            <label htmlFor="officer-select" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Target Officer</label>
                             <select
+                                id="officer-select"
                                 className="block w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
                                 value={selectedOfficer}
                                 onChange={(e) => setSelectedOfficer(e.target.value)}
@@ -537,7 +554,7 @@ export const Borrowers: React.FC = () => {
                     <h3 className="font-bold text-white flex items-center text-lg">
                         {editingBorrower ? <><Building2 className="mr-3 h-6 w-6 text-indigo-300" /> Edit Client Profile</> : <><Plus className="mr-3 h-6 w-6 text-indigo-300" /> Register New Client</>}
                     </h3>
-                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" aria-label="Close modal"><X className="h-5 w-5 text-indigo-300" /></button>
                 </div>
 
                 <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">

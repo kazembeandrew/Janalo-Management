@@ -44,12 +44,22 @@ export const CreateLoan: React.FC = () => {
   useEffect(() => {
     const fetchBorrowers = async () => {
         if (!profile) return;
-        let query = supabase.from('borrowers').select('*');
+        let query = supabase.from('borrowers').select('*, loans(id, status, officer_id)');
         if (profile.role === 'loan_officer') {
-            query = query.eq('created_by', profile.id);
+            // Show borrowers created by this officer OR borrowers who have loans where this officer is the loan officer
+            // Since PostgREST doesn't support OR with nested relations, fetch all and filter client-side
+            const { data } = await query;
+            if (data) {
+                const filteredBorrowers = data.filter(borrower =>
+                    borrower.created_by === profile.id ||
+                    (borrower.loans && borrower.loans.some((loan: any) => loan.officer_id === profile.id))
+                );
+                setBorrowers(filteredBorrowers as Borrower[]);
+            }
+        } else {
+            const { data } = await query;
+            if (data) setBorrowers(data as Borrower[]);
         }
-        const { data } = await query;
-        if (data) setBorrowers(data as Borrower[]);
     };
     fetchBorrowers();
   }, [profile]);
@@ -107,14 +117,39 @@ export const CreateLoan: React.FC = () => {
   };
 
   const uploadFile = async (blob: Blob, path: string) => {
+    try {
+      // Determine content type based on blob type or file extension
+      let contentType = 'image/jpeg'; // default
+      if (blob.type) {
+        contentType = blob.type;
+      } else if (path.toLowerCase().endsWith('.png')) {
+        contentType = 'image/png';
+      } else if (path.toLowerCase().endsWith('.gif')) {
+        contentType = 'image/gif';
+      } else if (path.toLowerCase().endsWith('.pdf')) {
+        contentType = 'application/pdf';
+      }
+
+      console.log('Uploading file:', { path, contentType, size: blob.size });
+
       const { data, error } = await supabase.storage
-        .from('loan-documents') 
+        .from('loan-documents')
         .upload(path, blob, {
-            contentType: 'image/jpeg',
-            upsert: true
+            contentType: contentType,
+            upsert: false // Changed to false to avoid overwriting existing files
         });
-      if (error) throw error;
+
+      if (error) {
+        console.error('Storage upload error:', error);
+        throw new Error(`Upload failed: ${error.message}`);
+      }
+
+      console.log('Upload successful:', data.path);
       return data.path;
+    } catch (error: any) {
+      console.error('uploadFile error:', error);
+      throw error;
+    }
   };
 
   const handleSubmit = async () => {
@@ -153,7 +188,7 @@ export const CreateLoan: React.FC = () => {
                         loan_id: loan.id,
                         type: type,
                         file_name: friendlyName,
-                        mime_type: 'image/jpeg',
+                        mime_type: blob.type || 'image/jpeg',
                         file_size: blob.size,
                         storage_path: uploadedPath
                     }))
@@ -175,7 +210,10 @@ export const CreateLoan: React.FC = () => {
       navigate('/loans');
     } catch (error: any) {
       console.error(error);
-      toast.error('Failed to create loan application.');
+      const errorMessage = error.message?.includes('Upload failed') 
+        ? `Document upload failed: ${error.message}` 
+        : 'Failed to create loan application. Please check your documents and try again.';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -247,7 +285,7 @@ export const CreateLoan: React.FC = () => {
                        <h3 className="text-lg font-medium text-gray-900">Loan Identification</h3>
                        <div className="grid grid-cols-1 gap-6">
                            <div>
-                               <label className="block text-sm font-medium text-gray-700">Reference Number (from Form)</label>
+                               <label className="block text-sm font-medium text-gray-700" aria-label="Reference Number">Reference Number (from Form)</label>
                                <div className="mt-1 relative rounded-md shadow-sm">
                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                        <Hash className="h-4 w-4 text-gray-400" />
@@ -258,17 +296,19 @@ export const CreateLoan: React.FC = () => {
                                        className="block w-full pl-10 border border-gray-300 rounded-lg py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm uppercase"
                                        placeholder="e.g. JN26011097"
                                        value={formData.reference_no}
+                                       aria-label="Loan Reference Number"
                                        onChange={e => setFormData({...formData, reference_no: e.target.value})}
                                    />
                                </div>
                                <p className="mt-2 text-xs text-gray-500 italic">Enter the unique reference number written on the physical application form.</p>
                            </div>
                            <div>
-                               <label className="block text-sm font-medium text-gray-700">Select Borrower</label>
+                               <label className="block text-sm font-medium text-gray-700" aria-label="Select Borrower">Select Borrower</label>
                                <select 
                                    required
                                    className={`mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg ${existingLoanError ? 'border-red-500 ring-red-500' : ''}`}
                                    value={formData.borrower_id}
+                                   aria-label="Select Borrower"
                                    onChange={e => handleBorrowerChange(e.target.value)}
                                >
                                    <option value="">-- Select Client --</option>
@@ -300,6 +340,7 @@ export const CreateLoan: React.FC = () => {
                                    required
                                    className="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                    value={displayPrincipal}
+                                   aria-label="Principal Amount"
                                    onChange={e => handlePrincipalChange(e.target.value)}
                                />
                            </div>
@@ -311,6 +352,7 @@ export const CreateLoan: React.FC = () => {
                                    step="0.1"
                                    className="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                    value={formData.interest_rate}
+                                   aria-label="Interest Rate"
                                    onChange={e => setFormData({...formData, interest_rate: Number(e.target.value)})}
                                />
                            </div>
@@ -321,6 +363,7 @@ export const CreateLoan: React.FC = () => {
                                    required
                                    className="mt-1 block w-full border border-gray-300 rounded-lg shadow-sm py-3 px-4 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
                                    value={formData.term_months}
+                                   aria-label="Term Months"
                                    onChange={e => setFormData({...formData, term_months: Number(e.target.value)})}
                                />
                            </div>
