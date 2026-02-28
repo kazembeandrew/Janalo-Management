@@ -8,7 +8,7 @@ import { exportToCSV, generateTablePDF } from '@/utils/export';
 import { 
     Calendar, Search, Download, FileText, Printer, 
     Filter, ChevronLeft, ChevronRight, RefreshCw, 
-    Table as TableIcon, ListFilter, Banknote
+    Table as TableIcon, ListFilter, Banknote, ArrowUpDown
 } from 'lucide-react';
 
 export const RepaymentSchedule: React.FC = () => {
@@ -16,7 +16,7 @@ export const RepaymentSchedule: React.FC = () => {
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7));
+  const [sortBy, setSortBy] = useState('date_recent');
   
   const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || effectiveRoles.includes('accountant');
 
@@ -83,14 +83,31 @@ export const RepaymentSchedule: React.FC = () => {
           });
       });
 
-      return allInstallments.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-  }, [loans]);
+      // Sort based on sortBy
+      return allInstallments.sort((a, b) => {
+          switch (sortBy) {
+              case 'date_recent':
+                  return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+              case 'date_oldest':
+                  return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+              case 'borrower_asc':
+                  return (a.borrower || '').localeCompare(b.borrower || '');
+              case 'borrower_desc':
+                  return (b.borrower || '').localeCompare(a.borrower || '');
+              case 'amount_high':
+                  return b.amount - a.amount;
+              case 'amount_low':
+                  return a.amount - b.amount;
+              default:
+                  return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+          }
+      });
+  }, [loans, sortBy]);
 
   const filteredSchedule = masterSchedule.filter(item => {
-      const matchesMonth = item.monthKey === selectedMonth;
       const matchesSearch = item.borrower?.toLowerCase().includes(searchTerm.toLowerCase()) || 
                            item.officer?.toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesMonth && matchesSearch;
+      return matchesSearch;
   });
 
   const handleExportCSV = () => {
@@ -104,7 +121,7 @@ export const RepaymentSchedule: React.FC = () => {
           Interest: item.interest.toFixed(2),
           Remaining_Balance: item.balance.toFixed(2)
       }));
-      exportToCSV(data, `Repayment_Schedule_${selectedMonth}`);
+      exportToCSV(data, `Repayment_Schedule_All`);
   };
 
   const handleExportPDF = () => {
@@ -117,7 +134,7 @@ export const RepaymentSchedule: React.FC = () => {
           item.principal.toFixed(2),
           item.interest.toFixed(2)
       ]);
-      generateTablePDF(`Repayment Schedule - ${selectedMonth}`, headers, rows, `Schedule_${selectedMonth}`);
+      generateTablePDF(`Repayment Schedule - All Installments`, headers, rows, `Schedule_All`);
   };
 
   if (loading) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
@@ -130,7 +147,7 @@ export const RepaymentSchedule: React.FC = () => {
         <div>
             <h1 className="text-2xl font-bold text-gray-900">Repayment Schedule</h1>
             <p className="text-sm text-gray-500">
-                {isExec ? 'Master projection of all expected installments across the portfolio.' : 'Your upcoming client installments for this month.'}
+                {isExec ? 'Master projection of all expected installments across the portfolio.' : 'All upcoming client installments across your portfolio.'}
             </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
@@ -153,12 +170,12 @@ export const RepaymentSchedule: React.FC = () => {
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Expected Collections</p>
               <h3 className="text-2xl font-bold text-indigo-600">{formatCurrency(totalDue)}</h3>
-              <p className="text-[10px] text-gray-500 mt-1">For {new Date(selectedMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</p>
+              <p className="text-[10px] text-gray-500 mt-1">Total expected across all periods</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Installment Count</p>
               <h3 className="text-2xl font-bold text-gray-900">{filteredSchedule.length}</h3>
-              <p className="text-[10px] text-gray-500 mt-1">Active payments due this month</p>
+              <p className="text-[10px] text-gray-500 mt-1">All active installments</p>
           </div>
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Portfolio Coverage</p>
@@ -182,12 +199,22 @@ export const RepaymentSchedule: React.FC = () => {
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
                   </div>
-                  <input 
-                    type="month" 
-                    className="border border-gray-300 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                  />
+                  <div className="relative">
+                      <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <select
+                        className="pl-10 pr-8 py-2 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        aria-label="Sort repayment schedule"
+                      >
+                        <option value="date_recent">Recent dates first</option>
+                        <option value="date_oldest">Oldest dates first</option>
+                        <option value="borrower_asc">Borrower A-Z</option>
+                        <option value="borrower_desc">Borrower Z-A</option>
+                        <option value="amount_high">Amount High-Low</option>
+                        <option value="amount_low">Amount Low-High</option>
+                      </select>
+                  </div>
               </div>
               <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">
                   Showing {filteredSchedule.length} Installments
@@ -209,7 +236,7 @@ export const RepaymentSchedule: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                       {filteredSchedule.length === 0 ? (
-                          <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">No installments scheduled for this period.</td></tr>
+                          <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500 italic">No installments match your search.</td></tr>
                       ) : (
                           filteredSchedule.map((item, idx) => (
                               <tr key={`${item.loanId}-${item.installmentNo}`} className="hover:bg-gray-50 transition-colors">
