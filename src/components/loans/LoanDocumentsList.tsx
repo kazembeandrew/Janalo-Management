@@ -5,6 +5,7 @@ import { LoanDocument } from '@/types';
 interface LoanDocumentsListProps {
   documents: LoanDocument[];
   documentUrls: {[key: string]: string};
+  documentMimeTypes: {[key: string]: string};
   onViewImage: (url: string) => void;
   onViewPdf?: (url: string, name: string) => void;
   onViewExcel?: (url: string, name: string) => void;
@@ -13,21 +14,22 @@ interface LoanDocumentsListProps {
 export const LoanDocumentsList: React.FC<LoanDocumentsListProps> = ({ 
   documents, 
   documentUrls, 
+  documentMimeTypes,
   onViewImage,
   onViewPdf,
   onViewExcel
 }) => {
-  const getFileType = (url: string): 'image' | 'pdf' | 'excel' | 'other' => {
-    const lowerUrl = url.toLowerCase();
-    if (lowerUrl.endsWith('.pdf')) return 'pdf';
-    if (lowerUrl.endsWith('.xlsx') || lowerUrl.endsWith('.xls') || lowerUrl.endsWith('.csv')) return 'excel';
-    if (lowerUrl.endsWith('.jpg') || lowerUrl.endsWith('.jpeg') || lowerUrl.endsWith('.png') || lowerUrl.endsWith('.gif')) return 'image';
+  const getFileType = (mimeType: string): 'image' | 'pdf' | 'excel' | 'other' => {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType === 'application/pdf') return 'pdf';
+    if (mimeType === 'application/vnd.ms-excel' || mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || mimeType === 'text/csv') return 'excel';
     return 'other';
   };
 
   const handleClick = (doc: LoanDocument) => {
     const url = documentUrls[doc.id];
-    const type = getFileType(url);
+    const mimeType = documentMimeTypes[doc.id];
+    const type = getFileType(mimeType);
     const name = `${doc.type}.pdf`;
 
     if (type === 'image') {
@@ -78,7 +80,8 @@ export const LoanDocumentsList: React.FC<LoanDocumentsListProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {documents.map(doc => {
               const url = documentUrls[doc.id];
-              const type = getFileType(url);
+              const mimeType = documentMimeTypes[doc.id];
+              const type = getFileType(mimeType);
               const isImage = type === 'image';
 
               return (

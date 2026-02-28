@@ -434,7 +434,7 @@ export const CreateLoan: React.FC = () => {
                    disabled={
                        loading || 
                        (currentStep === 'borrower' && (!formData.borrower_id || !!existingLoanError)) ||
-                       (currentStep === 'documents' && !appFormBlob)
+                       (currentStep === 'documents' && (!idCardBlob || !guarantorBlob))
                    }
                    onClick={() => {
                        if (currentStep === 'borrower') setCurrentStep('terms');
@@ -451,3 +451,4 @@ export const CreateLoan: React.FC = () => {
        </div>
    </div>
 );
+};

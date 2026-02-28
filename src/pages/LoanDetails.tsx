@@ -26,6 +26,7 @@ import { LoanDecisionModals } from '@/components/loans/LoanDecisionModals';
 import { RepaymentModal } from '@/components/loans/RepaymentModal';
 import { PDFViewer } from '@/components/PDFViewer';
 import { ExcelViewer } from '@/components/ExcelViewer';
+import { DocumentUpload } from '@/components/DocumentUpload';
 
 export const LoanDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -37,9 +38,11 @@ export const LoanDetails: React.FC = () => {
   const [repayments, setRepayments] = useState<Repayment[]>([]);
   const [notes, setNotes] = useState<LoanNote[]>([]);
   const [documents, setDocuments] = useState<LoanDocument[]>([]);
+  const [borrowerDocuments, setBorrowerDocuments] = useState<any[]>([]);
   const [visitations, setVisitations] = useState<Visitation[]>([]);
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [documentUrls, setDocumentUrls] = useState<{[key: string]: string}>({});
+  const [documentMimeTypes, setDocumentMimeTypes] = useState<{[key: string]: string}>({});
   const [visitImageUrls, setVisitImageUrls] = useState<{[key: string]: string}>({});
   const [loading, setLoading] = useState(true);
   
@@ -91,26 +94,47 @@ export const LoanDetails: React.FC = () => {
       if (loanError) throw loanError;
       setLoan(loanData);
 
-      const [repayRes, noteRes, docRes, visitRes] = await Promise.all([
+      const [repayRes, noteRes, docRes, visitRes, borrowerDocRes] = await Promise.all([
         supabase.from('repayments').select('*').eq('loan_id', id).order('payment_date', { ascending: false }),
         supabase.from('loan_notes').select('*, users(full_name)').eq('loan_id', id).order('created_at', { ascending: false }),
         supabase.from('loan_documents').select('*').eq('loan_id', id),
-        supabase.from('visitations').select('*, users(full_name)').eq('loan_id', id).order('visit_date', { ascending: false })
+        supabase.from('visitations').select('*, users(full_name)').eq('loan_id', id).order('visit_date', { ascending: false }),
+        supabase.from('borrower_documents').select('*').eq('borrower_id', loanData.borrower_id)
       ]);
 
       setRepayments(repayRes.data || []);
       setNotes(noteRes.data || []);
       setDocuments(docRes.data || []);
+      setBorrowerDocuments(borrowerDocRes.data || []);
       setVisitations(visitRes.data || []);
       
+      console.log('Loan documents:', docRes.data);
+      console.log('Borrower documents:', borrowerDocRes.data);
+      
+      // Combine URLs for both types
+      const urlMap: {[key: string]: string} = {};
+      const mimeMap: {[key: string]: string} = {};
+
+      // Loan documents
       if (docRes.data) {
-          const urlMap: {[key: string]: string} = {};
           for (const doc of docRes.data) {
               const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
               if (data) urlMap[doc.id] = data.publicUrl;
+              mimeMap[doc.id] = doc.mime_type;
           }
-          setDocumentUrls(urlMap);
       }
+
+      // Borrower documents
+      if (borrowerDocRes.data) {
+          for (const doc of borrowerDocRes.data) {
+              const { data } = supabase.storage.from('loan-documents').getPublicUrl(doc.storage_path);
+              if (data) urlMap[doc.id] = data.publicUrl;
+              mimeMap[doc.id] = doc.mime_type;
+          }
+      }
+
+      setDocumentUrls(urlMap);
+      setDocumentMimeTypes(mimeMap);
 
       if (visitRes.data) {
           const vUrlMap: {[key: string]: string} = {};
@@ -352,6 +376,11 @@ export const LoanDetails: React.FC = () => {
           fetchData();
       } catch (e: any) {
           toast.error("Write-off failed: " + e.message);
+      } finally {
+          setProcessingAction(false);
+      }
+  };
+
   const handleStatusUpdate = async (status: string, note: string, accountId?: string) => {
       if (!loan) return;
       setProcessingAction(true);
@@ -400,76 +429,141 @@ export const LoanDetails: React.FC = () => {
   };
 
   const handleDownloadStatement = () => {
-      if (!loan) return;
-      generateStatementPDF(loan, repayments);
-{{ ... }
-      toast.success("Statement generated");
+    if (!loan) return;
+    generateStatementPDF(loan, repayments);
+    toast.success("Statement generated");
   };
 
-  if (loading || !loan) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
+  const handleDeleteLoan = async () => {
+    if (!loan || !profile) return;
+    
+    setProcessingAction(true);
+    try {
+        // Delete related records first due to foreign keys
+        await supabase.from('repayments').delete().eq('loan_id', loan.id);
+        await supabase.from('loan_notes').delete().eq('loan_id', loan.id);
+        await supabase.from('loan_documents').delete().eq('loan_id', loan.id);
+        await supabase.from('borrower_documents').delete().eq('loan_id', loan.id);
+        await supabase.from('visitations').delete().eq('loan_id', loan.id);
+        
+        // Delete the loan
+        const { error } = await supabase.from('loans').delete().eq('id', loan.id);
+        
+        if (error) throw error;
+        
+        toast.success('Loan deleted successfully');
+        navigate('/loans'); // Redirect back to loans list
+    } catch (e: any) {
+        toast.error(`Delete failed: ${e.message}`);
+    } finally {
+        setProcessingAction(false);
+    }
+};
 
-  const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
-  const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
-  const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
+const handleAppFormUpload = async () => {
+    if (!appFormBlob || !loan || !profile) return;
+    setProcessingAction(true);
+    
+    try {
+        const fileName = `application_form_${Date.now()}.pdf`;
+        const path = `${loan.id}/${fileName}`;
+        
+        const { data, error: uploadError } = await supabase.storage
+            .from('loan-documents')
+            .upload(path, appFormBlob);
+        
+        if (uploadError) throw uploadError;
+        
+        const { error: insertError } = await supabase.from('loan_documents').insert({
+            loan_id: loan.id,
+            type: 'application_form',
+            storage_path: data.path,
+            mime_type: appFormBlob.type || 'application/pdf'
+        });
+        
+        if (insertError) throw insertError;
+        
+        toast.success('Loan agreement uploaded successfully');
+        setAppFormBlob(null);
+        fetchData(); // Refresh documents
+    } catch (error: any) {
+        console.error('Upload error:', error);
+        toast.error(error.message || 'Failed to upload agreement');
+    } finally {
+        setProcessingAction(false);
+    }
+};
 
-  const principalPaid = Number(loan.principal_amount) - Number(loan.principal_outstanding);
-  const recoveryPercent = (principalPaid / Number(loan.principal_amount)) * 100;
+if (loading || !loan) return <div className="p-12 text-center"><RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>;
 
-  return (
+const isExecutive = effectiveRoles.includes('ceo') || effectiveRoles.includes('admin');
+const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
+const isOfficer = effectiveRoles.includes('loan_officer') || effectiveRoles.includes('admin');
+
+const principalPaid = Number(loan.principal_amount) - Number(loan.principal_outstanding);
+const recoveryPercent = (principalPaid / Number(loan.principal_amount)) * 100;
+
+const allDocuments = [...documents, ...borrowerDocuments.map(doc => ({
+  id: doc.id,
+  loan_id: id,
+  type: doc.type,
+  storage_path: doc.storage_path,
+  mime_type: doc.mime_type
+}))];
+
+return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-         <button onClick={() => navigate('/loans')} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Portfolio
-         </button>
-         <div className="flex flex-wrap gap-2">
-            <button 
-                onClick={handleDownloadStatement}
-                className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all flex items-center"
-            >
-                <Download className="h-4 w-4 mr-1.5 text-indigo-600" /> Statement
-            </button>
-            {loan.status === 'active' && isOfficer && (
-                <>
-                    <button onClick={() => setActiveModal('visit')} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
-                        <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
-                    </button>
-                    <Link to={`/loans/restructure/${loan.id}`} className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all flex items-center">
-                        <RefreshCw className="h-4 w-4 mr-1.5" /> Restructure
-                    </Link>
-                </>
-            )}
-            {loan.status === 'active' && isExecutive && (
-                <button onClick={() => setActiveModal('writeoff')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
-                    <ShieldAlert className="h-4 w-4 mr-1.5" /> Write Off
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-2">
+                <button onClick={() => navigate('/loans')} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
+                    <ArrowLeft className="h-4 w-4 mr-1" /> Back to Portfolio
                 </button>
-            )}
-            {loan.status === 'active' && (isAccountant || isOfficer) && (
-                <button onClick={() => setActiveModal('repay')} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
-                    Record Repayment
+                {loan.status === 'active' && isOfficer && (
+                    <>
+                        <button onClick={() => setActiveModal('visit')} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-all flex items-center">
+                            <MapPin className="h-4 w-4 mr-1.5" /> Log Visit
+                        </button>
+                        <Link to={`/loans/restructure/${loan.id}`} className="bg-amber-50 text-amber-700 border border-amber-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-100 transition-all flex items-center">
+                            <RefreshCw className="h-4 w-4 mr-1.5" /> Restructure
+                        </Link>
+                    </>
+                )}
+                {loan.status === 'active' && isExecutive && (
+                    <button onClick={() => setActiveModal('writeoff')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
+                        <ShieldAlert className="h-4 w-4 mr-1.5" /> Write Off
+                    </button>
+                )}
+                {loan.status === 'active' && (isAccountant || isOfficer) && (
+                    <button onClick={() => setActiveModal('repay')} className="bg-green-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-green-700 transition-all">
+                        Record Repayment
+                    </button>
+                )}
+                {loan.status === 'pending' && isExecutive && (
+                    <>
+                        <button onClick={() => setActiveModal('reassess')} className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-100 transition-all flex items-center">
+                            <RotateCcw className="h-4 w-4 mr-1.5" /> Reassess
+                        </button>
+                        <button onClick={() => setActiveModal('reject')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
+                            <Ban className="h-4 w-4 mr-1.5" /> Reject
+                        </button>
+                        <button onClick={() => setActiveModal('approve')} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center" title="Approve and Disburse Loan">
+                            <ThumbsUp className="h-4 w-4 mr-1.5" /> Approve & Disburse
+                        </button>
+                    </>
+                )}
+            </div>
+            <div className="flex items-center gap-2">
+                <button onClick={handleDownloadStatement} className="flex items-center text-sm text-indigo-600 hover:text-indigo-800 px-3 py-2 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all" title="Download Statement">
+                    <Download className="h-4 w-4 mr-1" /> Statement
                 </button>
-            )}
-            {loan.status === 'pending' && isExecutive && (
-                <>
-                    <button onClick={() => setActiveModal('reassess')} className="bg-purple-50 text-purple-700 border border-purple-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-purple-100 transition-all flex items-center">
-                        <RotateCcw className="h-4 w-4 mr-1.5" /> Reassess
-                    </button>
-                    <button onClick={() => setActiveModal('reject')} className="bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-all flex items-center">
-                        <Ban className="h-4 w-4 mr-1.5" /> Reject
-                    </button>
-                    <button onClick={() => setActiveModal('approve')} className="bg-indigo-900 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-indigo-800 transition-all flex items-center" title="Approve and Disburse Loan">
-                        <ThumbsUp className="h-4 w-4 mr-1.5" /> Approve & Disburse
-                    </button>
-                </>
-            )}
-            <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all" title="Print">
-                <Printer className="h-5 w-5 text-gray-600" />
-            </button>
-         </div>
-      </div>
+                <button onClick={() => window.print()} className="p-2 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all" title="Print">
+                    <Printer className="h-5 w-5 text-gray-600" />
+                </button>
+            </div>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
                   <div className="flex justify-between items-center mb-4">
                       <h3 className="font-bold text-gray-900 flex items-center">
                           <TrendingUp className="h-4 w-4 mr-2 text-indigo-600" />
@@ -532,8 +626,9 @@ export const LoanDetails: React.FC = () => {
               )}
 
               <LoanDocumentsList 
-                documents={documents}
+                documents={allDocuments}
                 documentUrls={documentUrls}
+                documentMimeTypes={documentMimeTypes}
                 onViewImage={setViewImage}
                 onViewPdf={(url, name) => setViewPdf({url, name})}
                 onViewExcel={(url, name) => setViewExcel({url, name})}
@@ -542,7 +637,6 @@ export const LoanDetails: React.FC = () => {
               <LoanRepaymentHistory 
                 repayments={repayments} 
                 onReverse={(r) => { setSelectedRepayment(r); setActiveModal('reverse'); }}
-{{ ... }
               />
           </div>
 
@@ -746,7 +840,12 @@ export const LoanDetails: React.FC = () => {
       {viewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-sm p-4" onClick={() => setViewImage(null)}>
             <button className="absolute top-6 right-6 text-white p-3 bg-white/10 hover:bg-white/20 rounded-full transition-all" title="Close"><X className="h-6 w-6" /></button>
-            <img src={viewImage} alt="Full View" className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" />
+            <img 
+              src={viewImage} 
+              alt="Full View" 
+              className="max-w-full max-h-screen object-contain rounded-lg shadow-2xl" 
+              onError={(e) => console.error('Image failed to load:', viewImage, e)}
+            />
         </div>
       )}
 

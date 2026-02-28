@@ -8,7 +8,8 @@ import { exportToCSV } from '@/utils/export';
 import { 
     Plus, Filter, ChevronRight, Clock, ChevronLeft, 
     Download, AlertTriangle, TrendingUp, Hash, 
-    CheckSquare, Square, ThumbsUp, X, RefreshCw, Landmark
+    CheckSquare, Square, ThumbsUp, X, RefreshCw, Landmark,
+    Edit, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -26,6 +27,10 @@ export const Loans: React.FC = () => {
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
   const [targetAccountId, setTargetAccountId] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Delete State
+  const [deleteLoanId, setDeleteLoanId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Pagination State
   const [page, setPage] = useState(1);
@@ -163,6 +168,34 @@ export const Loans: React.FC = () => {
       exportToCSV(exportData, 'Janalo_Loans_Export');
   };
 
+  const handleDelete = async () => {
+    if (!deleteLoanId || !profile) return;
+    
+    setIsProcessing(true);
+    try {
+        // Delete related records first due to foreign keys
+        await supabase.from('repayments').delete().eq('loan_id', deleteLoanId);
+        await supabase.from('loan_notes').delete().eq('loan_id', deleteLoanId);
+        await supabase.from('loan_documents').delete().eq('loan_id', deleteLoanId);
+        await supabase.from('borrower_documents').delete().eq('loan_id', deleteLoanId);
+        await supabase.from('visitations').delete().eq('loan_id', deleteLoanId);
+        
+        // Delete the loan
+        const { error } = await supabase.from('loans').delete().eq('id', deleteLoanId);
+        
+        if (error) throw error;
+        
+        toast.success('Loan deleted successfully');
+        setShowDeleteModal(false);
+        setDeleteLoanId(null);
+        fetchLoans();
+    } catch (e: any) {
+        toast.error(`Delete failed: ${e.message}`);
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
   const getStatusColor = (status: string) => {
@@ -221,6 +254,7 @@ export const Loans: React.FC = () => {
                     value={filter}
                     onChange={(e) => handleFilterChange(e.target.value)}
                     className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                    aria-label="Filter loans by status"
                 >
                     <option value="all">All Statuses</option>
                     <option value="active">Active</option>
@@ -328,12 +362,25 @@ export const Loans: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
-                          {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
-                              ? 'Review' 
-                              : 'Details'} 
-                          <ChevronRight className="ml-1 h-4 w-4" />
-                        </Link>
+                        {(effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || effectiveRoles.includes('loan_officer')) && (loan.status === 'rejected' || loan.status === 'reassess') ? (
+                          <div className="flex items-center justify-end gap-2">
+                            {effectiveRoles.includes('loan_officer') && (
+                              <Link to={`/loans/edit/${loan.id}`} className="text-indigo-600 hover:text-indigo-900" title="Edit">
+                                <Edit className="h-4 w-4" />
+                              </Link>
+                            )}
+                            <button onClick={() => { setDeleteLoanId(loan.id); setShowDeleteModal(true); }} className="text-red-600 hover:text-red-900" title="Delete">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
+                            {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
+                                ? 'Review' 
+                                : 'Details'} 
+                            <ChevronRight className="ml-1 h-4 w-4" />
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   );
@@ -449,6 +496,7 @@ export const Loans: React.FC = () => {
                             className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
                             value={targetAccountId}
                             onChange={e => setTargetAccountId(e.target.value)}
+                            aria-label="Select account for disbursement"
                           >
                               <option value="">-- Select Source Account --</option>
                               {accounts.map(acc => (
