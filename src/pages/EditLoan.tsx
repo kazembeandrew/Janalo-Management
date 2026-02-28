@@ -236,221 +236,215 @@ export const EditLoan: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="p-8 text-center">Loading application data...</div>;
+if (loading) return <div className="p-8 text-center">Loading application data...</div>;
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-6">
-       <div className="flex items-center justify-between">
-            <button onClick={() => navigate(`/loans/${id}`)} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
-                <ArrowLeft className="h-4 w-4 mr-1" /> Cancel Edit
-            </button>
-            <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold uppercase">
-                Editing Application
-            </span>
-       </div>
-       
-       <h1 className="text-2xl font-bold text-gray-900">Edit Loan Application</h1>
-
-       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-         <div className="lg:col-span-2 space-y-6">
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
-                        <input 
-                            type="number"
-                            required
-                            min="1"
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            value={formData.principal_amount}
-                            aria-label="Principal Amount"
-                            onChange={e => setFormData({...formData, principal_amount: Number(e.target.value)})}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Interest Rate (% Monthly)</label>
-                            <input 
-                                type="number"
-                                required
-                                step="0.1"
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                value={formData.interest_rate}
-                                aria-label="Interest Rate"
-                                onChange={e => setFormData({...formData, interest_rate: Number(e.target.value)})}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Term (Months)</label>
-                            <input 
-                                type="number"
-                                required
-                                min="1"
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                                value={formData.term_months}
-                                aria-label="Term Months"
-                                onChange={e => setFormData({...formData, term_months: Number(e.target.value)})}
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Interest Type</label>
-                        <div className="mt-2 space-x-4">
-                            <label className="inline-flex items-center">
-                                <input 
-                                    type="radio" 
-                                    className="form-radio text-indigo-600" 
-                                    name="interest_type"
-                                    checked={formData.interest_type === 'flat'}
-                                    onChange={() => setFormData({...formData, interest_type: 'flat'})}
-                                />
-                                <span className="ml-2">Flat Rate</span>
-                            </label>
-                            <label className="inline-flex items-center">
-                                <input 
-                                    type="radio" 
-                                    className="form-radio text-indigo-600" 
-                                    name="interest_type"
-                                    checked={formData.interest_type === 'reducing'}
-                                    onChange={() => setFormData({...formData, interest_type: 'reducing'})}
-                                />
-                                <span className="ml-2">Reducing Balance</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Disbursement Date</label>
-                        <input 
-                            type="date"
-                            required
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-                            value={formData.disbursement_date}
-                            onChange={e => setFormData({...formData, disbursement_date: e.target.value})}
-                        />
-                    </div>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6">
-                 <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                     <UploadCloud className="mr-2 h-5 w-5"/> Required Documentation
-                 </h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                     <DocumentUpload 
-                        label="Client ID / Passport" 
-                        existingUrl={existingDocs.id_card}
-                        onUpload={setIdCardBlob} 
-                        onRemove={() => setIdCardBlob(null)}
-                     />
-                     <DocumentUpload 
-                        label="Application Form" 
-                        existingUrl={existingDocs.application_form}
-                        onUpload={setAppFormBlob} 
-                        onRemove={() => setAppFormBlob(null)}
-                     />
-                     <DocumentUpload 
-                        label="Guarantor ID / Form" 
-                        existingUrl={existingDocs.guarantor}
-                        onUpload={setGuarantorBlob} 
-                        onRemove={() => setGuarantorBlob(null)}
-                     />
-                 </div>
-
-                 <div className="border-t border-gray-200 pt-4">
-                     <div className="flex justify-between items-center mb-4">
-                        <label className="block text-sm font-medium text-gray-700">Collateral Photos</label>
-                        <button 
-                            type="button" 
-                            onClick={addCollateralField}
-                            className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-                        >
-                            <Plus className="h-3 w-3 mr-1" /> Add Collateral
-                        </button>
-                     </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {collaterals.map((item, index) => (
-                             <DocumentUpload 
-                                key={item.id}
-                                label={`Collateral ${index + 1}`}
-                                existingUrl={item.existingUrl}
-                                onUpload={(blob) => updateCollateralBlob(item.id, blob)}
-                                onRemove={() => removeCollateralField(item.id)}
-                            />
-                        ))}
-                     </div>
-                 </div>
-            </div>
-         </div>
-
-         <div className="space-y-6">
-            <div className="bg-indigo-50 rounded-lg p-6 border border-indigo-100 sticky top-6">
-                <h3 className="text-lg font-medium text-indigo-900 flex items-center mb-4">
-                    <Calculator className="h-5 w-5 mr-2" />
-                    New Terms Preview
-                </h3>
-                
-                {preview && (
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 border-b border-indigo-200 pb-4">
-                            <div>
-                                <div className="text-xs text-indigo-500 uppercase">Monthly Installment</div>
-                                <div className="text-xl font-bold text-indigo-900">{formatCurrency(preview.monthlyInstallment)}</div>
-                            </div>
-                            <div>
-                                <div className="text-xs text-indigo-500 uppercase">Total Interest</div>
-                                <div className="text-xl font-bold text-indigo-900">{formatCurrency(preview.totalInterest)}</div>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <div className="text-xs text-indigo-500 uppercase">Total Payable</div>
-                            <div className="text-2xl font-bold text-indigo-900">{formatCurrency(preview.totalPayable)}</div>
-                        </div>
-
-                        <div className="mt-6">
-                            <h4 className="text-sm font-semibold text-indigo-800 mb-2">Schedule Preview (First 5 months)</h4>
-                            <div className="bg-white rounded-md overflow-hidden text-xs">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-2 py-1 text-left">Mo</th>
-                                            <th className="px-2 py-1 text-right">Prin</th>
-                                            <th className="px-2 py-1 text-right">Int</th>
-                                            <th className="px-2 py-1 text-right">Bal</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {preview.schedule.slice(0, 5).map((row: any) => (
-                                            <tr key={row.month}>
-                                                <td className="px-2 py-1 border-t">{row.month}</td>
-                                                <td className="px-2 py-1 text-right border-t">{formatCurrency(row.principal)}</td>
-                                                <td className="px-2 py-1 text-right border-t">{formatCurrency(row.interest)}</td>
-                                                <td className="px-2 py-1 text-right border-t">{formatCurrency(row.balance)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div className="pt-4 border-t border-indigo-200">
-                            <button
-                                type="submit"
-                                disabled={loading || !formData.borrower_id}
-                                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400"
-                            >
-                                {loading ? 'Saving...' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-         </div>
-       </form>
+return (
+  <div className="max-w-6xl mx-auto space-y-6">
+    <div className="flex items-center justify-between">
+      <button onClick={() => navigate(`/loans/${id}`)} className="flex items-center text-sm text-gray-500 hover:text-gray-700">
+        <ArrowLeft className="h-4 w-4 mr-1" /> Cancel Edit
+      </button>
+      <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold uppercase">
+        Editing Application
+      </span>
     </div>
-  );
-};
+
+    <h1 className="text-2xl font-bold text-gray-900">Edit Loan Application</h1>
+
+    <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="lg:col-span-2 space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
+          <input
+            type="number"
+            required
+            min="1"
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={formData.principal_amount}
+            aria-label="Principal Amount"
+            onChange={e => setFormData({ ...formData, principal_amount: Number(e.target.value) })}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Interest Rate (% Monthly)</label>
+            <input
+              type="number"
+              required
+              step="0.1"
+              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              value={formData.interest_rate}
+              aria-label="Interest Rate"
+              onChange={e => setFormData({ ...formData, interest_rate: Number(e.target.value) })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Term (Months)</label>
+            <input
+              type="number"
+              required
+              min="1"
+              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              value={formData.term_months}
+              aria-label="Term Months"
+              onChange={e => setFormData({ ...formData, term_months: Number(e.target.value) })}
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Interest Type</label>
+          <div className="mt-2 space-x-4">
+            <label className="inline-flex items-center">
+              <input
+                type="radio"
+                className="form-radio text-indigo-600"
+                name="interest_type"
+                checked={formData.interest_type === 'flat'}
+                onChange={() => setFormData({ ...formData, interest_type: 'flat' })}
+              />
+              <span className="ml-2">Flat Rate</span>
+            </label>
+            <label className="inline-flex items-center">
+              <input
+                type="radio"
+                className="form-radio text-indigo-600"
+                name="interest_type"
+                checked={formData.interest_type === 'reducing'}
+                onChange={() => setFormData({ ...formData, interest_type: 'reducing' })}
+              />
+              <span className="ml-2">Reducing Balance</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Disbursement Date</label>
+          <input
+            type="date"
+            required
+            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            value={formData.disbursement_date}
+            onChange={e => setFormData({ ...formData, disbursement_date: e.target.value })}
+          />
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <UploadCloud className="mr-2 h-5 w-5" /> Required Documentation
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <DocumentUpload
+            label="Client ID / Passport"
+            existingUrl={existingDocs.id_card}
+            onUpload={setIdCardBlob}
+            onRemove={() => setIdCardBlob(null)}
+          />
+          <DocumentUpload
+            label="Application Form"
+            existingUrl={existingDocs.application_form}
+            onUpload={setAppFormBlob}
+            onRemove={() => setAppFormBlob(null)}
+          />
+          <DocumentUpload
+            label="Guarantor ID / Form"
+            existingUrl={existingDocs.guarantor}
+            onUpload={setGuarantorBlob}
+            onRemove={() => setGuarantorBlob(null)}
+          />
+        </div>
+
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex justify-between items-center mb-4">
+            <label className="block text-sm font-medium text-gray-700">Collateral Photos</label>
+            <button
+              type="button"
+              onClick={addCollateralField}
+              className="inline-flex items-center px-2 py-1 border border-gray-300 shadow-sm text-xs font-medium rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+            >
+              <Plus className="h-3 w-3 mr-1" /> Add Collateral
+            </button>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {collaterals.map((item, index) => (
+              <DocumentUpload
+                key={item.id}
+                label={`Collateral ${index + 1}`}
+                existingUrl={item.existingUrl}
+                onUpload={(blob) => updateCollateralBlob(item.id, blob)}
+                onRemove={() => removeCollateralField(item.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div className="bg-indigo-50 rounded-lg p-6 border border-indigo-100 sticky top-6">
+          <h3 className="text-lg font-medium text-indigo-900 flex items-center mb-4">
+            <Calculator className="h-5 w-5 mr-2" />
+            New Terms Preview
+          </h3>
+
+          {preview && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 border-b border-indigo-200 pb-4">
+                <div>
+                  <div className="text-xs text-indigo-500 uppercase">Monthly Installment</div>
+                  <div className="text-xl font-bold text-indigo-900">{formatCurrency(preview.monthlyInstallment)}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-indigo-500 uppercase">Total Interest</div>
+                  <div className="text-xl font-bold text-indigo-900">{formatCurrency(preview.totalInterest)}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs text-indigo-500 uppercase">Total Payable</div>
+                <div className="text-2xl font-bold text-indigo-900">{formatCurrency(preview.totalPayable)}</div>
+              </div>
+
+              <div className="mt-6">
+                <h4 className="text-sm font-semibold text-indigo-800 mb-2">Schedule Preview (First 5 months)</h4>
+                <div className="bg-white rounded-md overflow-hidden text-xs">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-1 text-left">Mo</th>
+                        <th className="px-2 py-1 text-right">Prin</th>
+                        <th className="px-2 py-1 text-right">Int</th>
+                        <th className="px-2 py-1 text-right">Bal</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {preview.schedule.slice(0, 5).map((row: any) => (
+                        <tr key={row.month}>
+                          <td className="px-2 py-1 border-t">{row.month}</td>
+                          <td className="px-2 py-1 text-right border-t">{formatCurrency(row.principal)}</td>
+                          <td className="px-2 py-1 text-right border-t">{formatCurrency(row.interest)}</td>
+                          <td className="px-2 py-1 text-right border-t">{formatCurrency(row.balance)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-indigo-200">
+                <button
+                  type="submit"
+                  disabled={loading || !formData.borrower_id}
+                  className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-400"
+                >
+                  {loading ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </form>
+  </div>
+);
