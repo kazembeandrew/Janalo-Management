@@ -362,25 +362,24 @@ export const Loans: React.FC = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        {(effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || effectiveRoles.includes('loan_officer')) && (loan.status === 'rejected' || loan.status === 'reassess') ? (
-                          <div className="flex items-center justify-end gap-2">
-                            {effectiveRoles.includes('loan_officer') && (
-                              <Link to={`/loans/edit/${loan.id}`} className="text-indigo-600 hover:text-indigo-900" title="Edit">
-                                <Edit className="h-4 w-4" />
-                              </Link>
-                            )}
-                            <button onClick={() => { setDeleteLoanId(loan.id); setShowDeleteModal(true); }} className="text-red-600 hover:text-red-900" title="Delete">
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ) : (
+                        {(effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || (effectiveRoles.includes('loan_officer') && loan.status !== 'active' && loan.status !== 'completed')) && (
+                          <button onClick={() => { setDeleteLoanId(loan.id); setShowDeleteModal(true); }} className="text-red-600 hover:text-red-900" title="Delete">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        <div className="flex items-center justify-end gap-2">
+                          {effectiveRoles.includes('loan_officer') && (loan.status === 'rejected' || loan.status === 'reassess') && (
+                            <Link to={`/loans/edit/${loan.id}`} className="text-indigo-600 hover:text-indigo-900" title="Edit">
+                              <Edit className="h-4 w-4" />
+                            </Link>
+                          )}
                           <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
                             {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
                                 ? 'Review' 
                                 : 'Details'} 
                             <ChevronRight className="ml-1 h-4 w-4" />
                           </Link>
-                        )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -511,6 +510,40 @@ export const Loans: React.FC = () => {
                             className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 disabled:bg-gray-400 transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]"
                           >
                               {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin mx-auto" /> : 'Confirm Bulk Approval'}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                  <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
+                      <h3 className="font-bold text-white flex items-center text-lg"><Trash2 className="mr-3 h-6 w-6 text-red-200" /> Delete Loan</h3>
+                      <button onClick={() => setShowDeleteModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
+                  </div>
+                  <div className="p-8 space-y-5">
+                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                          <p className="text-xs text-red-700 leading-relaxed">
+                              <strong>Warning:</strong> This will permanently delete the loan and all associated data including repayments, notes, documents, and visitation records. This action cannot be undone.
+                          </p>
+                      </div>
+                      <div className="pt-4 flex gap-3">
+                          <button 
+                            onClick={handleDelete} 
+                            disabled={isProcessing} 
+                            className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 disabled:bg-gray-400 transition-all shadow-lg shadow-red-100"
+                          >
+                              {isProcessing ? <RefreshCw className="h-4 w-4 animate-spin mx-auto" /> : 'Delete Loan'}
+                          </button>
+                          <button 
+                            onClick={() => setShowDeleteModal(false)}
+                            className="flex-1 bg-gray-100 text-gray-700 py-3 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                          >
+                              Cancel
                           </button>
                       </div>
                   </div>
