@@ -243,7 +243,9 @@ export const recalculateLoanSchedule = (
  * Format: JN{YY}{MM}{NNNN} where:
  * - JN = JANALO (fixed)
  * - YY = Current year (26 for 2026)
- * - NNNN = Sequential loan number (4 digits, padded with zeros)
+ * - MM = Current month (01-12)
+ * - NNNN = Sequential loan number across the entire year (4 digits, padded with zeros)
+ * The sequence continues across months within the same year.
  */
 export const generateAutoReference = async (): Promise<string> => {
     const now = new Date();
