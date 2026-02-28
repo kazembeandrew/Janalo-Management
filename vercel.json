@@ -1,0 +1,5 @@
+{
+  "buildCommand": "pnpm build",
+  "installCommand": "corepack use pnpm@9 && pnpm install",
+  "framework": "vite"
+}
