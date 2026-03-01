@@ -20,28 +20,46 @@ CREATE INDEX IF NOT EXISTS idx_borrower_documents_type ON public.borrower_docume
 
 -- RLS Policies
 -- Admin and CEO can access all borrower documents
-CREATE POLICY "Admin and CEO access borrower documents" ON public.borrower_documents
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.users
-            WHERE public.users.id = auth.uid()
-            AND public.users.role IN ('admin', 'ceo')
-        )
-    );
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'borrower_documents' 
+        AND policyname = 'Admin and CEO access borrower documents'
+    ) THEN
+        CREATE POLICY "Admin and CEO access borrower documents" ON public.borrower_documents
+            FOR ALL USING (
+                EXISTS (
+                    SELECT 1 FROM public.users
+                    WHERE public.users.id = auth.uid()
+                    AND public.users.role IN ('admin', 'ceo')
+                )
+            );
+    END IF;
+END $$;
 
 -- Loan officers can access documents for borrowers they manage
-CREATE POLICY "Loan officers access own borrower documents" ON public.borrower_documents
-    FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM public.borrowers b
-            WHERE b.id = borrower_documents.borrower_id
-            AND (
-                b.created_by = auth.uid()
-                OR EXISTS (
-                    SELECT 1 FROM public.loans l
-                    WHERE l.borrower_id = b.id
-                    AND l.officer_id = auth.uid()
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE tablename = 'borrower_documents' 
+        AND policyname = 'Loan officers access own borrower documents'
+    ) THEN
+        CREATE POLICY "Loan officers access own borrower documents" ON public.borrower_documents
+            FOR ALL USING (
+                EXISTS (
+                    SELECT 1 FROM public.borrowers b
+                    WHERE b.id = borrower_documents.borrower_id
+                    AND (
+                        b.created_by = auth.uid()
+                        OR EXISTS (
+                            SELECT 1 FROM public.loans l
+                            WHERE l.borrower_id = b.id
+                            AND l.officer_id = auth.uid()
+                        )
+                    )
                 )
-            )
-        )
-    );
+            );
+    END IF;
+END $$;
