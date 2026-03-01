@@ -71,35 +71,68 @@ export const Borrowers: React.FC = () => {
   const fetchBorrowers = async () => {
     if (!profile) return;
     setLoading(true);
+    console.log('Fetching borrowers for:', profile.id, 'Page:', page, 'Search:', searchTerm); 
     try {
       let query = supabase
         .from('borrowers')
         .select('*, loans(id, status, officer_id)', { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      const from = (page - 1) * ITEMS_PER_PAGE;
-      const to = from + ITEMS_PER_PAGE - 1;
-
       if (effectiveRoles.includes('loan_officer') && !isExec) {
-        // For loan officers, we need to fetch borrowers they created AND borrowers with loans they manage
-        // Since PostgREST doesn't support OR with nested relations, we'll fetch all and filter in JS
-        const { data, error } = await query.range(from, to);
+        // For loan officers, fetch borrowers they created OR borrowers with loans they manage
+        // We'll use a different approach since PostgREST doesn't handle nested relations in OR conditions
+        
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
 
-        if (error) throw error;
+        // First, get borrowers created by the officer
+        let createdQuery = supabase
+          .from('borrowers')
+          .select('*, loans(id, status, officer_id)', { count: 'exact' })
+          .eq('created_by', profile.id)
+          .order('created_at', { ascending: false });
 
-        // Filter borrowers: either created by officer OR have loans managed by officer
-        const filteredBorrowers = (data || []).filter(borrower =>
-          borrower.created_by === profile.id ||
-          (borrower.loans && borrower.loans.some((loan: any) => loan.officer_id === profile.id))
-        );
+        if (searchTerm.trim()) {
+          createdQuery = createdQuery.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+        }
 
-        setBorrowers(filteredBorrowers);
-        // Note: count will be approximate since we're filtering client-side
-        setTotalCount(filteredBorrowers.length);
+        const { data: createdBorrowers, error: createdError, count: createdCount } = await createdQuery;
+        if (createdError) throw createdError;
+
+        // Second, get borrowers with loans managed by the officer (excluding those already fetched)
+        const createdIds = createdBorrowers?.map(b => b.id) || [];
+        let loanQuery = supabase
+          .from('borrowers')
+          .select('*, loans(id, status, officer_id)', { count: 'exact' })
+          .eq('loans.officer_id', profile.id);
+
+        if (createdIds.length > 0) {
+          loanQuery = loanQuery.not('id', 'in', `(${createdIds.join(',')})`);
+        }
+
+        if (searchTerm.trim()) {
+          loanQuery = loanQuery.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+        }
+
+        const { data: loanBorrowers, error: loanError, count: loanCount } = await loanQuery;
+        if (loanError) throw loanError;
+
+        // Combine and sort results
+        const allBorrowers = [...(createdBorrowers || []), ...(loanBorrowers || [])]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // Apply pagination to combined results
+        const paginatedResults = allBorrowers.slice(from, to + 1);
+        
+        setBorrowers(paginatedResults);
+        setTotalCount((createdCount || 0) + (loanCount || 0));
       } else {
         if (searchTerm.trim()) {
           query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
         }
+
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
 
         const { data, error, count } = await query.range(from, to);
 
