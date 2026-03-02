@@ -40,7 +40,7 @@ export const postJournalEntry = async (
         p_reference_type: reference_type,
         p_reference_id: reference_id,
         p_description: description,
-        p_lines: JSON.stringify(lines),
+        p_lines: lines, // Pass as array, not JSON string
         p_user_id: userId,
         p_entry_date: date,
         p_max_backdate_days: 3

@@ -269,7 +269,7 @@ export const generateAutoReference = async (): Promise<string> => {
 
         if (existingLoans && existingLoans.length > 0) {
             const lastRef = existingLoans[0].reference_no;
-            if (lastRef && lastRef.startsWith(prefix)) {
+            if (lastRef && typeof lastRef === 'string' && lastRef.startsWith(prefix)) {
                 // Extract the 4-digit number from the end
                 const lastNumber = parseInt(lastRef.slice(-4));
                 nextNumber = lastNumber + 1;
