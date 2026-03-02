@@ -52,14 +52,17 @@ interface BackupRecord {
   };
 }
 
-interface SystemResource {
+interface SystemLog {
   id: string;
-  cpu_usage: number;
-  memory_usage: number;
-  disk_usage: number;
-  active_connections: number;
-  database_connections: number;
-  recorded_at: string;
+  level: string;
+  message: string;
+  category: string;
+  user_id?: string;
+  created_at: string;
+  metadata?: any;
+  user?: {
+    full_name: string;
+  };
 }
 
 export const SystemAdministration: React.FC = () => {
@@ -71,6 +74,7 @@ export const SystemAdministration: React.FC = () => {
   const [databaseHealth, setDatabaseHealth] = useState<DatabaseHealth[]>([]);
   const [backupRecords, setBackupRecords] = useState<BackupRecord[]>([]);
   const [systemResources, setSystemResources] = useState<SystemResource[]>([]);
+  const [systemLogs, setSystemLogs] = useState<SystemLog[]>([]);
   
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
   const [backupType, setBackupType] = useState<'full' | 'incremental' | 'differential'>('full');
@@ -97,7 +101,7 @@ export const SystemAdministration: React.FC = () => {
   const fetchSystemData = async () => {
     setLoading(true);
     try {
-      const [healthRes, backupRes, resourceRes] = await Promise.all([
+      const [healthRes, backupRes, resourceRes, logsRes] = await Promise.all([
         supabase
           .from('database_health')
           .select('*')
@@ -105,19 +109,25 @@ export const SystemAdministration: React.FC = () => {
           .limit(50),
         supabase
           .from('backup_records')
-          .select('*, creator:profiles!backup_records_created_by_fkey(full_name)')
+          .select('*, creator:users!backup_records_created_by_fkey(full_name)')
           .order('started_at', { ascending: false })
           .limit(20),
         supabase
           .from('system_resources')
           .select('*')
           .order('recorded_at', { ascending: false })
-          .limit(100)
+          .limit(100),
+        supabase
+          .from('system_logs')
+          .select('*, user:users!system_logs_user_id_fkey(full_name)')
+          .order('created_at', { ascending: false })
+          .limit(50)
       ]);
 
       if (healthRes.data) setDatabaseHealth(healthRes.data);
       if (backupRes.data) setBackupRecords(backupRes.data);
       if (resourceRes.data) setSystemResources(resourceRes.data);
+      if (logsRes.data) setSystemLogs(logsRes.data);
     } catch (error) {
       console.error('Error fetching system data:', error);
       toast.error('Failed to load system data');
@@ -662,36 +672,37 @@ export const SystemAdministration: React.FC = () => {
                   </div>
                   
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {/* Sample log entries */}
-                    <div className="bg-white p-3 rounded border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded">INFO</span>
-                          <span className="text-sm text-gray-900">Database backup completed successfully</span>
-                        </div>
-                        <span className="text-xs text-gray-500">2024-02-26 14:30:15</span>
+                    {systemLogs.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <FileText className="h-8 w-8 mx-auto mb-2" />
+                        No system logs available
                       </div>
-                    </div>
-                    
-                    <div className="bg-white p-3 rounded border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">WARNING</span>
-                          <span className="text-sm text-gray-900">High memory usage detected: 85%</span>
+                    ) : (
+                      systemLogs.map((log) => (
+                        <div key={log.id} className="bg-white p-3 rounded border border-gray-200">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-2 py-1 text-xs rounded ${
+                                log.level === 'INFO' ? 'bg-green-100 text-green-800' :
+                                log.level === 'WARNING' ? 'bg-yellow-100 text-yellow-800' :
+                                log.level === 'ERROR' ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {log.level}
+                              </span>
+                              <span className="text-sm text-gray-900">{log.message}</span>
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              {new Date(log.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+                            <span>Category: {log.category}</span>
+                            {log.user?.full_name && <span>User: {log.user.full_name}</span>}
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-500">2024-02-26 14:25:32</span>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white p-3 rounded border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="px-2 py-1 text-xs bg-red-100 text-red-800 rounded">ERROR</span>
-                          <span className="text-sm text-gray-900">Failed to connect to external service</span>
-                        </div>
-                        <span className="text-xs text-gray-500">2024-02-26 14:20:45</span>
-                      </div>
-                    </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>

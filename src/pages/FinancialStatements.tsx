@@ -50,15 +50,34 @@ export const FinancialStatements: React.FC = () => {
         
         setIsClosed(!!closedData);
 
-        // 1. INCOME STATEMENT DATA
-        const { data: repayments } = await supabase
-            .from('repayments')
-            .select('interest_paid, penalty_paid')
-            .gte('payment_date', startStr)
-            .lt('payment_date', endStr);
+        // 1. INCOME STATEMENT DATA - Comprehensive revenue from all sources via journal entries
+        const { data: journalEntries } = await supabase
+            .from('journal_entries')
+            .select(`
+                journal_lines!inner(amount, account_id),
+                accounts!journal_lines(account_category, account_type, name)
+            `)
+            .gte('date', startStr)
+            .lt('date', endStr);
         
-        const interestIncome = repayments?.reduce((sum, r) => sum + Number(r.interest_paid), 0) || 0;
-        const penaltyIncome = repayments?.reduce((sum, r) => sum + Number(r.penalty_paid), 0) || 0;
+        // Calculate revenue from journal entries (credit entries to revenue accounts)
+        const revenueByType = {};
+        let totalRevenue = 0;
+        
+        journalEntries?.forEach(entry => {
+            entry.journal_lines?.forEach(line => {
+                if (line.accounts?.account_category === 'revenue') {
+                    const type = line.accounts.account_type || line.accounts.name || 'Other';
+                    const amount = Number(line.amount);
+                    revenueByType[type] = (revenueByType[type] || 0) + amount;
+                    totalRevenue += amount;
+                }
+            });
+        });
+        
+        // For backward compatibility, extract interest and penalty if available
+        const interestIncome = revenueByType['interest'] || revenueByType['Interest Income'] || 0;
+        const penaltyIncome = revenueByType['penalty'] || revenueByType['Penalty Income'] || revenueByType['fees'] || revenueByType['Fees'] || 0;
 
         const { data: expenses } = await supabase
             .from('expenses')
@@ -73,12 +92,13 @@ export const FinancialStatements: React.FC = () => {
         }, {}) || {};
 
         const totalExpenses = Object.values(expenseCategories).reduce((sum: any, a: any) => sum + a, 0) as number;
-        const netProfit = (interestIncome + penaltyIncome) - totalExpenses;
+        const netProfit = totalRevenue - totalExpenses;
 
         setPnlData({
+            revenueByType,
+            totalRevenue,
             interestIncome,
             penaltyIncome,
-            totalRevenue: interestIncome + penaltyIncome,
             expenseCategories,
             totalExpenses,
             netProfit

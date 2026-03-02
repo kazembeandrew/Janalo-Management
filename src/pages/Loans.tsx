@@ -193,21 +193,47 @@ export const Loans: React.FC = () => {
     
     setIsProcessing(true);
     try {
+      // Get borrower_id from the loan first
+      const { data: loanData, error: loanError } = await supabase
+        .from('loans')
+        .select('borrower_id, status')
+        .eq('id', deleteLoanId)
+        .single();
+
+      if (loanError) throw loanError;
+
+      const borrowerId = loanData.borrower_id;
+      console.log('Attempting to delete loan:', deleteLoanId, 'borrower:', borrowerId, 'status:', loanData.status);
+
+      // Delete related records
+      console.log('Deleting repayments...');
       await supabase.from('repayments').delete().eq('loan_id', deleteLoanId);
+      console.log('Deleting loan_notes...');
       await supabase.from('loan_notes').delete().eq('loan_id', deleteLoanId);
+      console.log('Deleting loan_documents...');
       await supabase.from('loan_documents').delete().eq('loan_id', deleteLoanId);
-      await supabase.from('borrower_documents').delete().eq('loan_id', deleteLoanId);
+      console.log('Deleting borrower_documents...');
+      await supabase.from('borrower_documents').delete().eq('borrower_id', borrowerId);
+      console.log('Deleting visitations...');
       await supabase.from('visitations').delete().eq('loan_id', deleteLoanId);
       
-      const { error } = await supabase.from('loans').delete().eq('id', deleteLoanId);
+      console.log('Attempting to delete loan record...');
+      const { error, data } = await supabase.from('loans').delete().eq('id', deleteLoanId);
       
-      if (error) throw error;
+      console.log('Delete result:', { error, data });
       
+      if (error) {
+        console.error('Loan deletion error:', error);
+        throw error;
+      }
+      
+      console.log('Loan deletion completed successfully');
       toast.success('Loan deleted successfully');
       setShowDeleteModal(false);
       setDeleteLoanId(null);
       fetchLoans();
     } catch (e: any) {
+      console.error('Delete failed:', e);
       toast.error(`Delete failed: ${e.message}`);
     } finally {
       setIsProcessing(false);
@@ -490,6 +516,7 @@ export const Loans: React.FC = () => {
                       <button 
                         onClick={() => setSelectedIds(new Set())}
                         className="p-2 text-indigo-300 hover:text-white transition-colors"
+                        title="Deselect all loans"
                       >
                           <X className="h-5 w-5" />
                       </button>
@@ -504,7 +531,7 @@ export const Loans: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><ThumbsUp className="mr-3 h-6 w-6 text-indigo-300" /> Bulk Authorization</h3>
-                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-indigo-300" /></button>
+                      <button onClick={() => setShowApproveModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close modal"><X className="h-5 w-5 text-indigo-300" /></button>
                   </div>
                   <div className="p-8 space-y-6">
                       <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
@@ -548,7 +575,7 @@ export const Loans: React.FC = () => {
               <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                   <div className="bg-red-600 px-6 py-5 flex justify-between items-center">
                       <h3 className="font-bold text-white flex items-center text-lg"><Trash2 className="mr-3 h-6 w-6 text-red-200" /> Delete Loan</h3>
-                      <button onClick={() => setShowDeleteModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"><X className="h-5 w-5 text-red-200" /></button>
+                      <button onClick={() => setShowDeleteModal(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" title="Close modal"><X className="h-5 w-5 text-red-200" /></button>
                   </div>
                   <div className="p-8 space-y-5">
                       <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
