@@ -18,8 +18,8 @@ WITH RECURSIVE account_hierarchy AS (
     SELECT 
         id,
         name,
-        account_category,
-        account_code,
+        category,
+        code,
         parent_id,
         balance,
         account_number_display,
@@ -35,8 +35,8 @@ WITH RECURSIVE account_hierarchy AS (
     SELECT 
         ia.id,
         ia.name,
-        ia.account_category,
-        ia.account_code,
+        ia.category,
+        ia.code,
         ia.parent_id,
         ia.balance,
         ia.account_number_display,
@@ -50,8 +50,8 @@ WITH RECURSIVE account_hierarchy AS (
 SELECT 
     id,
     name,
-    account_category,
-    account_code,
+    category,
+    code,
     parent_id,
     balance,
     account_number_display,
@@ -66,7 +66,7 @@ CREATE OR REPLACE FUNCTION get_account_children(parent_uuid UUID)
 RETURNS TABLE (
     id UUID,
     name TEXT,
-    account_category TEXT,
+    category TEXT,
     balance DECIMAL(15,2),
     level INTEGER
 ) AS $$
@@ -84,7 +84,7 @@ BEGIN
         INNER JOIN children c ON ia.parent_id = c.id
         WHERE c.lvl < 10  -- Max depth protection
     )
-    SELECT c.id, c.name, c.account_category, c.balance, c.lvl
+    SELECT c.id, c.name, c.category, c.balance, c.lvl
     FROM children c;
 END;
 $$ LANGUAGE plpgsql;
@@ -107,61 +107,4 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 6. Insert sample hierarchical accounts for testing
--- (Only if they don't exist)
-DO $$
-DECLARE
-    asset_id UUID;
-    liability_id UUID;
-    equity_id UUID;
-    bank_id UUID;
-BEGIN
-    -- Check if we need to create hierarchy roots
-    IF NOT EXISTS (SELECT 1 FROM internal_accounts WHERE name = 'Assets') THEN
-        -- Create root categories
-        INSERT INTO internal_accounts (name, account_category, account_code, account_number_display, balance, is_system_account)
-        VALUES ('Assets', 'asset', 'ASSET_ROOT', '1000', 0, true)
-        RETURNING id INTO asset_id;
-        
-        INSERT INTO internal_accounts (name, account_category, account_code, account_number_display, balance, is_system_account)
-        VALUES ('Liabilities', 'liability', 'LIABILITY_ROOT', '2000', 0, true)
-        RETURNING id INTO liability_id;
-        
-        INSERT INTO internal_accounts (name, account_category, account_code, account_number_display, balance, is_system_account)
-        VALUES ('Equity', 'equity', 'EQUITY_ROOT', '3000', 0, true)
-        RETURNING id INTO equity_id;
-        
-        -- Update existing accounts to be children if they match patterns
-        UPDATE internal_accounts 
-        SET parent_id = asset_id,
-            account_number_display = COALESCE(account_number_display, 
-                CASE account_code
-                    WHEN 'BANK' THEN '1100'
-                    WHEN 'CASH' THEN '1200'
-                    WHEN 'PORTFOLIO' THEN '1300'
-                    ELSE '1000'
-                END)
-        WHERE account_category = 'asset' 
-        AND id != asset_id
-        AND parent_id IS NULL;
-        
-        UPDATE internal_accounts 
-        SET parent_id = liability_id,
-            account_number_display = COALESCE(account_number_display, '2000')
-        WHERE account_category = 'liability' 
-        AND id != liability_id
-        AND parent_id IS NULL;
-        
-        UPDATE internal_accounts 
-        SET parent_id = equity_id,
-            account_number_display = COALESCE(account_number_display, 
-                CASE account_code
-                    WHEN 'CAPITAL' THEN '3100'
-                    WHEN 'EQUITY' THEN '3200'
-                    ELSE '3000'
-                END)
-        WHERE account_category = 'equity' 
-        AND id != equity_id
-        AND parent_id IS NULL;
-    END IF;
-END $$;
+-- 6. Sample data creation skipped

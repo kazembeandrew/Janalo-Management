@@ -178,10 +178,10 @@ export const Accounts: React.FC = () => {
 
           const { data: existing } = await supabase
             .from('internal_accounts')
-            .select('account_code')
-            .in('account_code', coreAccounts.map(a => a.code));
+            .select('code')
+            .in('code', coreAccounts.map(a => a.code));
           
-          const existingCodes = new Set(existing?.map(e => e.account_code) || []);
+          const existingCodes = new Set(existing?.map(e => e.code) || []);
           const missingAccounts = coreAccounts.filter(a => !existingCodes.has(a.code));
 
           if (missingAccounts.length === 0) {
@@ -194,8 +194,8 @@ export const Accounts: React.FC = () => {
             .from('internal_accounts')
             .insert(missingAccounts.map(acc => ({
                 name: acc.name,
-                account_category: acc.category,
-                account_code: acc.code,
+                category: acc.category,
+                code: acc.code,
                 type: acc.type,
                 balance: 0,
                 is_system_account: true
@@ -226,8 +226,8 @@ export const Accounts: React.FC = () => {
             .from('internal_accounts')
             .insert([{
                 name: accountForm.name,
-                account_category: accountForm.category,
-                account_code: accountForm.code,
+                category: accountForm.category,
+                code: accountForm.code,
                 type: finalType,
                 account_number: accountForm.account_number,
                 bank_name: accountForm.bank_name,
@@ -242,7 +242,7 @@ export const Accounts: React.FC = () => {
               const { data: capitalAcc } = await supabase
                 .from('internal_accounts')
                 .select('id')
-                .eq('account_code', 'CAPITAL')
+                .eq('code', 'CAPITAL')
                 .maybeSingle();
 
               if (capitalAcc) {
@@ -295,7 +295,7 @@ export const Accounts: React.FC = () => {
               const { data: capitalAcc } = await supabase
                 .from('internal_accounts')
                 .select('id')
-                .eq('account_code', 'CAPITAL')
+                .eq('code', 'CAPITAL')
                 .maybeSingle();
 
               if (!capitalAcc) throw new Error("System 'Share Capital' account (code: CAPITAL) not found. Please use 'Quick Setup' or create it manually.");
@@ -740,7 +740,7 @@ export const Accounts: React.FC = () => {
                                                   )}
                                               </div>
                                               <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
-                                                  {acc.account_category} • {acc.account_code}
+                                                  {acc.category} • {acc.code}
                                               </p>
                                           </div>
                                       </div>

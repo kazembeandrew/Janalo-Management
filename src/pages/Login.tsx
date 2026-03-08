@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
-import { PieChart, Lock, User, AlertCircle } from 'lucide-react';
+import { PieChart, Lock, User, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [credential, setCredential] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -38,6 +41,33 @@ export const Login: React.FC = () => {
     }
   };
 
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    // Normalize input: strip domain if user typed it, then add it back consistently
+    let username = resetEmail.toLowerCase().trim();
+    if (username.includes('@')) {
+        username = username.split('@')[0];
+    }
+    const email = `${username}@janalo.com`;
+
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) throw error;
+      setResetSent(true);
+    } catch (err: any) {
+      console.error(err);
+      setError('Failed to send reset email. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-lg overflow-hidden">
@@ -49,7 +79,7 @@ export const Login: React.FC = () => {
           <p className="text-indigo-200 mt-2">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleLogin} className="p-8 space-y-6">
+        <form onSubmit={showForgotPassword ? handlePasswordReset : handleLogin} className="p-8 space-y-6">
           {error && (
             <div className="bg-red-50 text-red-700 p-4 rounded-lg flex items-start text-sm">
               <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -57,51 +87,132 @@ export const Login: React.FC = () => {
             </div>
           )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Credentials (Username)</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-gray-400" />
+          {!showForgotPassword ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Credentials (Username)</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <User className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={credential}
+                    onChange={(e) => setCredential(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    placeholder="e.g. Andrew"
+                  />
+                </div>
               </div>
-              <input
-                type="text"
-                required
-                value={credential}
-                onChange={(e) => setCredential(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                placeholder="e.g. Andrew"
-              />
-            </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    placeholder="••••••••"
+                  />
+                </div>
               </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
-                placeholder="••••••••"
-              />
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(true)}
+                  className="text-sm text-indigo-600 hover:text-indigo-800"
+                >
+                  Forgot your password?
+                </button>
+              </div>
+            </>
+          ) : resetSent ? (
+            <div className="text-center space-y-4">
+              <div className="inline-flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
+                <Mail className="h-8 w-8 text-green-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900">Check your email</h3>
+              <p className="text-sm text-gray-600">
+                We've sent a password reset link to your email address.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setResetSent(false);
+                  setResetEmail('');
+                  setError(null);
+                }}
+                className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-800"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back to login
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="text-center mb-6">
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(false)}
+                  className="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-800"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Back to login
+                </button>
+              </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <User className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    type="text"
+                    required
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                    placeholder="Enter your username"
+                  />
+                </div>
+              </div>
 
-          <div className="text-center text-xs text-gray-500">
-            For access issues, please contact the IT Administrator.
-          </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-indigo-900 hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {loading ? 'Sending...' : 'Send Reset Link'}
+              </button>
+
+              <div className="text-center text-xs text-gray-500">
+                We'll send a password reset link to your email.
+              </div>
+            </>
+          )}
+
+          {!showForgotPassword && (
+            <div className="text-center text-xs text-gray-500">
+              For access issues, please contact the IT Administrator.
+            </div>
+          )}
         </form>
       </div>
     </div>

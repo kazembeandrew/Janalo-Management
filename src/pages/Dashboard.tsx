@@ -78,7 +78,7 @@ export const Dashboard: React.FC = () => {
           supabase.from('budgets')
             .select('amount')
             .eq('month', new Date().toISOString().substring(0, 7))
-            .eq('category', 'Interest Income')
+            .ilike('category', '%Interest%')
             .maybeSingle()
       ]);
 

@@ -8,4 +8,4 @@ ADD CONSTRAINT internal_accounts_type_check
 CHECK (type IN ('bank', 'cash', 'mobile', 'equity', 'liability', 'operational', 'capital', 'asset', 'income', 'expense'));
 
 -- 3. Ensure existing data is consistent
-UPDATE public.internal_accounts SET type = 'equity' WHERE account_code = 'CAPITAL' AND type NOT IN ('equity', 'capital');
+UPDATE public.internal_accounts SET type = 'equity' WHERE code = 'CAPITAL' AND type NOT IN ('equity', 'capital');

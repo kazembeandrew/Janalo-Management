@@ -1,6 +1,6 @@
 -- Create system_logs table for storing system events and logs
 CREATE TABLE IF NOT EXISTS public.system_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     level TEXT NOT NULL CHECK (level IN ('INFO', 'WARNING', 'ERROR', 'DEBUG')),
     message TEXT NOT NULL,
     category TEXT DEFAULT 'general',

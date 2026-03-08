@@ -7,6 +7,7 @@ import { lazyLoad } from '@/utils/lazyLoad';
 
 // Critical components - loaded immediately
 import { Login } from '@/pages/Login';
+import { ResetPassword } from '@/pages/ResetPassword';
 import { Dashboard } from '@/pages/Dashboard';
 
 // Lazy loaded heavy components
@@ -73,6 +74,7 @@ const App: React.FC = () => {
         <HashRouter>
           <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route
             path="/"
             element={

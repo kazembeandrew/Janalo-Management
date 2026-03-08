@@ -31,18 +31,45 @@ export const RecentActivity: React.FC = () => {
 
   const fetchActivity = async () => {
     try {
-        // Using explicit join syntax and fetching more records to ensure we have a good feed
+        // Fetch audit logs without join first
         const { data, error } = await supabase
           .from('audit_logs')
-          .select('id, action, created_at, details, users!user_id(full_name)')
+          .select('id, action, created_at, details, user_id')
           .order('created_at', { ascending: false })
           .limit(8);
         
         if (error) throw error;
-        if (data) setActivities(data as any);
+        
+        if (data && data.length > 0) {
+            // Fetch user names separately
+            const userIds = [...new Set(data.map(d => d.user_id).filter(Boolean))];
+            let userMap: Record<string, { full_name: string }> = {};
+            
+            if (userIds.length > 0) {
+                const { data: usersData } = await supabase
+                    .from('users')
+                    .select('id, full_name')
+                    .in('id', userIds);
+                
+                if (usersData) {
+                    usersData.forEach(u => {
+                        userMap[u.id] = { full_name: u.full_name };
+                    });
+                }
+            }
+            
+            // Map with user info
+            const mappedData = data.map(a => ({
+                ...a,
+                users: a.user_id ? userMap[a.user_id] : null
+            }));
+            setActivities(mappedData as any);
+        } else {
+            setActivities([]);
+        }
     } catch (e) {
         console.error("Error fetching activity:", e);
-        // Fallback: try fetching without the join if the join fails
+        // Fallback: try fetching without any fields
         const { data: fallbackData } = await supabase
             .from('audit_logs')
             .select('id, action, created_at, details')

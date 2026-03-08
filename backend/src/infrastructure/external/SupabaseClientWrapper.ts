@@ -27,10 +27,10 @@ export class SupabaseClientWrapper {
     return this.client;
   }
 
-  // Account operations
+  // Account operations - using internal_accounts table
   async getAccountById(id: string): Promise<any> {
     const { data, error } = await this.client
-      .from('accounts')
+      .from('internal_accounts')
       .select('*')
       .eq('id', id)
       .single();
@@ -41,7 +41,7 @@ export class SupabaseClientWrapper {
 
   async getAccountByCode(code: string): Promise<any> {
     const { data, error } = await this.client
-      .from('accounts')
+      .from('internal_accounts')
       .select('*')
       .eq('code', code)
       .single();
@@ -52,7 +52,7 @@ export class SupabaseClientWrapper {
 
   async getAllAccounts(): Promise<any[]> {
     const { data, error } = await this.client
-      .from('accounts')
+      .from('internal_accounts')
       .select('*')
       .order('code');
 
@@ -61,9 +61,19 @@ export class SupabaseClientWrapper {
   }
 
   async saveAccount(accountData: any): Promise<void> {
+    // Map domain column names to database column names
+    const dbData = {
+      id: accountData.id,
+      code: accountData.code,
+      name: accountData.name,
+      type: accountData.type,
+      category: accountData.category,
+      is_active: accountData.is_active ?? true
+    };
+    
     const { error } = await this.client
-      .from('accounts')
-      .upsert(accountData);
+      .from('internal_accounts')
+      .upsert(dbData);
 
     if (error) throw error;
   }

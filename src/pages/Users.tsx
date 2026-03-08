@@ -11,6 +11,19 @@ import {
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
+// Helper function for authenticated API calls
+const authFetch = async (url: string, options: RequestInit = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = {
+        ...options.headers,
+        'Content-Type': 'application/json',
+    };
+    if (session?.access_token) {
+        (headers as Record<string, string>)['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return fetch(url, { ...options, headers });
+};
+
 // Sub-components
 import { UserTable } from '@/components/users/UserTable';
 
@@ -125,9 +138,8 @@ export const Users: React.FC = () => {
       const email = `${newUser.username.toLowerCase().trim()}@janalo.com`;
       
       try {
-          const response = await fetch('/api/admin/create-user', {
+          const response = await authFetch('/api/admin/create-user', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                   ...newUser,
                   email: email
@@ -158,9 +170,8 @@ export const Users: React.FC = () => {
       setIsProcessing(true);
 
       try {
-          const response = await fetch('/api/admin/reset-password', {
+          const response = await authFetch('/api/admin/reset-password', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ userId: selectedUser.id, newPassword })
           });
 
@@ -303,9 +314,8 @@ export const Users: React.FC = () => {
 
       setIsProcessing(true);
       try {
-          const response = await fetch('/api/admin/update-user-role', {
+          const response = await authFetch('/api/admin/update-user-role', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ userId: selectedUser.id, newRole: targetRole })
           });
 

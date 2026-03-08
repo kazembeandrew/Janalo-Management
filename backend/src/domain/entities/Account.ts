@@ -1,6 +1,8 @@
 // Domain Layer - Entities
 // Account represents a chart of accounts entry
 
+import { AccountCode } from '../value-objects/AccountCode';
+
 export enum AccountType {
   ASSET = 'asset',
   LIABILITY = 'liability',

@@ -1,77 +1,78 @@
+-- Loans table not created yet (skipping)
 -- Create loan_documents table for storing post-approval loan documents
-CREATE TABLE IF NOT EXISTS public.loan_documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- 'application_form', etc.
-    file_name VARCHAR(255) NOT NULL,
-    storage_path TEXT NOT NULL,
-    mime_type VARCHAR(100) NOT NULL,
-    file_size BIGINT NOT NULL,
-    uploaded_by UUID REFERENCES public.users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- CREATE TABLE IF NOT EXISTS public.loan_documents (
+--     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+--     loan_id UUID REFERENCES public.loans(id) ON DELETE CASCADE,
+--     type VARCHAR(50) NOT NULL, -- 'application_form', etc.
+--     file_name VARCHAR(255) NOT NULL,
+--     storage_path TEXT NOT NULL,
+--     mime_type VARCHAR(100) NOT NULL,
+--     file_size BIGINT NOT NULL,
+--     uploaded_by UUID REFERENCES public.users(id),
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
--- Enable RLS
-ALTER TABLE public.loan_documents ENABLE ROW LEVEL SECURITY;
+-- -- Enable RLS
+-- ALTER TABLE public.loan_documents ENABLE ROW LEVEL SECURITY;
 
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_loan_documents_loan_id ON public.loan_documents(loan_id);
-CREATE INDEX IF NOT EXISTS idx_loan_documents_type ON public.loan_documents(type);
+-- -- Indexes for performance
+-- CREATE INDEX IF NOT EXISTS idx_loan_documents_loan_id ON public.loan_documents(loan_id);
+-- CREATE INDEX IF NOT EXISTS idx_loan_documents_type ON public.loan_documents(type);
 
--- RLS Policies
--- Admin and CEO can access all loan documents
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies 
-        WHERE tablename = 'loan_documents' 
-        AND policyname = 'Admin and CEO access loan documents'
-    ) THEN
-        CREATE POLICY "Admin and CEO access loan documents" ON public.loan_documents
-            FOR ALL USING (
-                EXISTS (
-                    SELECT 1 FROM public.users
-                    WHERE public.users.id = auth.uid()
-                    AND public.users.role IN ('admin', 'ceo')
-                )
-            );
-    END IF;
-END $$;
+-- -- RLS Policies
+-- -- Admin and CEO can access all loan documents
+-- DO $$
+-- BEGIN
+--     IF NOT EXISTS (
+--         SELECT 1 FROM pg_policies 
+--         WHERE tablename = 'loan_documents' 
+--         AND policyname = 'Admin and CEO access loan documents'
+--     ) THEN
+--         CREATE POLICY "Admin and CEO access loan documents" ON public.loan_documents
+--             FOR ALL USING (
+--                 EXISTS (
+--                     SELECT 1 FROM public.users
+--                     WHERE public.users.id = auth.uid()
+--                     AND public.users.role IN ('admin', 'ceo')
+--                 )
+--             );
+--     END IF;
+-- END $$;
 
--- Loan officers can access documents for loans they manage
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies 
-        WHERE tablename = 'loan_documents' 
-        AND policyname = 'Loan officers access loan documents'
-    ) THEN
-        CREATE POLICY "Loan officers access loan documents" ON public.loan_documents
-            FOR ALL USING (
-                EXISTS (
-                    SELECT 1 FROM public.loans l
-                    WHERE l.id = loan_documents.loan_id
-                    AND l.officer_id = auth.uid()
-                )
-            );
-    END IF;
-END $$;
+-- -- Loan officers can access documents for loans they manage
+-- DO $$
+-- BEGIN
+--     IF NOT EXISTS (
+--         SELECT 1 FROM pg_policies 
+--         WHERE tablename = 'loan_documents' 
+--         AND policyname = 'Loan officers access loan documents'
+--     ) THEN
+--         CREATE POLICY "Loan officers access loan documents" ON public.loan_documents
+--             FOR ALL USING (
+--                 EXISTS (
+--                     SELECT 1 FROM public.loans l
+--                     WHERE l.id = loan_documents.loan_id
+--                     AND l.officer_id = auth.uid()
+--                 )
+--             );
+--     END IF;
+-- END $$;
 
--- Accountants can access loan documents
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_policies 
-        WHERE tablename = 'loan_documents' 
-        AND policyname = 'Accountants access loan documents'
-    ) THEN
-        CREATE POLICY "Accountants access loan documents" ON public.loan_documents
-            FOR ALL USING (
-                EXISTS (
-                    SELECT 1 FROM public.users
-                    WHERE public.users.id = auth.uid()
-                    AND public.users.role = 'accountant'
-                )
-            );
-    END IF;
-END $$;
+-- -- Accountants can access loan documents
+-- DO $$
+-- BEGIN
+--     IF NOT EXISTS (
+--         SELECT 1 FROM pg_policies
+--         WHERE tablename = 'loan_documents'
+--         AND policyname = 'Accountants access loan documents'
+--     ) THEN
+--         CREATE POLICY "Accountants access loan documents" ON public.loan_documents
+--             FOR ALL USING (
+--                 EXISTS (
+--                     SELECT 1 FROM public.users
+--                     WHERE public.users.id = auth.uid()
+--                     AND public.users.role = 'accountant'
+--                 )
+--             );
+--     END IF;
+-- END $$;

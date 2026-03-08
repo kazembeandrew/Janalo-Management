@@ -134,7 +134,7 @@ export const NotificationBell: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'archived'>('all');
 
-  // Fetch notifications
+  // Fetch notifications - adapted to match actual database schema
   const fetchNotifications = useCallback(async () => {
     if (!profile) return;
     setIsLoading(true);
@@ -144,14 +144,8 @@ export const NotificationBell: React.FC = () => {
         .from('notifications')
         .select('*')
         .eq('user_id', profile.id)
-        .eq('is_archived', showArchived)
-        .order('priority', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(50);
-
-      if (filter !== 'all') {
-        query = query.eq('category', filter);
-      }
 
       if (activeTab === 'unread') {
         query = query.eq('is_read', false);
@@ -160,23 +154,55 @@ export const NotificationBell: React.FC = () => {
       const { data, error } = await query;
       
       if (!error && data) {
-        setNotifications(data as Notification[]);
+        // Map the data to match expected interface (add missing fields with defaults)
+        const mappedData = data.map(n => ({
+          ...n,
+          priority: 'normal' as const,
+          category: 'general' as const,
+          is_archived: false,
+          link: n.action_url,
+          actions: []
+        }));
+        setNotifications(mappedData as Notification[]);
       }
+    } catch (e) {
+      // Log error for debugging but don't crash - notifications are non-critical
+      console.error('Error fetching notifications:', e);
     } finally {
       setIsLoading(false);
     }
-  }, [profile, filter, showArchived, activeTab]);
+  }, [profile, activeTab]);
 
-  // Fetch counts
+  // Fetch counts - fallback to simple count if RPC function doesn't exist
   const fetchCounts = useCallback(async () => {
     if (!profile) return;
     
-    const { data, error } = await supabase.rpc('get_notification_counts_detailed', {
-      p_user_id: profile.id
-    });
-    
-    if (!error && data) {
-      setCounts(data as NotificationCounts);
+    try {
+      // Try the detailed RPC first
+      const { data, error } = await supabase.rpc('get_notification_counts_detailed', {
+        p_user_id: profile.id
+      });
+      
+      if (!error && data) {
+        setCounts(data as NotificationCounts);
+      } else {
+        // Fallback: count notifications directly from table
+        const { count } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', profile.id)
+          .eq('is_read', false);
+        
+        setCounts({
+          total_unread: count || 0,
+          urgent_unread: 0,
+          high_unread: 0,
+          by_category: { system: 0, loan: 0, repayment: 0, expense: 0, task: 0, message: 0, security: 0, general: 0 }
+        });
+      }
+    } catch (e) {
+      // Log error for debugging - counts are non-critical UI elements
+      console.error('Could not fetch notification counts:', e);
     }
   }, [profile]);
 
@@ -195,22 +221,36 @@ export const NotificationBell: React.FC = () => {
         table: 'notifications',
         filter: `user_id=eq.${profile.id}`
       }, (payload) => {
-        const newNotif = payload.new as Notification;
-        setNotifications(prev => [newNotif, ...prev]);
+        const newNotif = payload.new as any;
+        // Add missing fields with defaults for compatibility
+        const enhancedNotif: Notification = {
+          id: newNotif.id,
+          title: newNotif.title,
+          message: newNotif.message,
+          link: newNotif.action_url || null,
+          is_read: newNotif.is_read || false,
+          read_at: newNotif.read_at,
+          created_at: newNotif.created_at,
+          type: newNotif.type || 'info',
+          priority: 'normal',
+          category: 'general',
+          actions: [],
+          is_archived: false,
+          expires_at: null,
+          sender_id: null,
+          related_entity_type: null,
+          related_entity_id: null
+        };
+        setNotifications(prev => [enhancedNotif, ...prev]);
         setCounts(prev => ({
           ...prev,
-          total_unread: prev.total_unread + 1,
-          urgent_unread: newNotif.priority === 'urgent' ? prev.urgent_unread + 1 : prev.urgent_unread,
-          high_unread: newNotif.priority === 'high' ? prev.high_unread + 1 : prev.high_unread,
-          by_category: {
-            ...prev.by_category,
-            [newNotif.category]: (prev.by_category[newNotif.category] || 0) + 1
-          }
+          total_unread: prev.total_unread + 1
         }));
         
-        if (newNotif.priority === 'high' || newNotif.priority === 'urgent') {
+        // Show toast for new notifications
+        if (newNotif.type === 'error' || newNotif.type === 'warning') {
           toast(newNotif.message, { 
-            icon: newNotif.priority === 'urgent' ? '🔴' : '⚠️',
+            icon: newNotif.type === 'error' ? '🔴' : '⚠️',
             duration: 5000
           });
         }

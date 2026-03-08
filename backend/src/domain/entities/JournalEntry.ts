@@ -1,6 +1,8 @@
 // Domain Layer - Entities
 // JournalEntry represents a double-entry accounting transaction
 
+import { Money } from '../value-objects/Money';
+
 export enum JournalEntryStatus {
   DRAFT = 'draft',
   POSTED = 'posted',

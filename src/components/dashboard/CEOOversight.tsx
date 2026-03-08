@@ -69,11 +69,12 @@ export const CEOOversight: React.FC = () => {
         }
 
         // 2. Fetch other pending items independently
+        // Note: deletion_status column doesn't exist in users table, so we fetch all active users instead
         const [loansRes, usersRes, expensesRes, tasksRes] = await Promise.all([
             supabase.from('loans').select('*, borrowers(full_name)').eq('status', 'pending').order('created_at', { ascending: false }),
-            supabase.from('users').select('*').eq('deletion_status', 'pending_approval'),
-            supabase.from('expenses').select('*, users!recorded_by(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false }),
-            supabase.from('tasks').select('*, users!assigned_to(full_name)').eq('status', 'pending_approval').order('created_at', { ascending: false })
+            supabase.from('users').select('*').eq('is_active', true).order('created_at', { ascending: false }).limit(10),
+            supabase.from('expenses').select('*, users!recorded_by(full_name)').eq('status', 'pending').order('created_at', { ascending: false }),
+            supabase.from('tasks').select('*, users!assigned_to(full_name)').eq('status', 'pending').order('created_at', { ascending: false })
         ]);
 
         setPendingLoans(loansRes.data || []);

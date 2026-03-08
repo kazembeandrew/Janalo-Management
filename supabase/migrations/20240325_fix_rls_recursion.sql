@@ -41,28 +41,17 @@ AS $function$
   );
 $function$;
 
--- 2. Ensure system_documents has a proper foreign key to users for joining
-DO $$ 
-BEGIN 
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.table_constraints 
-        WHERE constraint_name = 'system_documents_uploaded_by_fkey'
-    ) THEN
-        ALTER TABLE public.system_documents 
-        ADD CONSTRAINT system_documents_uploaded_by_fkey 
-        FOREIGN KEY (uploaded_by) REFERENCES public.users(id);
-    END IF;
-END $$;
+-- 2. System_documents table not created yet (skipping)
 
 -- 3. Simplify the system_documents RLS to prevent deep nesting
-DROP POLICY IF EXISTS "Users can view documents they have access to" ON public.system_documents;
-CREATE POLICY "Users can view documents they have access to" ON public.system_documents
-FOR SELECT TO authenticated 
-USING (
-    uploaded_by = auth.uid() OR 
-    get_auth_role() IN ('admin', 'ceo') OR
-    EXISTS (
-        SELECT 1 FROM document_permissions dp 
-        WHERE dp.document_id = id AND dp.role = get_auth_role()
-    )
-);
+-- DROP POLICY IF EXISTS "Users can view documents they have access to" ON public.system_documents;
+-- CREATE POLICY "Users can view documents they have access to" ON public.system_documents
+-- FOR SELECT TO authenticated 
+-- USING (
+--     uploaded_by = auth.uid() OR 
+--     get_auth_role() IN ('admin', 'ceo') OR
+--     EXISTS (
+--         SELECT 1 FROM document_permissions dp 
+--         WHERE dp.document_id = id AND dp.role = get_auth_role()
+--     )
+-- );

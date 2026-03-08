@@ -132,10 +132,14 @@ export const validateReferenceNumber = (reference: string): ValidationResult => 
     return { isValid: false, error: 'Reference number is required' };
   }
   
-  // Check for valid format (e.g., JAN-2024-001)
-  const refRegex = /^[A-Z]{3}-\d{4}-\d{3}$/;
-  if (!refRegex.test(reference)) {
-    return { isValid: false, error: 'Reference number must be in format: XXX-YYYY-ZZZ' };
+  // Check for valid format - support both old and new formats
+  // Old format: XXX-YYYY-ZZZ (e.g., JAN-2024-001)
+  // New format: JNYymmNNNN (e.g., JN2412345678)
+  const oldFormatRegex = /^[A-Z]{3}-\d{4}-\d{3}$/;
+  const newFormatRegex = /^JN\d{2}\d{2}\d{4}$/;
+  
+  if (!oldFormatRegex.test(reference) && !newFormatRegex.test(reference)) {
+    return { isValid: false, error: 'Reference number must be in format: XXX-YYYY-ZZZ or JNYymmNNNN' };
   }
   
   return { isValid: true };

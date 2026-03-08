@@ -280,8 +280,8 @@ export const generateAutoReference = async (): Promise<string> => {
         const formattedNumber = nextNumber.toString().padStart(4, '0');
 
         return `${prefix}${month}${formattedNumber}`;
-    } catch (error) {
-        console.error('Error generating auto reference:', error);
+    } catch (error: unknown) {
+        console.error('Error generating auto reference:', error instanceof Error ? error.message : String(error));
         // Fallback to timestamp-based reference if database query fails
         const timestamp = Date.now().toString().slice(-4);
         return `${prefix}${month}${timestamp}`;
@@ -311,13 +311,13 @@ export const isReferenceUnique = async (reference: string): Promise<boolean> => 
             .maybeSingle();
 
         if (error && error.code !== 'PGRST116') { // PGRST116 is "not found" which is fine
-            console.error('Error checking reference uniqueness:', error);
+            console.error('Error checking reference uniqueness:', error instanceof Error ? error.message : String(error));
             return false;
         }
 
         return !data; // If no data found, it's unique
-    } catch (error) {
-        console.error('Error checking reference uniqueness:', error);
+    } catch (error: unknown) {
+        console.error('Error checking reference uniqueness:', error instanceof Error ? error.message : String(error));
         return false;
     }
 };

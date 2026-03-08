@@ -1,24 +1,24 @@
 -- Complete Audit Trail Implementation
 -- Adds updated_by, updated_at, and automatic audit logging to all financial tables
 
--- 1. Add audit fields to loans table
-ALTER TABLE public.loans 
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
+-- 1. Add audit fields to loans table (table not created yet, skipping)
+-- ALTER TABLE public.loans 
+-- ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1;
 
--- 2. Add audit fields to repayments table
-ALTER TABLE public.repayments 
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS reversed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS reversal_reason TEXT,
-ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE;
+-- 2. Add audit fields to repayments table (table not created yet, skipping)
+-- ALTER TABLE public.repayments 
+-- ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS reversed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS reversal_reason TEXT,
+-- ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE;
 
-CREATE INDEX IF NOT EXISTS idx_repayments_idempotency ON public.repayments(idempotency_key);
+-- CREATE INDEX IF NOT EXISTS idx_repayments_idempotency ON public.repayments(idempotency_key);
 
 -- 3. Add audit fields to internal_accounts table
 ALTER TABLE public.internal_accounts 
@@ -34,17 +34,17 @@ ADD COLUMN IF NOT EXISTS reversed BOOLEAN DEFAULT false,
 ADD COLUMN IF NOT EXISTS reversed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
 ADD COLUMN IF NOT EXISTS reversal_entry_id UUID REFERENCES public.journal_entries(id) ON DELETE SET NULL;
 
--- 5. Add audit fields to borrowers table
-ALTER TABLE public.borrowers 
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
+-- 5. Add audit fields to borrowers table (table not created yet, skipping)
+-- ALTER TABLE public.borrowers 
+-- ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL;
 
--- 6. Add audit fields to expenses table
-ALTER TABLE public.expenses 
-ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
+-- 6. Add audit fields to expenses table (table not created yet, skipping)
+-- ALTER TABLE public.expenses 
+-- ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE,
+-- ADD COLUMN IF NOT EXISTS updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+-- ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE;
 
 -- 7. Create comprehensive audit log table
 CREATE TABLE IF NOT EXISTS public.audit_trail (
@@ -110,29 +110,29 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 10. Create triggers for automatic audit logging
--- Loans audit trigger
-DROP TRIGGER IF EXISTS trg_loans_audit ON public.loans;
-CREATE TRIGGER trg_loans_audit
-AFTER INSERT OR UPDATE OR DELETE ON public.loans
-FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
+-- Loans audit trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_loans_audit ON public.loans;
+-- CREATE TRIGGER trg_loans_audit
+-- AFTER INSERT OR UPDATE OR DELETE ON public.loans
+-- FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
 
--- Repayments audit trigger
-DROP TRIGGER IF EXISTS trg_repayments_audit ON public.repayments;
-CREATE TRIGGER trg_repayments_audit
-AFTER INSERT OR UPDATE OR DELETE ON public.repayments
-FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
+-- Repayments audit trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_repayments_audit ON public.repayments;
+-- CREATE TRIGGER trg_repayments_audit
+-- AFTER INSERT OR UPDATE OR DELETE ON public.repayments
+-- FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
 
--- Borrowers audit trigger
-DROP TRIGGER IF EXISTS trg_borrowers_audit ON public.borrowers;
-CREATE TRIGGER trg_borrowers_audit
-AFTER INSERT OR UPDATE OR DELETE ON public.borrowers
-FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
+-- Borrowers audit trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_borrowers_audit ON public.borrowers;
+-- CREATE TRIGGER trg_borrowers_audit
+-- AFTER INSERT OR UPDATE OR DELETE ON public.borrowers
+-- FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
 
--- Expenses audit trigger
-DROP TRIGGER IF EXISTS trg_expenses_audit ON public.expenses;
-CREATE TRIGGER trg_expenses_audit
-AFTER INSERT OR UPDATE OR DELETE ON public.expenses
-FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
+-- Expenses audit trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_expenses_audit ON public.expenses;
+-- CREATE TRIGGER trg_expenses_audit
+-- AFTER INSERT OR UPDATE OR DELETE ON public.expenses
+-- FOR EACH ROW EXECUTE FUNCTION log_audit_trail();
 
 -- Internal accounts audit trigger
 DROP TRIGGER IF EXISTS trg_accounts_audit ON public.internal_accounts;
@@ -153,30 +153,31 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- 12. Create timestamp update triggers
-DROP TRIGGER IF EXISTS trg_loans_timestamp ON public.loans;
-CREATE TRIGGER trg_loans_timestamp
-BEFORE UPDATE ON public.loans
-FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
+-- Loans timestamp trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_loans_timestamp ON public.loans;
+-- CREATE TRIGGER trg_loans_timestamp
+-- BEFORE UPDATE ON public.loans
+-- FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
 
-DROP TRIGGER IF EXISTS trg_repayments_timestamp ON public.repayments;
-CREATE TRIGGER trg_repayments_timestamp
-BEFORE UPDATE ON public.repayments
-FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
+-- Repayments timestamp trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_repayments_timestamp ON public.repayments;
+-- CREATE TRIGGER trg_repayments_timestamp
+-- BEFORE UPDATE ON public.repayments
+-- FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
 
-DROP TRIGGER IF EXISTS trg_borrowers_timestamp ON public.borrowers;
-CREATE TRIGGER trg_borrowers_timestamp
-BEFORE UPDATE ON public.borrowers
-FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
+-- Borrowers timestamp trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_borrowers_timestamp ON public.borrowers;
+-- CREATE TRIGGER trg_borrowers_timestamp
+-- BEFORE UPDATE ON public.borrowers
+-- FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
 
-DROP TRIGGER IF EXISTS trg_expenses_timestamp ON public.expenses;
-CREATE TRIGGER trg_expenses_timestamp
-BEFORE UPDATE ON public.expenses
-FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
+-- Expenses timestamp trigger (table not created yet, skipping)
+-- DROP TRIGGER IF EXISTS trg_expenses_timestamp ON public.expenses;
+-- CREATE TRIGGER trg_expenses_timestamp
+-- BEFORE UPDATE ON public.expenses
+-- FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
 
-DROP TRIGGER IF EXISTS trg_accounts_timestamp ON public.internal_accounts;
-CREATE TRIGGER trg_accounts_timestamp
-BEFORE UPDATE ON public.internal_accounts
-FOR EACH ROW EXECUTE FUNCTION update_audit_fields();
+-- Internal accounts timestamp trigger
 
 -- 13. Function to get audit trail for a record
 CREATE OR REPLACE FUNCTION get_record_audit_trail(

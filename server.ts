@@ -10,9 +10,14 @@ const PORT = 3000;
 
 app.use(express.json());
 
-const SUPABASE_URL = process.env.SUPABASE_URL || "https://tfpzehyrkzbenjobkdsz.supabase.co";
-const DEFAULT_ANON_KEY = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRmcHplaHlya3piZW5qb2JrZHN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0MDc1MjIsImV4cCI6MjA4Njk4MzUyMn0.p5NEtPP5xAlqBbZwibnkZv2MH4RVYfVKqt8MewTHNsQ";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL;
+const DEFAULT_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !DEFAULT_ANON_KEY) {
+  console.error('ERROR: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables are required');
+  process.exit(1);
+}
 
 // Admin client for privileged operations - require service role key
 const supabaseAdmin = SERVICE_ROLE_KEY 
@@ -65,6 +70,7 @@ app.post("/api/admin/create-user", authorizeAdmin, async (req, res) => {
   }
 
   try {
+    // Create user in auth.users
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -74,10 +80,24 @@ app.post("/api/admin/create-user", authorizeAdmin, async (req, res) => {
 
     if (authError) throw authError;
 
-    const { error: updateError } = await supabaseAdmin
+    // Create profile in public.users
+    const { error: profileError } = await supabaseAdmin
       .from('users')
-      .update({ role: role })
-      .eq('id', authData.user.id);
+      .insert({
+        id: authData.user.id,
+        email: email,
+        full_name: full_name || email.split('@')[0],
+        role: role || 'loan_officer',
+        is_active: true
+      });
+
+    if (profileError) {
+      // If profile already exists, just update the role
+      await supabaseAdmin
+        .from('users')
+        .update({ role: role })
+        .eq('id', authData.user.id);
+    }
 
     res.json({ success: true, user: authData.user });
   } catch (error: any) {

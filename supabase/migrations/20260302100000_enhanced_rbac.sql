@@ -11,16 +11,7 @@ CREATE TABLE IF NOT EXISTS public.permissions (
     UNIQUE(resource, action)
 );
 
--- 2. Create role_permissions table
-CREATE TABLE IF NOT EXISTS public.role_permissions (
-    role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE,
-    permission_id UUID REFERENCES public.permissions(id) ON DELETE CASCADE,
-    granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    granted_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
-    PRIMARY KEY (role_id, permission_id)
-);
-
--- 3. Create roles table (if not exists)
+-- 2. Create roles table (if not exists)
 CREATE TABLE IF NOT EXISTS public.roles (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(50) UNIQUE NOT NULL,
@@ -30,7 +21,15 @@ CREATE TABLE IF NOT EXISTS public.roles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 4. Create user_roles table (if not exists)
+-- 3. Create role_permissions table
+CREATE TABLE IF NOT EXISTS public.role_permissions (
+    role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE,
+    permission_id UUID REFERENCES public.permissions(id) ON DELETE CASCADE,
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    granted_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    PRIMARY KEY (role_id, permission_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.user_roles (
     user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
     role_id UUID REFERENCES public.roles(id) ON DELETE CASCADE,

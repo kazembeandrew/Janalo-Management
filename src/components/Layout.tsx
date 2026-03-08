@@ -91,8 +91,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       ).slice(0, 5);
       
       return { borrowers: bRes.data || [], loans: uniqueLoans };
-    } catch (error) {
-      console.error('Search error:', error);
+    } catch (error: unknown) {
+      console.error('Search error:', error instanceof Error ? error.message : String(error));
       return { borrowers: [], loans: [] };
     }
   };

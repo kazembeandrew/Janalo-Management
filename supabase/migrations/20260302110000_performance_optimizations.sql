@@ -14,29 +14,11 @@ CREATE INDEX IF NOT EXISTS idx_journal_lines_entry_only ON public.journal_lines(
 CREATE INDEX IF NOT EXISTS idx_journal_entries_posted_date ON public.journal_entries(entry_date DESC)
 WHERE status = 'posted';
 
-CREATE INDEX IF NOT EXISTS idx_journal_lines_posted_account ON public.journal_lines(account_id)
-WHERE EXISTS (
-    SELECT 1 FROM journal_entries je
-    WHERE je.id = journal_lines.journal_entry_id
-    AND je.status = 'posted'
-);
-
 -- 4. Optimize audit trail queries (frequently accessed)
 CREATE INDEX IF NOT EXISTS idx_audit_trail_table_record_action ON public.audit_trail(table_name, record_id, action);
 CREATE INDEX IF NOT EXISTS idx_audit_trail_timestamp ON public.audit_trail(changed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_trail_user_timestamp ON public.audit_trail(changed_by, changed_at DESC);
 
--- 5. Add covering indexes for account balance calculations
-CREATE INDEX IF NOT EXISTS idx_journal_lines_composite ON public.journal_lines(
-    account_id,
-    journal_entry_id,
-    debit,
-    credit
-) WHERE EXISTS (
-    SELECT 1 FROM journal_entries je
-    WHERE je.id = journal_lines.journal_entry_id
-    AND je.status = 'posted'
-);
 
 -- 6. Optimize user permission queries
 CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON public.user_roles(user_id);

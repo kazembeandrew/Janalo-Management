@@ -14,18 +14,35 @@ export const RecentDocuments: React.FC = () => {
 
   const fetchRecentDocs = async () => {
     try {
-        // Simplified join syntax
+        // Fetch without join first, then fetch users separately if needed
         const { data, error } = await supabase
             .from('system_documents')
-            .select('*, users!uploaded_by(full_name)')
+            .select('*')
             .order('created_at', { ascending: false })
             .limit(5);
         
         if (!error && data) {
-            // Map the joined data to the expected uploader structure
+            // Fetch uploader names separately
+            const uploaderIds = [...new Set(data.map(d => d.uploaded_by).filter(Boolean))];
+            let uploaderMap: Record<string, { full_name: string }> = {};
+            
+            if (uploaderIds.length > 0) {
+                const { data: usersData } = await supabase
+                    .from('users')
+                    .select('id, full_name')
+                    .in('id', uploaderIds);
+                
+                if (usersData) {
+                    usersData.forEach(u => {
+                        uploaderMap[u.id] = { full_name: u.full_name };
+                    });
+                }
+            }
+            
+            // Map the data with uploader info
             const formattedDocs = data.map((d: any) => ({
                 ...d,
-                uploader: d.users
+                uploader: d.uploaded_by ? uploaderMap[d.uploaded_by] : null
             }));
             setDocs(formattedDocs);
         }

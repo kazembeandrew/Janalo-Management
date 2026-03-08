@@ -37,20 +37,20 @@ CREATE TABLE IF NOT EXISTS risk_assessments (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Customer Lifetime Value
-CREATE TABLE IF NOT EXISTS customer_lifetime_value (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    borrower_id UUID REFERENCES borrowers(id) ON DELETE CASCADE,
-    clv_score DECIMAL(15,2) NOT NULL,
-    total_revenue_generated DECIMAL(15,2) NOT NULL,
-    acquisition_cost DECIMAL(15,2),
-    retention_cost DECIMAL(15,2),
-    profitability_score DECIMAL(5,2),
-    loyalty_score DECIMAL(5,2),
-    last_calculated DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- Customer Lifetime Value (commented out - borrowers table doesn't exist)
+-- CREATE TABLE IF NOT EXISTS customer_lifetime_value (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     borrower_id UUID REFERENCES borrowers(id) ON DELETE CASCADE,
+--     clv_score DECIMAL(15,2) NOT NULL,
+--     total_revenue_generated DECIMAL(15,2) NOT NULL,
+--     acquisition_cost DECIMAL(15,2),
+--     retention_cost DECIMAL(15,2),
+--     profitability_score DECIMAL(5,2),
+--     loyalty_score DECIMAL(5,2),
+--     last_calculated DATE NOT NULL,
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+--     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
 -- ============================================================================
 -- 2. COMPLIANCE & REGULATORY MANAGEMENT
@@ -301,18 +301,18 @@ CREATE TABLE IF NOT EXISTS investment_portfolio (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Budget Variance Analysis
-CREATE TABLE IF NOT EXISTS budget_variance (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    budget_id UUID REFERENCES budgets(id) ON DELETE CASCADE,
-    actual_amount DECIMAL(15,2) NOT NULL,
-    variance_amount DECIMAL(15,2) NOT NULL,
-    variance_percentage DECIMAL(5,2) NOT NULL,
-    analysis_period VARCHAR(20) NOT NULL, -- 'monthly', 'quarterly', 'yearly'
-    notes TEXT,
-    created_by UUID REFERENCES public.users(id),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- Budget Variance Analysis (commented out - budgets table doesn't exist)
+-- CREATE TABLE IF NOT EXISTS budget_variance (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     budget_id UUID REFERENCES budgets(id) ON DELETE CASCADE,
+--     actual_amount DECIMAL(15,2) NOT NULL,
+--     variance_amount DECIMAL(15,2) NOT NULL,
+--     variance_percentage DECIMAL(5,2) NOT NULL,
+--     analysis_period VARCHAR(20) NOT NULL, -- 'monthly', 'quarterly', 'yearly'
+--     notes TEXT,
+--     created_by UUID REFERENCES public.users(id),
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
 -- ============================================================================
 -- 8. CUSTOMER RELATIONSHIP MANAGEMENT
@@ -332,30 +332,30 @@ CREATE TABLE IF NOT EXISTS communication_templates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Customer Satisfaction Surveys
-CREATE TABLE IF NOT EXISTS satisfaction_surveys (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    borrower_id UUID REFERENCES borrowers(id) ON DELETE CASCADE,
-    loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
-    survey_type VARCHAR(50) NOT NULL, -- 'service_quality', 'loan_process', etc.
-    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    feedback TEXT,
-    survey_date DATE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- Customer Satisfaction Surveys (commented out - borrowers and loans tables don't exist)
+-- CREATE TABLE IF NOT EXISTS satisfaction_surveys (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     borrower_id UUID REFERENCES borrowers(id) ON DELETE CASCADE,
+--     loan_id UUID REFERENCES loans(id) ON DELETE CASCADE,
+--     survey_type VARCHAR(50) NOT NULL, -- 'service_quality', 'loan_process', etc.
+--     rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+--     feedback TEXT,
+--     survey_date DATE NOT NULL,
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
--- Referral Program
-CREATE TABLE IF NOT EXISTS referral_program (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    referrer_id UUID REFERENCES borrowers(id),
-    referred_id UUID REFERENCES borrowers(id),
-    referral_date DATE NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
-    reward_amount DECIMAL(15,2),
-    reward_paid BOOLEAN DEFAULT false,
-    notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- Referral Program (commented out - borrowers table doesn't exist)
+-- CREATE TABLE IF NOT EXISTS referral_program (
+--     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--     referrer_id UUID REFERENCES borrowers(id),
+--     referred_id UUID REFERENCES borrowers(id),
+--     referral_date DATE NOT NULL,
+--     status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed')),
+--     reward_amount DECIMAL(15,2),
+--     reward_paid BOOLEAN DEFAULT false,
+--     notes TEXT,
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- );
 
 -- Customer Segments
 CREATE TABLE IF NOT EXISTS customer_segments (
@@ -374,9 +374,9 @@ CREATE TABLE IF NOT EXISTS customer_segments (
 -- ============================================================================
 
 -- Analytics indexes
-CREATE INDEX IF NOT EXISTS idx_revenue_forecasts_date ON revenue_forecasts(forecast_date);
-CREATE INDEX IF NOT EXISTS idx_risk_assessments_date ON risk_assessments(assessment_date);
-CREATE INDEX IF NOT EXISTS idx_clv_borrower_id ON customer_lifetime_value(borrower_id);
+-- CREATE INDEX IF NOT EXISTS idx_revenue_forecasts_date ON revenue_forecasts(forecast_date);
+-- CREATE INDEX IF NOT EXISTS idx_risk_assessments_date ON risk_assessments(assessment_date);
+-- CREATE INDEX IF NOT EXISTS idx_clv_borrower_id ON customer_lifetime_value(borrower_id);
 
 -- Compliance indexes
 CREATE INDEX IF NOT EXISTS idx_compliance_due_date ON compliance_requirements(due_date);
@@ -409,7 +409,7 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_base_category ON knowledge_base(categor
 -- Enable RLS on all new tables
 ALTER TABLE revenue_forecasts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE risk_assessments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE customer_lifetime_value ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE customer_lifetime_value ENABLE ROW LEVEL SECURITY;
 ALTER TABLE compliance_requirements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regulatory_reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE policy_documents ENABLE ROW LEVEL SECURITY;
@@ -426,10 +426,10 @@ ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE knowledge_base ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cash_flow_projections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE investment_portfolio ENABLE ROW LEVEL SECURITY;
-ALTER TABLE budget_variance ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE budget_variance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE communication_templates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE satisfaction_surveys ENABLE ROW LEVEL SECURITY;
-ALTER TABLE referral_program ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE satisfaction_surveys ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE referral_program ENABLE ROW LEVEL SECURITY;
 ALTER TABLE customer_segments ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies (Admin and CEO access for most tables)
