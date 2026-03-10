@@ -37,13 +37,13 @@ export const postJournalEntry = async (
 
     // Use RPC function with backdate checking
     const { data, error } = await supabase.rpc('post_journal_entry_with_backdate_check', {
-        p_reference_type: reference_type,
-        p_reference_id: reference_id,
         p_description: description,
         p_lines: lines, // Pass as array, not JSON string
-        p_user_id: userId,
         p_entry_date: date,
-        p_max_backdate_days: 3
+        p_max_backdate_days: 3,
+        p_reference_id: reference_id,
+        p_reference_type: reference_type,
+        p_user_id: userId
     });
 
     if (error) throw error;
