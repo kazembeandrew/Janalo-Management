@@ -51,7 +51,7 @@ function validateRequestMiddleware(schema: any) {
 
       const validation = validateRequest(schema, dataToValidate);
 
-      if (!validation.success) {
+      if (validation.success === false) {
         const errorResponse = formatValidationError(validation.error);
         return res.status(400).json(errorResponse);
       }

@@ -29,7 +29,6 @@ export class RedisCache {
       port: config.port,
       password: config.password,
       db: config.db || 0,
-      retryDelayOnFailover: 100,
       enableReadyCheck: false,
       maxRetriesPerRequest: 3,
       lazyConnect: true

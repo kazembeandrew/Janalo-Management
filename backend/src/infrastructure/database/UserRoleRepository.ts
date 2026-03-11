@@ -1,7 +1,7 @@
 // Infrastructure Layer - Repository Implementations
 // UserRoleRepository implementation using Supabase
 
-import { Role } from '../../domain/entities/Permission';
+import { Permission, Role } from '../../domain/entities/Permission';
 import { IUserRoleRepository } from '../../domain/repositories/rbac-interfaces';
 import { SupabaseClientWrapper } from '../external/SupabaseClientWrapper';
 
