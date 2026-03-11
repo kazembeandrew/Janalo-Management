@@ -105,9 +105,10 @@ export class Role {
   }
 
   removePermission(resource: string, action: string): void {
-    this._permissions = this._permissions.filter(
-      p => !p.matches(resource, action)
-    );
+    const index = this._permissions.findIndex(p => p.matches(resource, action));
+    if (index >= 0) {
+      this._permissions.splice(index, 1);
+    }
   }
 
   equals(other: Role): boolean {

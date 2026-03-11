@@ -37,6 +37,17 @@ interface DatabaseHealth {
   recorded_at: string;
 }
 
+interface SystemResource {
+  id: string;
+  resource_type: string;
+  cpu_usage?: number;
+  memory_usage?: number;
+  disk_usage?: number;
+  network_io?: number;
+  status: string;
+  recorded_at: string;
+}
+
 interface BackupRecord {
   id: string;
   backup_type: string;

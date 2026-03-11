@@ -77,12 +77,12 @@ export class EnhancedAccountingService {
     await this.validateJournalEntryAgainstAccounts(entry, accounts as Account[]);
 
     // Save and return
-    const savedEntry = await this.journalEntryRepo.save(entry);
+    await this.journalEntryRepo.save(entry);
 
     // Invalidate related caches (account balances will be recalculated when posted)
     // Don't invalidate now since it's still draft
 
-    return savedEntry;
+    return entry;
   }
 
   // Enhanced account balance with caching
@@ -257,13 +257,13 @@ export class EnhancedAccountingService {
       new Date()
     );
 
-    const savedEntry = await this.journalEntryRepo.save(postedEntry);
+    await this.journalEntryRepo.save(postedEntry);
 
     // Invalidate caches for affected accounts
     const affectedAccountIds = entry.lines.map(line => line.accountId);
     await this.cacheService.invalidateJournalEntryRelated(affectedAccountIds);
 
-    return savedEntry;
+    return postedEntry;
   }
 
   // Private helper methods

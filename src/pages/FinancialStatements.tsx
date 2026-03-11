@@ -10,6 +10,20 @@ import {
 import { exportToCSV, generateTablePDF } from '@/utils/export';
 import toast from 'react-hot-toast';
 
+interface JournalRevenueLine {
+  amount: number | string;
+  account_id: string;
+  accounts?: {
+    account_category?: string;
+    account_type?: string;
+    name?: string;
+  };
+}
+
+interface JournalRevenueEntry {
+  journal_lines?: JournalRevenueLine[];
+}
+
 export const FinancialStatements: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -64,7 +78,7 @@ export const FinancialStatements: React.FC = () => {
         const revenueByType = {};
         let totalRevenue = 0;
         
-        journalEntries?.forEach(entry => {
+        (journalEntries as JournalRevenueEntry[] | null)?.forEach(entry => {
             entry.journal_lines?.forEach(line => {
                 if (line.accounts?.account_category === 'revenue') {
                     const type = line.accounts.account_type || line.accounts.name || 'Other';

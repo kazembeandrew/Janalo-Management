@@ -125,8 +125,8 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('accounts', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { accountId } = req.params;
-        const { asOfDate } = req.query;
+        const accountId = Array.isArray(req.params.accountId) ? req.params.accountId[0] : req.params.accountId;
+        const asOfDate = typeof req.query.asOfDate === 'string' ? req.query.asOfDate : undefined;
 
         const balance = await accountingService.getAccountBalance(
           accountId,
@@ -154,7 +154,7 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('reports', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { asOfDate } = req.query;
+        const asOfDate = typeof req.query.asOfDate === 'string' ? req.query.asOfDate : undefined;
         const userId = req.user!.id;
 
         const trialBalance = await accountingService.generateTrialBalance(
@@ -191,7 +191,8 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('audit_logs', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { resourceType, resourceId } = req.params;
+        const resourceType = Array.isArray(req.params.resourceType) ? req.params.resourceType[0] : req.params.resourceType;
+        const resourceId = Array.isArray(req.params.resourceId) ? req.params.resourceId[0] : req.params.resourceId;
 
         const auditTrail = await auditService.getAuditTrail(resourceType, resourceId);
 
