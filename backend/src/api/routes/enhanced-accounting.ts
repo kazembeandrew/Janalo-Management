@@ -27,7 +27,11 @@ import {
 declare global {
   namespace Express {
     interface Request {
-      validatedData?: any;
+      validatedData?: {
+        body?: any;
+        params?: any;
+        query?: any;
+      };
     }
   }
 }
@@ -51,7 +55,7 @@ function validateRequestMiddleware(schema: any) {
 
       const validation = validateRequest(schema, dataToValidate);
 
-      if (!validation.success) {
+      if (validation.success === false) {
         const errorResponse = formatValidationError(validation.error);
         return res.status(400).json(errorResponse);
       }
@@ -116,9 +120,6 @@ export function createEnhancedAccountingRoutes(
 ) {
   const router = express.Router();
 
-  // Apply error handling to all routes
-  router.use(errorHandler);
-
   // Journal Entries API - Version 1
   router.post('/v1/journal-entries',
     authMiddleware.authenticateAndLoadPermissions(),
@@ -174,16 +175,22 @@ export function createEnhancedAccountingRoutes(
       try {
         const { status, limit = 50, offset = 0, startDate, endDate } = req.validatedData?.query || {};
 
-        // For now, return empty array - implement proper querying later
-        // This would need additional repository methods for complex queries
+        const { entries, total } = await accountingService.getJournalEntries({
+          status,
+          startDate,
+          endDate,
+          limit,
+          offset
+        });
+
         res.json({
           success: true,
-          data: [],
+          data: entries.map(e => e.toJSON()),
           pagination: {
             limit,
             offset,
-            total: 0,
-            hasMore: false
+            total,
+            hasMore: offset + limit < total
           },
           meta: {
             version: 'v1',
@@ -205,11 +212,21 @@ export function createEnhancedAccountingRoutes(
       try {
         const { id } = req.validatedData.params;
 
-        // This would need implementation to get journal entry by ID from repository
-        // For now, return not found
-        res.status(404).json({
-          error: 'Journal entry not found',
-          code: 'NOT_FOUND'
+        const entry = await accountingService.getJournalEntryById(id);
+        if (!entry) {
+          return res.status(404).json({
+            error: 'Journal entry not found',
+            code: 'NOT_FOUND'
+          });
+        }
+
+        res.json({
+          success: true,
+          data: entry.toJSON(),
+          meta: {
+            version: 'v1',
+            timestamp: new Date().toISOString()
+          }
         });
       } catch (error: any) {
         console.error('Get journal entry error:', error.message);
@@ -226,13 +243,28 @@ export function createEnhancedAccountingRoutes(
       try {
         const { id } = req.validatedData.params;
         const userId = req.user!.id;
+        const userAgent = req.get('User-Agent') ?? undefined;
 
-        // This would need implementation to post journal entry
-        // For now, return success
+        const posted = await accountingService.postJournalEntry(id, userId);
+
+        await auditService.logJournalEntryPosted(
+          posted.id,
+          userId,
+          {
+            entryNumber: posted.entryNumber,
+            description: posted.description,
+            totalDebit: posted.totalDebit.amount,
+            totalCredit: posted.totalCredit.amount
+          },
+          userId,
+          req.ip,
+          userAgent
+        );
+
         res.json({
           success: true,
           message: 'Journal entry posted successfully',
-          data: { id },
+          data: posted.toJSON(),
           meta: {
             version: 'v1',
             timestamp: new Date().toISOString()
@@ -345,7 +377,8 @@ export function createEnhancedAccountingRoutes(
         const jobId = await accountingService.generateReportAsync(
           reportType,
           parameters,
-          userId
+          userId,
+          priority
         );
 
         res.status(202).json({
@@ -489,6 +522,41 @@ export function createEnhancedAccountingRoutes(
       }
     }
   );
+
+  router.get('/v1/jobs/:jobId/result',
+    authMiddleware.authenticateAndLoadPermissions(),
+    validateRequestMiddleware(getJobStatusSchema),
+    async (req: Request, res: Response) => {
+      try {
+        const { jobId } = req.validatedData.params;
+        const job = await jobProcessor.getJobStatus(jobId);
+
+        if (!job) {
+          return res.status(404).json({ error: 'Job not found', code: 'NOT_FOUND' });
+        }
+
+        if (job.userId && job.userId !== req.user?.id) {
+          return res.status(403).json({ error: 'Access denied', code: 'FORBIDDEN' });
+        }
+
+        if (job.status === 'failed') {
+          return res.status(500).json({ error: job.error || 'Job failed', code: 'JOB_FAILED' });
+        }
+
+        if (job.status !== 'completed') {
+          return res.status(202).json({ status: job.status, progress: job.progress ?? 0 });
+        }
+
+        return res.json({ success: true, data: job.result ?? null });
+      } catch (error: any) {
+        console.error('Get job result error:', error.message);
+        throw error;
+      }
+    }
+  );
+
+  // Error handling must be registered after routes to catch downstream failures.
+  router.use(errorHandler);
 
   return router;
 }

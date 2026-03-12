@@ -1,15 +1,18 @@
 // Infrastructure Layer - Cache
 // Redis cache implementation for performance optimization
 
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 import { Account } from '../../domain/entities/Account';
 import { Money } from '../../domain/value-objects/Money';
 
 export interface CacheConfig {
-  host: string;
-  port: number;
+  url?: string;
+  host?: string;
+  port?: number;
   password?: string;
   db?: number;
+  tls?: boolean;
+  keyPrefix?: string;
   ttl: {
     accountBalance: number;     // 5 minutes
     trialBalance: number;       // 10 minutes
@@ -24,16 +27,30 @@ export class RedisCache {
 
   constructor(config: CacheConfig) {
     this.config = config;
-    this.client = new Redis({
-      host: config.host,
-      port: config.port,
-      password: config.password,
-      db: config.db || 0,
-      retryDelayOnFailover: 100,
+
+    const commonOptions: RedisOptions = {
       enableReadyCheck: false,
       maxRetriesPerRequest: 3,
-      lazyConnect: true
-    });
+      lazyConnect: true,
+      keyPrefix: config.keyPrefix
+    };
+
+    const shouldUseTls = Boolean(config.tls) || (config.url?.startsWith('rediss://') ?? false);
+    if (shouldUseTls) {
+      commonOptions.tls = {};
+    }
+
+    if (config.url) {
+      this.client = new Redis(config.url, commonOptions);
+    } else {
+      this.client = new Redis({
+        ...commonOptions,
+        host: config.host || 'localhost',
+        port: config.port || 6379,
+        password: config.password,
+        db: config.db || 0
+      });
+    }
 
     this.setupEventHandlers();
   }
@@ -103,10 +120,16 @@ export class RedisCache {
 
   async deletePattern(pattern: string): Promise<void> {
     try {
-      const keys = await this.client.keys(pattern);
-      if (keys.length > 0) {
-        await this.client.del(...keys);
-      }
+      // Avoid blocking Redis with KEYS in production.
+      let cursor = '0';
+      do {
+        const [nextCursor, keys] = await this.client.scan(cursor, 'MATCH', pattern, 'COUNT', 500);
+        cursor = nextCursor;
+
+        if (keys.length > 0) {
+          await this.client.del(...keys);
+        }
+      } while (cursor !== '0');
     } catch (error) {
       console.error('Cache delete pattern error:', error);
     }

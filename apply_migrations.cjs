@@ -3,12 +3,19 @@
 
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
+const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
 // Get Supabase credentials from environment
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseDbUrl = process.env.SUPABASE_DB_URL || process.env.DATABASE_URL;
+const supabaseDbHost = process.env.SUPABASE_DB_HOST;
+const supabaseDbPort = process.env.SUPABASE_DB_PORT;
+const supabaseDbUser = process.env.SUPABASE_DB_USER;
+const supabaseDbPassword = process.env.SUPABASE_DB_PASSWORD;
+const supabaseDbName = process.env.SUPABASE_DB_NAME;
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
@@ -17,79 +24,72 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+function readMigrationSql(relativePath) {
+  const fullPath = path.join(__dirname, relativePath);
+  return fs.readFileSync(fullPath, 'utf8');
+}
+
 const migrations = [
   {
     name: '20260308140000_add_user_management_columns',
-    sql: `
--- Add deletion_status column if it doesn't exist
-ALTER TABLE public.users 
-ADD COLUMN IF NOT EXISTS deletion_status VARCHAR(50) DEFAULT NULL;
-
--- Add revocation_reason column if it doesn't exist
-ALTER TABLE public.users 
-ADD COLUMN IF NOT EXISTS revocation_reason TEXT DEFAULT NULL;
-
--- Create index for deletion_status for faster queries
-CREATE INDEX IF NOT EXISTS idx_users_deletion_status ON public.users(deletion_status);
-`
+    sql: readMigrationSql('supabase/migrations/20260308140000_add_user_management_columns.sql')
   },
   {
     name: '20260308150000_create_journal_functions',
-    sql: `
--- Create post_journal_entry_with_backdate_check function
-DROP FUNCTION IF EXISTS post_journal_entry_with_backdate_check(TEXT, UUID, TEXT, JSONB, UUID, DATE, INTEGER);
-
-CREATE OR REPLACE FUNCTION post_journal_entry_with_backdate_check(
-    p_reference_type TEXT,
-    p_reference_id UUID,
-    p_description TEXT,
-    p_lines JSONB,
-    p_user_id UUID,
-    p_entry_date DATE DEFAULT CURRENT_DATE,
-    p_max_backdate_days INTEGER DEFAULT 3
-)
-RETURNS UUID AS $
-DECLARE
-    v_entry_id UUID;
-    v_entry_number INTEGER;
-    v_line JSONB;
-    v_line_id UUID;
-BEGIN
-    v_entry_id := gen_random_uuid();
-    SELECT COALESCE(MAX(entry_number), 0) + 1 INTO v_entry_number FROM journal_entries;
-    
-    INSERT INTO journal_entries (
-        id, entry_number, entry_date, description,
-        reference_type, reference_id, status, created_by, created_at
-    ) VALUES (
-        v_entry_id, v_entry_number, p_entry_date, p_description,
-        p_reference_type, p_reference_id, 'posted', p_user_id, NOW()
-    );
-    
-    FOR v_line IN SELECT * FROM jsonb_array_elements(p_lines)
-    LOOP
-        v_line_id := gen_random_uuid();
-        INSERT INTO journal_lines (
-            id, entry_id, account_id, debit_amount, credit_amount, description, created_at
-        ) VALUES (
-            v_line_id, v_entry_id,
-            (v_line->>'account_id')::UUID,
-            (v_line->>'debit_amount')::DECIMAL(15,2),
-            (v_line->>'credit_amount')::DECIMAL(15,2),
-            v_line->>'description',
-            NOW()
-        );
-    END LOOP;
-    
-    RETURN v_entry_id;
-END;
-$ LANGUAGE plpgsql SECURITY DEFINER;
-
-GRANT EXECUTE ON FUNCTION post_journal_entry_with_backdate_check(TEXT, UUID, TEXT, JSONB, UUID, DATE, INTEGER) TO authenticated;
-GRANT EXECUTE ON FUNCTION post_journal_entry_with_backdate_check(TEXT, UUID, TEXT, JSONB, UUID, DATE, INTEGER) TO service_role;
-`
+    sql: readMigrationSql('supabase/migrations/20260308150000_create_journal_functions.sql')
+  },
+  {
+    name: '20260311100000_add_budgets_month_type',
+    sql: readMigrationSql('supabase/migrations/20260311100000_add_budgets_month_type.sql')
+  },
+  {
+    name: '20260311103000_notifications_alignment',
+    sql: readMigrationSql('supabase/migrations/20260311103000_notifications_alignment.sql')
   }
 ];
+
+async function applyViaDatabaseUrl(sql) {
+  const hasDiscreteConfig = Boolean(supabaseDbHost && supabaseDbUser && supabaseDbPassword && supabaseDbName);
+  if (!hasDiscreteConfig && !supabaseDbUrl) {
+    throw new Error('SUPABASE_DB_URL (or DATABASE_URL) not set; cannot apply SQL without exec_sql RPC');
+  }
+
+  const client = hasDiscreteConfig
+    ? new Client({
+        host: supabaseDbHost,
+        port: supabaseDbPort ? parseInt(supabaseDbPort, 10) : 5432,
+        user: supabaseDbUser,
+        password: supabaseDbPassword,
+        database: supabaseDbName,
+        ssl: { rejectUnauthorized: false }
+      })
+    : new Client({
+        connectionString: supabaseDbUrl,
+        ssl: { rejectUnauthorized: false }
+      });
+
+  await client.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(sql);
+    await client.query('COMMIT');
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch {}
+    if (err && err.code === 'ENOTFOUND') {
+      throw err;
+    }
+    if (err && err.code === 'ENOENT' && typeof err.message === 'string' && err.message.includes('getaddrinfo')) {
+      throw new Error(
+        `${err.message}\n` +
+        `Hint: your SUPABASE_DB_URL host may not be resolvable from Node in this environment (often due to IPv6-only records).\n` +
+        `Try using the Supabase "Connection pooling" (transaction pooler) connection string, which typically has IPv4.`
+      );
+    }
+    throw err;
+  } finally {
+    await client.end();
+  }
+}
 
 async function applyMigrations() {
   console.log('Applying migrations to remote database...\n');
@@ -100,11 +100,16 @@ async function applyMigrations() {
       const { error } = await supabase.rpc('exec_sql', { sql: migration.sql });
       
       // Try alternative approach if exec_sql doesn't exist
-      if (error && error.message.includes('could not find the function')) {
-        console.log('  exec_sql not available, trying alternative method...');
-        // Just log that migration needs to be applied manually
-        console.log(`  MIGRATION NEEDS MANUAL APPLICATION: ${migration.name}`);
-        console.log(`  SQL: ${migration.sql.substring(0, 100)}...`);
+      const missingExecSql =
+        error &&
+        typeof error.message === 'string' &&
+        /could not find the function/i.test(error.message) &&
+        /exec_sql/i.test(error.message);
+
+      if (missingExecSql) {
+        console.log('  exec_sql not available. Trying direct DB connection...');
+        await applyViaDatabaseUrl(migration.sql);
+        console.log('  Success (via SUPABASE_DB_URL)!');
       } else if (error) {
         console.error(`  Error: ${error.message}`);
       } else {

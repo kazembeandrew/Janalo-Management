@@ -85,14 +85,19 @@ export class JournalEntryRepository implements IJournalEntryRepository {
     return (data || []).map(item => this.mapToDomain(item));
   }
 
-  async save(entry: JournalEntry): Promise<void> {
+  async save(entry: JournalEntry): Promise<JournalEntry> {
     const { entryData, linesData } = this.mapToPersistence(entry);
     await this.supabase.saveJournalEntry(entryData, linesData);
+    const saved = await this.findById(entry.id);
+    if (!saved) {
+      throw new Error(`Failed to load saved journal entry: ${entry.id}`);
+    }
+    return saved;
   }
 
-  async update(entry: JournalEntry): Promise<void> {
+  async update(entry: JournalEntry): Promise<JournalEntry> {
     // Use upsert for updates
-    await this.save(entry);
+    return await this.save(entry);
   }
 
   async delete(id: string): Promise<void> {
@@ -115,7 +120,10 @@ export class JournalEntryRepository implements IJournalEntryRepository {
   }
 
   private mapToDomain(data: any): JournalEntry {
-    if (!data) return null;
+    if (!data) {
+      // Should not happen for callers that have already handled "not found".
+      throw new Error('Cannot map empty journal entry data');
+    }
 
     const lines = (data.journal_lines || []).map((line: any) =>
       new JournalEntryLine(

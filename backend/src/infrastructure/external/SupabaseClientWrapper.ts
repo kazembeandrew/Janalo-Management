@@ -43,7 +43,7 @@ export class SupabaseClientWrapper {
     const { data, error } = await this.client
       .from('internal_accounts')
       .select('*')
-      .eq('code', code)
+      .eq('account_code', code)
       .single();
 
     if (error) throw error;
@@ -54,7 +54,7 @@ export class SupabaseClientWrapper {
     const { data, error } = await this.client
       .from('internal_accounts')
       .select('*')
-      .order('code');
+      .order('account_code');
 
     if (error) throw error;
     return data || [];
@@ -64,10 +64,10 @@ export class SupabaseClientWrapper {
     // Map domain column names to database column names
     const dbData = {
       id: accountData.id,
-      code: accountData.code,
+      account_code: accountData.code,
       name: accountData.name,
-      type: accountData.type,
-      category: accountData.category,
+      account_type: accountData.type,
+      account_category: accountData.category,
       is_active: accountData.is_active ?? true
     };
     

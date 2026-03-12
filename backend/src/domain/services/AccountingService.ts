@@ -1,6 +1,7 @@
 // Domain Layer - Services
 // AccountingService contains core business logic for double-entry accounting
 
+import { randomUUID } from 'crypto';
 import { Account, AccountType } from '../entities/Account';
 import { JournalEntry, JournalEntryStatus, JournalEntryLine } from '../entities/JournalEntry';
 import { User } from '../entities/User';
@@ -14,6 +15,47 @@ export class AccountingService {
     private readonly journalEntryRepo: IJournalEntryRepository,
     private readonly userRepo: IUserRepository
   ) {}
+
+  async getJournalEntryById(id: string): Promise<JournalEntry | null> {
+    return await this.journalEntryRepo.findById(id);
+  }
+
+  async getJournalEntries(options: {
+    status?: JournalEntryStatus;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ entries: JournalEntry[]; total: number }> {
+    const { status, startDate, endDate, limit = 50, offset = 0 } = options;
+
+    let entries: JournalEntry[];
+
+    if (startDate && endDate) {
+      entries = await this.journalEntryRepo.findByDateRange(startDate, endDate);
+    } else if (status) {
+      entries = await this.journalEntryRepo.findByStatus(status);
+    } else {
+      // No "find all" method exists yet; approximate by pulling posted then draft then voided.
+      const [posted, draft, voided] = await Promise.all([
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.POSTED),
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.DRAFT),
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.VOIDED)
+      ]);
+      entries = [...posted, ...draft, ...voided].sort((a, b) => b.entryDate.getTime() - a.entryDate.getTime());
+    }
+
+    if (status && !(startDate && endDate)) {
+      // already filtered
+    } else if (status) {
+      entries = entries.filter(e => e.status === status);
+    }
+
+    const total = entries.length;
+    const paginated = entries.slice(offset, offset + limit);
+
+    return { entries: paginated, total };
+  }
 
   // Core business operation: Create a journal entry
   async createJournalEntry(
@@ -46,11 +88,11 @@ export class AccountingService {
 
     // Convert to domain objects
     const journalLines = lines.map((line, index) => {
-      const debit = line.debit ? new Money(line.debit) : new Money(0);
-      const credit = line.credit ? new Money(line.credit) : new Money(0);
+      const debit = typeof line.debit === 'number' && line.debit > 0 ? new Money(line.debit) : new Money(0);
+      const credit = typeof line.credit === 'number' && line.credit > 0 ? new Money(line.credit) : new Money(0);
 
       return new JournalEntryLine(
-        `temp-${index}`, // Temporary ID, will be set by repository
+        randomUUID(),
         line.accountId,
         debit,
         credit,
@@ -63,7 +105,7 @@ export class AccountingService {
 
     // Create journal entry (validation happens in constructor)
     const entry = new JournalEntry(
-      '', // ID will be set by repository
+      randomUUID(),
       entryNumber,
       description,
       entryDate,
@@ -75,7 +117,7 @@ export class AccountingService {
     // Validate against account rules
     await this.validateJournalEntryAgainstAccounts(entry, accounts as Account[]);
 
-    return entry;
+    return await this.journalEntryRepo.save(entry);
   }
 
   // Post a draft journal entry
@@ -109,7 +151,7 @@ export class AccountingService {
       new Date()
     );
 
-    return postedEntry;
+    return await this.journalEntryRepo.update(postedEntry);
   }
 
   // Calculate account balance

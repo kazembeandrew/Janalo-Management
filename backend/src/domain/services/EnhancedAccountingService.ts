@@ -7,6 +7,8 @@ import { User } from '../entities/User';
 import { Money } from '../value-objects/Money';
 import { IAccountRepository, IJournalEntryRepository, IUserRepository } from '../repositories/interfaces';
 import { CacheService } from './CacheService';
+import { randomUUID } from 'crypto';
+import { jobProcessor } from '../../infrastructure/async/JobProcessor';
 
 export class EnhancedAccountingService {
   constructor(
@@ -15,6 +17,44 @@ export class EnhancedAccountingService {
     private readonly userRepo: IUserRepository,
     private readonly cacheService: CacheService
   ) {}
+
+  async getJournalEntryById(id: string): Promise<JournalEntry | null> {
+    return await this.journalEntryRepo.findById(id);
+  }
+
+  async getJournalEntries(options: {
+    status?: JournalEntryStatus;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ entries: JournalEntry[]; total: number }> {
+    const { status, startDate, endDate, limit = 50, offset = 0 } = options;
+
+    let entries: JournalEntry[];
+
+    if (startDate && endDate) {
+      entries = await this.journalEntryRepo.findByDateRange(startDate, endDate);
+    } else if (status) {
+      entries = await this.journalEntryRepo.findByStatus(status);
+    } else {
+      const [posted, draft, voided] = await Promise.all([
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.POSTED),
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.DRAFT),
+        this.journalEntryRepo.findByStatus(JournalEntryStatus.VOIDED)
+      ]);
+      entries = [...posted, ...draft, ...voided].sort((a, b) => b.entryDate.getTime() - a.entryDate.getTime());
+    }
+
+    if (status && startDate && endDate) {
+      entries = entries.filter(e => e.status === status);
+    }
+
+    const total = entries.length;
+    const paginated = entries.slice(offset, offset + limit);
+
+    return { entries: paginated, total };
+  }
 
   // Enhanced journal entry creation with caching invalidation
   async createJournalEntry(
@@ -47,11 +87,11 @@ export class EnhancedAccountingService {
 
     // Convert to domain objects
     const journalLines = lines.map((line, index) => {
-      const debit = line.debit ? new Money(line.debit) : new Money(0);
-      const credit = line.credit ? new Money(line.credit) : new Money(0);
+      const debit = typeof line.debit === 'number' && line.debit > 0 ? new Money(line.debit) : new Money(0);
+      const credit = typeof line.credit === 'number' && line.credit > 0 ? new Money(line.credit) : new Money(0);
 
       return new JournalEntryLine(
-        `temp-${index}`,
+        randomUUID(),
         line.accountId,
         debit,
         credit,
@@ -64,7 +104,7 @@ export class EnhancedAccountingService {
 
     // Create journal entry (validation happens in constructor)
     const entry = new JournalEntry(
-      '',
+      randomUUID(),
       entryNumber,
       description,
       entryDate,
@@ -137,9 +177,16 @@ export class EnhancedAccountingService {
   async generateReportAsync(
     reportType: 'trial_balance' | 'income_statement' | 'balance_sheet',
     parameters: Record<string, any>,
-    userId: string
+    userId: string,
+    priority: 'low' | 'medium' | 'high' = 'medium'
   ): Promise<string> {
-    // Generate a job ID for async processing
+    return await jobProcessor.enqueue(
+      reportType,
+      { reportType, parameters, userId },
+      { priority, userId }
+    );
+
+    // Legacy in-process async generation (kept for reference)
     const jobId = `report_${Date.now()}_${userId}`;
 
     // Start async processing (in a real system, this would use a queue like Bull or similar)
@@ -257,10 +304,10 @@ export class EnhancedAccountingService {
       new Date()
     );
 
-    const savedEntry = await this.journalEntryRepo.save(postedEntry);
+    const savedEntry = await this.journalEntryRepo.update(postedEntry);
 
     // Invalidate caches for affected accounts
-    const affectedAccountIds = entry.lines.map(line => line.accountId);
+    const affectedAccountIds = [...new Set(entry.lines.map(line => line.accountId))];
     await this.cacheService.invalidateJournalEntryRelated(affectedAccountIds);
 
     return savedEntry;

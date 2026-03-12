@@ -22,8 +22,8 @@ export interface IJournalEntryRepository {
   findByStatus(status: JournalEntryStatus): Promise<JournalEntry[]>;
   findByDateRange(startDate: Date, endDate: Date): Promise<JournalEntry[]>;
   findByAccount(accountId: string): Promise<JournalEntry[]>;
-  save(entry: JournalEntry): Promise<void>;
-  update(entry: JournalEntry): Promise<void>;
+  save(entry: JournalEntry): Promise<JournalEntry>;
+  update(entry: JournalEntry): Promise<JournalEntry>;
   delete(id: string): Promise<void>;
   getNextEntryNumber(): Promise<number>;
 }

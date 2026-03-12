@@ -54,21 +54,32 @@ export const FinancialStatements: React.FC = () => {
         const { data: journalEntries } = await supabase
             .from('journal_entries')
             .select(`
-                journal_lines!inner(amount, account_id),
-                accounts!journal_lines(account_category, account_type, name)
+                journal_lines!inner(
+                    debit,
+                    credit,
+                    account_id,
+                    accounts:internal_accounts(account_category, type, name)
+                )
             `)
-            .gte('date', startStr)
-            .lt('date', endStr);
+            .gte('entry_date', startStr)
+            .lt('entry_date', endStr);
         
         // Calculate revenue from journal entries (credit entries to revenue accounts)
         const revenueByType = {};
         let totalRevenue = 0;
         
-        journalEntries?.forEach(entry => {
-            entry.journal_lines?.forEach(line => {
-                if (line.accounts?.account_category === 'revenue') {
-                    const type = line.accounts.account_type || line.accounts.name || 'Other';
-                    const amount = Number(line.amount);
+        type JournalLineWithAccount = {
+            debit: any;
+            credit: any;
+            accounts?: { account_category?: string; type?: string; name?: string } | null;
+        };
+
+        journalEntries?.forEach((entry: any) => {
+            (entry?.journal_lines as JournalLineWithAccount[] | undefined)?.forEach((line) => {
+                const account = line.accounts;
+                if (account?.account_category === 'revenue') {
+                    const type = account.type || account.name || 'Other';
+                    const amount = Number(line.credit);
                     revenueByType[type] = (revenueByType[type] || 0) + amount;
                     totalRevenue += amount;
                 }

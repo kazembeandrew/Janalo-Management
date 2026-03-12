@@ -33,8 +33,6 @@ import {
   Hash,
   BarChart3,
   Zap,
-  Server,
-  Megaphone,
   PiggyBank,
   Heart,
   Filter,
@@ -145,8 +143,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { name: 'Compliance Management', href: '/compliance', icon: Shield, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Workflow Automation', href: '/workflows', icon: Zap, roles: ['admin', 'ceo'] },
     { name: 'Security Management', href: '/security', icon: Shield, roles: ['admin'] },
-    { name: 'System Administration', href: '/system-admin', icon: Server, roles: ['admin'] },
-    { name: 'Communication Hub', href: '/communication', icon: Megaphone, roles: ['admin', 'ceo', 'hr'] },
     { name: 'Financial Management', href: '/financial-management', icon: PiggyBank, roles: ['admin', 'ceo', 'accountant'] },
     { name: 'Customer Relations', href: '/crm', icon: Heart, roles: ['admin', 'ceo', 'loan_officer'] },
   ];

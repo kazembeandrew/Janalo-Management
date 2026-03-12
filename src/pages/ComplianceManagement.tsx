@@ -118,15 +118,15 @@ export const ComplianceManagement: React.FC = () => {
       const [reqRes, reportRes, policyRes] = await Promise.all([
         supabase
           .from('compliance_requirements')
-          .select('*, assigned_user:profiles!compliance_requirements_assigned_to_fkey(full_name, email), completed_user:profiles!compliance_requirements_completed_by_fkey(full_name)')
+          .select('*, assigned_user:users!compliance_requirements_assigned_to_fkey(full_name, email), completed_user:users!compliance_requirements_completed_by_fkey(full_name)')
           .order('due_date', { ascending: true }),
         supabase
           .from('regulatory_reports')
-          .select('*, creator:profiles!regulatory_reports_created_by_fkey(full_name)')
+          .select('*, creator:users!regulatory_reports_created_by_fkey(full_name)')
           .order('due_date', { ascending: true }),
         supabase
           .from('policy_documents')
-          .select('*, reviewer:profiles!policy_documents_reviewed_by_fkey(full_name), approver:profiles!policy_documents_approved_by_fkey(full_name), creator:profiles!policy_documents_created_by_fkey(full_name)')
+          .select('*, reviewer:users!policy_documents_reviewed_by_fkey(full_name), approver:users!policy_documents_approved_by_fkey(full_name), creator:users!policy_documents_created_by_fkey(full_name)')
           .order('created_at', { ascending: false })
       ]);
 

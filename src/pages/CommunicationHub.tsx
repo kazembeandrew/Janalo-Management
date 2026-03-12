@@ -109,11 +109,11 @@ export const CommunicationHub: React.FC = () => {
       const [announcementsRes, knowledgeRes] = await Promise.all([
         supabase
           .from('announcements')
-          .select('*, creator:profiles!announcements_created_by_fkey(full_name)')
+          .select('*, creator:users!announcements_created_by_fkey(full_name)')
           .order('created_at', { ascending: false }),
         supabase
           .from('knowledge_base')
-          .select('*, creator:profiles!knowledge_base_created_by_fkey(full_name), updater:profiles!knowledge_base_updated_by_fkey(full_name)')
+          .select('*, creator:users!knowledge_base_created_by_fkey(full_name), updater:users!knowledge_base_updated_by_fkey(full_name)')
           .order('created_at', { ascending: false })
       ]);
 

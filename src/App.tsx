@@ -44,8 +44,6 @@ const LazyAdvancedAnalytics = lazyLoad(() => import('@/pages/AdvancedAnalytics')
 const LazyComplianceManagement = lazyLoad(() => import('@/pages/ComplianceManagement'));
 const LazyWorkflowAutomation = lazyLoad(() => import('@/pages/WorkflowAutomation'));
 const LazySecurityManagement = lazyLoad(() => import('@/pages/SecurityManagement'));
-const LazySystemAdministration = lazyLoad(() => import('@/pages/SystemAdministration'));
-const LazyCommunicationHub = lazyLoad(() => import('@/pages/CommunicationHub'));
 const LazyFinancialManagement = lazyLoad(() => import('@/pages/FinancialManagement'));
 const LazyCustomerRelationshipManagement = lazyLoad(() => import('@/pages/CustomerRelationshipManagement'));
 
@@ -344,22 +342,6 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <LazySecurityManagement />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/system-admin"
-            element={
-              <ProtectedRoute>
-                <LazySystemAdministration />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/communication"
-            element={
-              <ProtectedRoute>
-                <LazyCommunicationHub />
               </ProtectedRoute>
             }
           />

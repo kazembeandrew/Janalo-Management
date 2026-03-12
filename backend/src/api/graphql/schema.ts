@@ -458,8 +458,8 @@ function createResolvers(
           new Date(input.entryDate),
           input.lines.map((line: any) => ({
             accountId: line.accountId,
-            debit: line.debit || 0,
-            credit: line.credit || 0,
+            debit: typeof line.debit === 'number' ? line.debit : undefined,
+            credit: typeof line.credit === 'number' ? line.credit : undefined,
             description: line.description
           })),
           context.userId
@@ -500,10 +500,16 @@ function createResolvers(
       generateReport: async (_: any, { input }: any, context: any) => {
         await authService.requirePermission(context.userId, 'reports', 'generate');
 
+        const priority =
+          input.priority === 'low' || input.priority === 'high' || input.priority === 'medium'
+            ? input.priority
+            : 'medium';
+
         const jobId = await accountingService.generateReportAsync(
           input.reportType,
           input.parameters ? JSON.parse(input.parameters) : {},
-          context.userId
+          context.userId,
+          priority
         );
 
         return {

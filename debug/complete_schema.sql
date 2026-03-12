@@ -688,12 +688,22 @@ FOR SELECT TO authenticated USING (
     EXISTS (SELECT 1 FROM loans WHERE borrower_id = borrower_documents.borrower_id AND officer_id = auth.uid())
 );
 
--- System policies
+-- System documents policies - FIXED with proper INSERT and WITH CHECK
 CREATE POLICY "Authenticated users can view system documents" ON public.system_documents
 FOR SELECT TO authenticated USING (true);
 
-CREATE POLICY "Admins can manage system documents" ON public.system_documents
-FOR ALL TO authenticated USING (get_auth_role() IN ('admin', 'ceo'));
+CREATE POLICY "Staff can insert system documents" ON public.system_documents
+FOR INSERT TO authenticated WITH CHECK (
+    get_auth_role() IN ('admin', 'ceo', 'hr', 'accountant', 'loan_officer')
+);
+
+CREATE POLICY "Admins and owner can update system documents" ON public.system_documents
+FOR UPDATE TO authenticated USING (
+    get_auth_role() IN ('admin', 'ceo') OR uploaded_by = auth.uid()
+);
+
+CREATE POLICY "Admins can delete system documents" ON public.system_documents
+FOR DELETE TO authenticated USING (get_auth_role() IN ('admin', 'ceo'));
 
 CREATE POLICY "Accountants can manage budgets" ON public.budgets
 FOR ALL TO authenticated USING (get_auth_role() IN ('admin', 'ceo', 'accountant'));

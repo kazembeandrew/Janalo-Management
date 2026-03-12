@@ -99,7 +99,7 @@ export const WorkflowAutomation: React.FC = () => {
       const [workflowsRes, executionsRes] = await Promise.all([
         supabase
           .from('workflow_definitions')
-          .select('*, creator:profiles!workflow_definitions_created_by_fkey(full_name)')
+          .select('*, creator:users!workflow_definitions_created_by_fkey(full_name)')
           .order('created_at', { ascending: false }),
         supabase
           .from('workflow_executions')

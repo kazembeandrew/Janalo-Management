@@ -61,7 +61,7 @@ export class Role {
   private readonly _name: string;
   private readonly _description?: string;
   private readonly _isSystemRole: boolean;
-  private readonly _permissions: Permission[];
+  private _permissions: Permission[];
   private readonly _createdAt: Date;
   private readonly _updatedAt: Date;
 

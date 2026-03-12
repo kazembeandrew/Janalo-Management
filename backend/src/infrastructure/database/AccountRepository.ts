@@ -67,10 +67,10 @@ export class AccountRepository implements IAccountRepository {
 
     return new Account(
       data.id,
-      new AccountCode(data.code),
+      new AccountCode(data.account_code),
       data.name,
-      data.type as AccountType,
-      data.category as AccountCategory,
+      data.account_type as AccountType,
+      data.account_category as AccountCategory,
       data.is_active ?? true,
       new Date(data.created_at),
       new Date(data.updated_at)
@@ -80,10 +80,10 @@ export class AccountRepository implements IAccountRepository {
   private mapToPersistence(account: Account): any {
     return {
       id: account.id,
-      code: account.code.code,
+      account_code: account.code.code,
       name: account.name,
-      type: account.type,
-      category: account.category,
+      account_type: account.type,
+      account_category: account.category,
       is_active: account.isActive,
       created_at: account.createdAt.toISOString(),
       updated_at: account.updatedAt.toISOString()

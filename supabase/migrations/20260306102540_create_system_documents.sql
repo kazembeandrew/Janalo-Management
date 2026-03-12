@@ -31,7 +31,7 @@ FOR SELECT TO authenticated USING (
 );
 
 CREATE POLICY "Staff can upload documents" ON public.system_documents
-FOR INSERT TO authenticated WITH CHECK (get_auth_role() IN ('admin', 'ceo', 'accountant', 'hr'));
+FOR INSERT TO authenticated WITH CHECK (get_auth_role() IN ('admin', 'ceo', 'accountant', 'hr', 'loan_officer'));
 
 CREATE POLICY "Staff can update their own documents" ON public.system_documents
 FOR UPDATE TO authenticated USING (

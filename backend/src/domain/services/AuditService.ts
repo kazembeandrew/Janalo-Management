@@ -1,6 +1,7 @@
 // Domain Layer - Services
 // AuditService provides comprehensive audit logging for financial operations
 
+import { randomUUID } from 'crypto';
 import { AuditLogEntry, AuditEventType, AuditSeverity } from '../entities/AuditLogEntry';
 import { IAuditLogRepository } from '../repositories/audit-interfaces';
 
@@ -10,7 +11,7 @@ export class AuditService {
   // Log authentication events
   async logLogin(userId: string, ipAddress?: string, userAgent?: string, sessionId?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '', // ID will be set by repository
+      randomUUID(),
       AuditEventType.LOGIN,
       'user',
       'login',
@@ -30,7 +31,7 @@ export class AuditService {
 
   async logLogout(userId: string, sessionId?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.LOGOUT,
       'user',
       'logout',
@@ -50,7 +51,7 @@ export class AuditService {
 
   async logLoginFailed(email: string, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.LOGIN_FAILED,
       'user',
       'login_failed',
@@ -69,12 +70,13 @@ export class AuditService {
 
   // Log financial operations
   async logJournalEntryCreated(entryId: string, userId: string, entryData: any, ipAddress?: string, userAgent?: string): Promise<void> {
+    const entryNumber = entryData?.entryNumber ?? entryData?.entry_number ?? 'unknown';
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.JOURNAL_ENTRY_CREATED,
       'journal_entry',
       'create',
-      `Journal entry ${entryData.entry_number} created`,
+      `Journal entry ${entryNumber} created`,
       AuditSeverity.HIGH,
       userId,
       entryId,
@@ -88,12 +90,13 @@ export class AuditService {
   }
 
   async logJournalEntryPosted(entryId: string, userId: string, entryData: any, approvedBy?: string, ipAddress?: string, userAgent?: string): Promise<void> {
+    const entryNumber = entryData?.entryNumber ?? entryData?.entry_number ?? 'unknown';
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.JOURNAL_ENTRY_POSTED,
       'journal_entry',
       'post',
-      `Journal entry ${entryData.entry_number} posted`,
+      `Journal entry ${entryNumber} posted`,
       AuditSeverity.CRITICAL,
       userId,
       entryId,
@@ -107,12 +110,13 @@ export class AuditService {
   }
 
   async logJournalEntryVoided(entryId: string, userId: string, reason: string, entryData: any, ipAddress?: string, userAgent?: string): Promise<void> {
+    const entryNumber = entryData?.entryNumber ?? entryData?.entry_number ?? 'unknown';
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.JOURNAL_ENTRY_VOIDED,
       'journal_entry',
       'void',
-      `Journal entry ${entryData.entry_number} voided: ${reason}`,
+      `Journal entry ${entryNumber} voided: ${reason}`,
       AuditSeverity.CRITICAL,
       userId,
       entryId,
@@ -128,7 +132,7 @@ export class AuditService {
   // Log account operations
   async logAccountCreated(accountId: string, userId: string, accountData: any, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.ACCOUNT_CREATED,
       'account',
       'create',
@@ -147,7 +151,7 @@ export class AuditService {
 
   async logAccountUpdated(accountId: string, userId: string, oldData: any, newData: any, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.ACCOUNT_UPDATED,
       'account',
       'update',
@@ -167,7 +171,7 @@ export class AuditService {
   // Log user and role operations
   async logUserRoleAssigned(userId: string, roleId: string, assignedBy: string, roleName: string, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.USER_ROLE_ASSIGNED,
       'user_role',
       'assign',
@@ -186,7 +190,7 @@ export class AuditService {
 
   async logUserRoleRemoved(userId: string, roleId: string, removedBy: string, roleName: string, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.USER_ROLE_REMOVED,
       'user_role',
       'remove',
@@ -206,7 +210,7 @@ export class AuditService {
   // Log report operations
   async logReportGenerated(userId: string, reportType: string, parameters: any, ipAddress?: string, userAgent?: string): Promise<void> {
     const entry = new AuditLogEntry(
-      '',
+      randomUUID(),
       AuditEventType.REPORT_GENERATED,
       'report',
       'generate',

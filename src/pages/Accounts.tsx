@@ -91,15 +91,15 @@ export const Accounts: React.FC = () => {
         
         let query = supabase
             .from('journal_entries')
-            .select('*, journal_lines(*, accounts:internal_accounts(name)), users!journal_entries_created_by_fkey(full_name)', { count: 'exact' })
+            .select('id, entry_number, date:entry_date, status, description, reference_type, reference_id, created_by, created_at, updated_at, journal_lines(*, accounts:internal_accounts(name, account_category, type)), users!journal_entries_created_by_fkey(full_name)', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range((page - 1) * entriesPerPage, page * entriesPerPage - 1);
         
         if (dateFrom) {
-            query = query.gte('date', dateFrom);
+            query = query.gte('entry_date', dateFrom);
         }
         if (dateTo) {
-            query = query.lte('date', dateTo);
+            query = query.lte('entry_date', dateTo);
         }
         
         if (filterType) {

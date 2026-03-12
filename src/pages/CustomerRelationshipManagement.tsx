@@ -135,7 +135,7 @@ export const CustomerRelationshipManagement: React.FC = () => {
       const [templatesRes, surveysRes, referralsRes, segmentsRes] = await Promise.all([
         supabase
           .from('communication_templates')
-          .select('*, creator:profiles!communication_templates_created_by_fkey(full_name)')
+          .select('*, creator:users!communication_templates_created_by_fkey(full_name)')
           .order('created_at', { ascending: false }),
         supabase
           .from('satisfaction_surveys')
@@ -148,7 +148,7 @@ export const CustomerRelationshipManagement: React.FC = () => {
           .order('referral_date', { ascending: false }),
         supabase
           .from('customer_segments')
-          .select('*, creator:profiles!customer_segments_created_by_fkey(full_name)')
+          .select('*, creator:users!customer_segments_created_by_fkey(full_name)')
           .order('created_at', { ascending: false })
       ]);
 

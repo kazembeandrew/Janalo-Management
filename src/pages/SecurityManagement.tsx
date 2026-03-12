@@ -117,20 +117,20 @@ export const SecurityManagement: React.FC = () => {
       const [sessionsRes, ipRes, twoFARes, eventsRes] = await Promise.all([
         supabase
           .from('user_sessions')
-          .select('*, user:profiles!user_sessions_user_id_fkey(full_name, email, role)')
+          .select('*, user:users!user_sessions_user_id_fkey(full_name, email, role)')
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
           .from('ip_whitelist')
-          .select('*, creator:profiles!ip_whitelist_created_by_fkey(full_name)')
+          .select('*, creator:users!ip_whitelist_created_by_fkey(full_name)')
           .order('created_at', { ascending: false }),
         supabase
           .from('user_2fa')
-          .select('*, user:profiles!user_2fa_user_id_fkey(full_name, email)')
+          .select('*, user:users!user_2fa_user_id_fkey(full_name, email)')
           .order('created_at', { ascending: false }),
         supabase
           .from('security_events')
-          .select('*, user:profiles!security_events_user_id_fkey(full_name, email)')
+          .select('*, user:users!security_events_user_id_fkey(full_name, email)')
           .order('created_at', { ascending: false })
           .limit(50)
       ]);

@@ -31,8 +31,8 @@ export const createJournalEntrySchema = z.object({
     entryDate: dateSchema,
     lines: z.array(z.object({
       accountId: uuidSchema,
-      debit: z.number().min(0).optional(),
-      credit: z.number().min(0).optional(),
+      debit: z.number().positive().optional(),
+      credit: z.number().positive().optional(),
       description: z.string().max(255).optional()
     }))
     .min(1, 'At least one journal line is required')
@@ -40,7 +40,8 @@ export const createJournalEntrySchema = z.object({
     .refine(lines => {
       // Ensure each line has either debit or credit, but not both
       return lines.every(line =>
-        (line.debit && !line.credit) || (!line.debit && line.credit)
+        (typeof line.debit === 'number' && typeof line.credit !== 'number') ||
+        (typeof line.credit === 'number' && typeof line.debit !== 'number')
       );
     }, 'Each line must have either debit or credit amount, but not both')
     .refine(lines => {

@@ -25,6 +25,7 @@ export function createAccountingRoutes(
       try {
         const { description, entryDate, lines } = req.body;
         const userId = req.user!.id;
+        const userAgent = req.get('User-Agent') ?? undefined;
 
         const entry = await accountingService.createJournalEntry(
           description,
@@ -44,7 +45,7 @@ export function createAccountingRoutes(
             totalCredit: entry.totalCredit.amount
           },
           req.ip,
-          req.get('User-Agent')
+          userAgent
         );
 
         res.status(201).json({
@@ -64,14 +65,24 @@ export function createAccountingRoutes(
     async (req: Request, res: Response) => {
       try {
         const { status, limit = 50, offset = 0 } = req.query;
-        const userId = req.user!.id;
 
-        // For now, return empty array - implement proper querying later
-        // This would need additional repository methods for complex queries
+        const parsedStatus = typeof status === 'string' ? (status as JournalEntryStatus) : undefined;
+
+        const { entries, total } = await accountingService.getJournalEntries({
+          status: parsedStatus,
+          limit: Number(limit),
+          offset: Number(offset)
+        });
+
         res.json({
           success: true,
-          data: [],
-          pagination: { limit: Number(limit), offset: Number(offset) }
+          data: entries.map(e => e.toJSON()),
+          pagination: {
+            limit: Number(limit),
+            offset: Number(offset),
+            total,
+            hasMore: Number(offset) + Number(limit) < total
+          }
         });
       } catch (error: any) {
         console.error('Get journal entries error:', error.message);
@@ -85,12 +96,15 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('journal_entries', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { id } = req.params;
-        const userId = req.user!.id;
+        const rawId = req.params.id;
+        const id = Array.isArray(rawId) ? rawId[0] : rawId;
 
-        // This would need a method to get journal entry by ID from repository
-        // For now, return not found
-        res.status(404).json({ error: 'Journal entry not found' });
+        const entry = await accountingService.getJournalEntryById(id);
+        if (!entry) {
+          return res.status(404).json({ error: 'Journal entry not found' });
+        }
+
+        res.json({ success: true, data: entry.toJSON() });
       } catch (error: any) {
         console.error('Get journal entry error:', error.message);
         res.status(500).json({ error: 'Internal server error' });
@@ -103,14 +117,31 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('journal_entries', 'post'),
     async (req: Request, res: Response) => {
       try {
-        const { id } = req.params;
+        const rawId = req.params.id;
+        const id = Array.isArray(rawId) ? rawId[0] : rawId;
         const userId = req.user!.id;
+        const userAgent = req.get('User-Agent') ?? undefined;
 
-        // This would need implementation to post journal entry
-        // For now, return success
+        const posted = await accountingService.postJournalEntry(id, userId);
+
+        await auditService.logJournalEntryPosted(
+          posted.id,
+          userId,
+          {
+            entryNumber: posted.entryNumber,
+            description: posted.description,
+            totalDebit: posted.totalDebit.amount,
+            totalCredit: posted.totalCredit.amount
+          },
+          userId,
+          req.ip,
+          userAgent
+        );
+
         res.json({
           success: true,
-          message: 'Journal entry posted successfully'
+          message: 'Journal entry posted successfully',
+          data: posted.toJSON()
         });
       } catch (error: any) {
         console.error('Post journal entry error:', error.message);
@@ -125,7 +156,8 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('accounts', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { accountId } = req.params;
+        const rawAccountId = req.params.accountId;
+        const accountId = Array.isArray(rawAccountId) ? rawAccountId[0] : rawAccountId;
         const { asOfDate } = req.query;
 
         const balance = await accountingService.getAccountBalance(
@@ -156,6 +188,7 @@ export function createAccountingRoutes(
       try {
         const { asOfDate } = req.query;
         const userId = req.user!.id;
+        const userAgent = req.get('User-Agent') ?? undefined;
 
         const trialBalance = await accountingService.generateTrialBalance(
           asOfDate ? new Date(asOfDate as string) : new Date()
@@ -167,7 +200,7 @@ export function createAccountingRoutes(
           'Trial Balance',
           { asOfDate },
           req.ip,
-          req.get('User-Agent')
+          userAgent
         );
 
         res.json({
@@ -191,7 +224,10 @@ export function createAccountingRoutes(
     authMiddleware.requirePermission('audit_logs', 'read'),
     async (req: Request, res: Response) => {
       try {
-        const { resourceType, resourceId } = req.params;
+        const rawResourceType = req.params.resourceType;
+        const rawResourceId = req.params.resourceId;
+        const resourceType = Array.isArray(rawResourceType) ? rawResourceType[0] : rawResourceType;
+        const resourceId = Array.isArray(rawResourceId) ? rawResourceId[0] : rawResourceId;
 
         const auditTrail = await auditService.getAuditTrail(resourceType, resourceId);
 

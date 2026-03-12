@@ -65,15 +65,18 @@ const auditRepo = new AuditLogRepository(supabase);
 
 // Initialize cache (Redis)
 const redisConfig = {
+  url: process.env.REDIS_URL,
   host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379'),
+  port: parseInt(process.env.REDIS_PORT || '6379', 10),
   password: process.env.REDIS_PASSWORD,
-  db: parseInt(process.env.REDIS_DB || '0'),
+  db: parseInt(process.env.REDIS_DB || '0', 10),
+  tls: process.env.REDIS_TLS === 'true',
+  keyPrefix: process.env.REDIS_KEY_PREFIX,
   ttl: {
-    accountBalance: parseInt(process.env.CACHE_TTL_ACCOUNT_BALANCE || '300'), // 5 minutes
-    trialBalance: parseInt(process.env.CACHE_TTL_TRIAL_BALANCE || '600'),    // 10 minutes
-    userPermissions: parseInt(process.env.CACHE_TTL_USER_PERMISSIONS || '1800'), // 30 minutes
-    reports: parseInt(process.env.CACHE_TTL_REPORTS || '900')                // 15 minutes
+    accountBalance: parseInt(process.env.CACHE_TTL_ACCOUNT_BALANCE || '300', 10), // 5 minutes
+    trialBalance: parseInt(process.env.CACHE_TTL_TRIAL_BALANCE || '600', 10),    // 10 minutes
+    userPermissions: parseInt(process.env.CACHE_TTL_USER_PERMISSIONS || '1800', 10), // 30 minutes
+    reports: parseInt(process.env.CACHE_TTL_REPORTS || '900', 10)                // 15 minutes
   }
 };
 
@@ -269,4 +272,3 @@ async function startServer() {
     }
   });
 }
-

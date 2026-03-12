@@ -65,6 +65,17 @@ interface SystemLog {
   };
 }
 
+interface SystemResource {
+  id: string;
+  cpu_usage: number;
+  memory_usage: number;
+  disk_usage: number;
+  active_connections: number;
+  database_connections: number;
+  recorded_at: string;
+  metadata?: any;
+}
+
 export const SystemAdministration: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [activeTab, setActiveTab] = useState<'health' | 'backups' | 'resources' | 'logs'>('health');

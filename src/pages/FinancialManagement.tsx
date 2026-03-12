@@ -137,15 +137,15 @@ export const FinancialManagement: React.FC = () => {
       const [cashFlowRes, investmentRes, varianceRes] = await Promise.all([
         supabase
           .from('cash_flow_projections')
-          .select('*, creator:profiles!cash_flow_projections_created_by_fkey(full_name)')
+          .select('*, creator:users!cash_flow_projections_created_by_fkey(full_name)')
           .order('projection_date', { ascending: true }),
         supabase
           .from('investment_portfolio')
-          .select('*, creator:profiles!investment_portfolio_created_by_fkey(full_name)')
+          .select('*, creator:users!investment_portfolio_created_by_fkey(full_name)')
           .order('created_at', { ascending: false }),
         supabase
           .from('budget_variance')
-          .select('*, creator:profiles!budget_variance_created_by_fkey(full_name), budget:budgets!budget_variance_budget_id_fkey(category, amount, month, type)')
+          .select('*, creator:users!budget_variance_created_by_fkey(full_name), budget:budgets!budget_variance_budget_id_fkey(category, amount, month, type)')
           .order('created_at', { ascending: false })
       ]);
 
