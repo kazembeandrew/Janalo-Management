@@ -5,7 +5,7 @@ import type { MapContainerProps, TileLayerProps, MarkerProps, PopupProps } from 
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/utils/finance';
-import { MapPin, User, Phone, Banknote, ExternalLink, Navigation, Search, Filter, ChevronRight, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
+import { MapPin, User, Phone, Banknote, ExternalLink, Navigation, Search, Filter, ChevronRight, AlertTriangle, CheckCircle2, RefreshCw, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 // Custom Marker Component to handle "Fly To" animations
@@ -51,6 +51,8 @@ export const ClientMap: React.FC = () => {
   const [selectedOfficer, setSelectedOfficer] = useState('all');
   const [mapCenter, setMapCenter] = useState<[number, number]>([-13.2543, 34.3015]);
   const [mapZoom, setMapZoom] = useState(7);
+  const [selectedClient, setSelectedClient] = useState<ClientLocation | null>(null);
+  const [showMapPopup, setShowMapPopup] = useState(false);
 
   const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
 
@@ -150,8 +152,8 @@ export const ClientMap: React.FC = () => {
   }, [locations, searchTerm, selectedOfficer]);
 
   const handleFocusClient = (loc: ClientLocation) => {
-      setMapCenter([loc.lat, loc.lng]);
-      setMapZoom(16);
+      setSelectedClient(loc);
+      setShowMapPopup(true);
   };
 
   if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw className="animate-spin h-8 w-8 text-indigo-600" /></div>;
@@ -318,6 +320,96 @@ export const ClientMap: React.FC = () => {
             )}
         </div>
       </div>
+
+      {/* Map Popup Modal */}
+      {showMapPopup && selectedClient && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          <div 
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+            onClick={() => setShowMapPopup(false)}
+          />
+          <div className="relative w-full max-w-4xl h-[80vh] bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <div className="absolute top-4 right-4 z-10">
+              <button 
+                onClick={() => setShowMapPopup(false)}
+                className="p-2 bg-white/90 backdrop-blur rounded-full shadow-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-600" />
+              </button>
+            </div>
+            <div className="p-4 bg-gradient-to-r from-indigo-600 to-purple-600">
+              <div className="flex items-center gap-3">
+                <div className={`h-12 w-12 rounded-xl flex items-center justify-center text-white font-bold shadow-lg ${selectedClient.is_par ? 'bg-red-500' : 'bg-blue-500'}`}>
+                  {selectedClient.full_name.charAt(0)}
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white">{selectedClient.full_name}</h2>
+                  <p className="text-sm text-white/80 flex items-center gap-1">
+                    <Phone className="h-3.5 w-3.5" /> {selectedClient.phone}
+                  </p>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${selectedClient.is_par ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}>
+                    {selectedClient.is_par ? 'At Risk (PAR)' : selectedClient.status}
+                  </span>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-4 text-white/80 text-sm">
+                <span className="flex items-center gap-1">
+                  <Banknote className="h-4 w-4" /> {formatCurrency(selectedClient.principal)}
+                </span>
+                <span className="flex items-center gap-1">
+                  <User className="h-4 w-4" /> {selectedClient.officer_name}
+                </span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-4 w-4" /> Last visit: {new Date(selectedClient.last_visit).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+            <div className="h-[calc(100%-140px)]">
+              <MapContainer 
+                center={[selectedClient.lat, selectedClient.lng]} 
+                zoom={17} 
+                scrollWheelZoom={true} 
+                className="h-full w-full"
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <Marker 
+                  position={[selectedClient.lat, selectedClient.lng]}
+                  icon={createColoredIcon(selectedClient.is_par ? '#EF4444' : '#3B82F6')}
+                >
+                  <Popup className="custom-popup">
+                    <div className="p-2 min-w-[200px]">
+                      <h4 className="font-bold text-gray-900">{selectedClient.full_name}</h4>
+                      <p className="text-xs text-gray-500">{selectedClient.phone}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Last visited: {new Date(selectedClient.last_visit).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </Popup>
+                </Marker>
+              </MapContainer>
+            </div>
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex gap-3">
+              <Link 
+                to={`/borrowers/${selectedClient.borrower_id}`}
+                className="flex-1 text-center bg-white border border-gray-300 text-gray-700 text-sm font-bold py-2.5 rounded-xl hover:bg-gray-100 transition-colors"
+              >
+                View Profile
+              </Link>
+              <Link 
+                to={`/loans/${selectedClient.loan_id}`}
+                className="flex-1 text-center bg-indigo-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+              >
+                View Loan Details
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

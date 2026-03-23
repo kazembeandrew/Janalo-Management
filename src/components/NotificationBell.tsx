@@ -399,9 +399,9 @@ export const NotificationBell: React.FC = () => {
       {/* Bell Button */}
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-indigo-200 hover:text-white transition-all focus:outline-none active:scale-95 rounded-lg hover:bg-indigo-800/50"
+        className="relative flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors focus:outline-none active:scale-95"
       >
-        <Bell className="h-6 w-6" />
+        <Bell className="h-5 w-5" />
         
         {totalUnread > 0 && (
           <span className={`absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-indigo-900 ${

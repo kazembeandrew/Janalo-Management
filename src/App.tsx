@@ -42,10 +42,13 @@ const LazyNotificationsPage = lazyLoad(() => import('@/pages/NotificationsPage')
 const LazyNotificationSettingsPage = lazyLoad(() => import('@/pages/NotificationSettingsPage'));
 const LazyAdvancedAnalytics = lazyLoad(() => import('@/pages/AdvancedAnalytics'));
 const LazyComplianceManagement = lazyLoad(() => import('@/pages/ComplianceManagement'));
-const LazyWorkflowAutomation = lazyLoad(() => import('@/pages/WorkflowAutomation'));
-const LazySecurityManagement = lazyLoad(() => import('@/pages/SecurityManagement'));
 const LazyFinancialManagement = lazyLoad(() => import('@/pages/FinancialManagement'));
-const LazyCustomerRelationshipManagement = lazyLoad(() => import('@/pages/CustomerRelationshipManagement'));
+const LazyLoansManagement = lazyLoad(() => import('@/pages/LoansManagement'));
+const LazyReporting = lazyLoad(() => import('@/pages/Reporting'));
+const LazyAdministration = lazyLoad(() => import('@/pages/Administration'));
+const LazyCommunication = lazyLoad(() => import('@/pages/Communication'));
+const LazyTools = lazyLoad(() => import('@/pages/Tools'));
+const LazyFinancial = lazyLoad(() => import('@/pages/Financial'));
 
 const ProtectedRoute = ({ children }: PropsWithChildren) => {
   const { session, isLoading } = useAuth();
@@ -101,63 +104,15 @@ const App: React.FC = () => {
             path="/loans"
             element={
               <ProtectedRoute>
-                <LazyLoans />
+                <LazyLoansManagement />
               </ProtectedRoute>
             }
           />
           <Route
-            path="/repayments"
+            path="/financial"
             element={
               <ProtectedRoute>
-                <LazyRepayments />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/schedule"
-            element={
-              <ProtectedRoute>
-                <LazyRepaymentSchedule />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/accounts"
-            element={
-              <ProtectedRoute>
-                <LazyAccounts />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/budgets"
-            element={
-              <ProtectedRoute>
-                <LazyBudgets />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/statements"
-            element={
-              <ProtectedRoute>
-                <LazyFinancialStatements />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/collections"
-            element={
-              <ProtectedRoute>
-                <LazyCollections />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/performance"
-            element={
-              <ProtectedRoute>
-                <LazyPerformance />
+                <LazyFinancial />
               </ProtectedRoute>
             }
           />
@@ -165,15 +120,7 @@ const App: React.FC = () => {
             path="/calculator"
             element={
               <ProtectedRoute>
-                <LazyCalculator />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/map"
-            element={
-              <ProtectedRoute>
-                <LazyClientMap />
+                <LazyTools />
               </ProtectedRoute>
             }
           />
@@ -213,7 +160,7 @@ const App: React.FC = () => {
             path="/messages"
             element={
               <ProtectedRoute>
-                <LazyMessages />
+                <LazyCommunication />
               </ProtectedRoute>
             }
           />
@@ -221,23 +168,7 @@ const App: React.FC = () => {
             path="/reports"
             element={
               <ProtectedRoute>
-                <LazyReports />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/expenses"
-            element={
-              <ProtectedRoute>
-                <LazyExpenses />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tasks"
-            element={
-              <ProtectedRoute>
-                <LazyTasks />
+                <LazyReporting />
               </ProtectedRoute>
             }
           />
@@ -245,39 +176,7 @@ const App: React.FC = () => {
             path="/users"
             element={
               <ProtectedRoute>
-                <LazyUsers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/audit-logs"
-            element={
-              <ProtectedRoute>
-                <LazyAuditLogs />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/settings"
-            element={
-              <ProtectedRoute>
-                <LazySystemSettings />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/import"
-            element={
-              <ProtectedRoute>
-                <LazyImportData />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/documents"
-            element={
-              <ProtectedRoute>
-                <LazyDocumentCenter />
+                <LazyAdministration />
               </ProtectedRoute>
             }
           />
@@ -314,14 +213,6 @@ const App: React.FC = () => {
             }
           />
           <Route
-            path="/analytics"
-            element={
-              <ProtectedRoute>
-                <LazyAdvancedAnalytics />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/compliance"
             element={
               <ProtectedRoute>
@@ -330,34 +221,10 @@ const App: React.FC = () => {
             }
           />
           <Route
-            path="/workflows"
-            element={
-              <ProtectedRoute>
-                <LazyWorkflowAutomation />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/security"
-            element={
-              <ProtectedRoute>
-                <LazySecurityManagement />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/financial-management"
             element={
               <ProtectedRoute>
                 <LazyFinancialManagement />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/crm"
-            element={
-              <ProtectedRoute>
-                <LazyCustomerRelationshipManagement />
               </ProtectedRoute>
             }
           />

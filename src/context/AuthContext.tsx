@@ -31,6 +31,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setIsLoading(false);
       }
+    }).catch((error) => {
+      console.error('Error getting initial session:', error);
+      setIsLoading(false);
     });
 
     // Listen for auth changes
@@ -56,7 +59,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        // Don't throw error, just set loading to false and let user continue
+        setIsLoading(false);
+        return;
+      }
+      
       const userProfile = data as UserProfile;
 
       if (userProfile && !userProfile.is_active) {
@@ -64,14 +73,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setProfile(null);
           setUser(null);
           setSession(null);
-          alert("Your account has been deactivated.");
+          // Show deactivation message on next render
+          localStorage.setItem('account_deactivated', 'true');
+          window.location.href = '/login';
       } else {
           setProfile(userProfile);
       }
+      
+      setIsLoading(false);
 
     } catch (error) {
-      console.error('Error fetching user profile:', error);
-    } finally {
+      console.error('Error in fetchProfile:', error);
+      // Don't sign out user on profile fetch error, just set loading to false
       setIsLoading(false);
     }
   };

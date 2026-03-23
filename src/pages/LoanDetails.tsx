@@ -287,42 +287,21 @@ export const LoanDetails: React.FC = () => {
       if (!selectedRepayment || !profile) return;
       setProcessingAction(true);
       try {
-          // 1. Create Reversal Journal Entry
-          const portfolioAcc = await getAccountByCode('PORTFOLIO');
-          const interestAcc = await getAccountByCode('EQUITY');
-          
-          // Swapping debits and credits from the original repayment
-          await postJournalEntry(
-              'reversal',
-              loan.id,
-              `REVERSAL of repayment from ${new Date(selectedRepayment.payment_date).toLocaleDateString()}`,
-              [
-                  { account_id: portfolioAcc.id, debit: selectedRepayment.principal_paid, credit: 0 },
-                  { account_id: interestAcc.id, debit: selectedRepayment.interest_paid + selectedRepayment.penalty_paid, credit: 0 },
-                  { account_id: targetAccountId || accounts[0].id, debit: 0, credit: selectedRepayment.amount_paid }
-              ],
-              profile.id
-          );
-          
-          // 2. Update Loan Balances (Add back what was paid)
-          await supabase.from('loans').update({
-              principal_outstanding: loan.principal_outstanding + selectedRepayment.principal_paid,
-              interest_outstanding: loan.interest_outstanding + selectedRepayment.interest_paid,
-              penalty_outstanding: (loan.penalty_outstanding || 0) + selectedRepayment.penalty_paid,
-              status: 'active'
-          }).eq('id', loan.id);
+          // Use atomic RPC function that handles all operations in a single transaction
+          const { data, error } = await supabase.rpc('reverse_repayment', {
+              p_loan_id: loan.id,
+              p_repayment_id: selectedRepayment.id,
+              p_user_id: profile.id,
+              p_reason: decisionReason,
+              p_account_id: targetAccountId || accounts[0]?.id,
+          });
 
-          // 3. Delete the repayment record
-          await supabase.from('repayments').delete().eq('id', selectedRepayment.id);
+          if (error) throw error;
 
-          await supabase.from('loan_notes').insert([{
-              loan_id: id,
-              user_id: profile.id,
-              content: `REVERSED repayment of ${formatCurrency(selectedRepayment.amount_paid)} from ${new Date(selectedRepayment.payment_date).toLocaleDateString()}. Reason: ${decisionReason}`,
-              is_system: true
-          }]);
+          const result = data as { success: boolean; error?: string; amount_reversed?: number };
+          if (!result.success) throw new Error(result.error || 'Reversal failed');
 
-          toast.success("Repayment reversed and balance restored");
+          toast.success(`Repayment reversed and balance restored (${formatCurrency(result.amount_reversed || 0)})`);
           setActiveModal(null);
           setDecisionReason('');
           fetchData();
@@ -337,39 +316,19 @@ export const LoanDetails: React.FC = () => {
       if (!profile || !loan) return;
       setProcessingAction(true);
       try {
-          const totalLoss = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
-          
-          // 1. Accounting: Debit Bad Debt Expense, Credit Loan Portfolio
-          const expenseAcc = await getAccountByCode('OPERATIONAL'); 
-          const portfolioAcc = await getAccountByCode('PORTFOLIO');
+          // Use atomic RPC function that handles all operations in a single transaction
+          const { data, error } = await supabase.rpc('write_off_loan', {
+              p_loan_id: loan.id,
+              p_user_id: profile.id,
+              p_reason: decisionReason,
+          });
 
-          await postJournalEntry(
-              'write_off',
-              loan.id,
-              `Write-off for loan ${loan.reference_no} (${loan.borrowers?.full_name})`,
-              [
-                  { account_id: expenseAcc.id, debit: totalLoss, credit: 0 },
-                  { account_id: portfolioAcc.id, debit: 0, credit: totalLoss }
-              ],
-              profile.id
-          );
+          if (error) throw error;
 
-          // 2. Update Loan Status
-          await supabase.from('loans').update({
-              status: 'defaulted',
-              principal_outstanding: 0,
-              interest_outstanding: 0,
-              penalty_outstanding: 0
-          }).eq('id', loan.id);
+          const result = data as { success: boolean; error?: string; total_loss?: number };
+          if (!result.success) throw new Error(result.error || 'Write-off failed');
 
-          await supabase.from('loan_notes').insert([{
-              loan_id: id,
-              user_id: profile.id,
-              content: `LOAN WRITTEN OFF. Total loss of ${formatCurrency(totalLoss)} recognized. Reason: ${decisionReason}`,
-              is_system: true
-          }]);
-
-          toast.success("Loan written off successfully");
+          toast.success(`Loan written off. Total loss of ${formatCurrency(result.total_loss || 0)} recognized.`);
           setActiveModal(null);
           setDecisionReason('');
           fetchData();
@@ -384,39 +343,35 @@ export const LoanDetails: React.FC = () => {
       if (!loan) return;
       setProcessingAction(true);
       try {
-          // Generate reference number for approved loans
-          let updateData: any = { status };
-          
-          if (status === 'active') {
-              const referenceNo = await generateAutoReference();
-              updateData.reference_no = referenceNo;
-          }
-          
-          await supabase.from('loans').update(updateData).eq('id', loan.id);
-          
+          // Use atomic RPC for loan disbursement (status === 'active')
           if (status === 'active' && accountId) {
-              // Record Disbursement in Ledger (Balanced Entry)
-              const portfolioAcc = await getAccountByCode('PORTFOLIO');
-              await postJournalEntry(
-                  'loan_disbursement',
-                  loan.id,
-                  `Disbursement to ${loan.borrowers?.full_name}`,
-                  [
-                      { account_id: portfolioAcc.id, debit: loan.principal_amount, credit: 0 },
-                      { account_id: accountId, debit: 0, credit: loan.principal_amount }
-                  ],
-                  profile?.id || ''
-              );
-          }
-          
-          await supabase.from('loan_notes').insert([{
-              loan_id: id,
-              user_id: profile?.id,
-              content: `${status.charAt(0).toUpperCase() + status.slice(1)}: ${note}`,
-              is_system: true
-          }]);
+              const { data, error } = await supabase.rpc('disburse_loan', {
+                  p_loan_id: loan.id,
+                  p_account_id: accountId,
+                  p_user_id: profile?.id,
+                  p_note: note,
+              });
 
-          toast.success(`Loan ${status}`);
+              if (error) throw error;
+
+              const result = data as { success: boolean; error?: string; reference_no?: string };
+              if (!result.success) throw new Error(result.error || 'Disbursement failed');
+
+              toast.success(`Loan approved and disbursed (${result.reference_no})`);
+          } else {
+              // Non-disbursement status updates (reject, reassess, etc.)
+              await supabase.from('loans').update({ status }).eq('id', loan.id);
+
+              await supabase.from('loan_notes').insert([{
+                  loan_id: id,
+                  user_id: profile?.id,
+                  content: `${status.charAt(0).toUpperCase() + status.slice(1)}: ${note}`,
+                  is_system: true,
+              }]);
+
+              toast.success(`Loan ${status}`);
+          }
+
           setActiveModal(null);
           setDecisionReason('');
           fetchData();
@@ -476,8 +431,10 @@ const handleAppFormUpload = async () => {
         const { error: insertError } = await supabase.from('loan_documents').insert({
             loan_id: loan.id,
             type: 'application_form',
-            storage_path: data.path,
-            mime_type: appFormBlob.type || 'application/pdf'
+            file_name: 'Application Form',
+            mime_type: appFormBlob.type || 'application/pdf',
+            file_size: appFormBlob.size,
+            storage_path: data.path
         });
         
         if (insertError) throw insertError;
@@ -506,8 +463,11 @@ const allDocuments = [...documents, ...borrowerDocuments.map(doc => ({
   id: doc.id,
   loan_id: id,
   type: doc.type,
+  file_name: doc.file_name,
+  mime_type: doc.mime_type,
+  file_size: doc.file_size,
   storage_path: doc.storage_path,
-  mime_type: doc.mime_type
+  created_at: doc.created_at
 }))];
 
 return (

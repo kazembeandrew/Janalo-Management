@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { PieChart, Lock, User, AlertCircle, Mail, ArrowLeft } from 'lucide-react';
@@ -11,7 +11,16 @@ export const Login: React.FC = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
+  const [deactivationNotice, setDeactivationNotice] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check if user was redirected due to account deactivation
+    if (localStorage.getItem('account_deactivated') === 'true') {
+      setDeactivationNotice(true);
+      localStorage.removeItem('account_deactivated');
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +87,21 @@ export const Login: React.FC = () => {
           <h2 className="text-2xl font-bold text-white">Janalo Enterprises</h2>
           <p className="text-indigo-200 mt-2">Sign in to your account</p>
         </div>
+
+        {/* Deactivation Notice */}
+        {deactivationNotice && (
+          <div className="mx-4 mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start">
+              <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <h3 className="text-sm font-medium text-red-800">Account Deactivated</h3>
+                <p className="text-sm text-red-600 mt-1">
+                  Your account has been deactivated. Please contact your administrator to reactivate access.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={showForgotPassword ? handlePasswordReset : handleLogin} className="p-8 space-y-6">
           {error && (

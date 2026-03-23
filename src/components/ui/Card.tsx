@@ -23,13 +23,13 @@ export const Card: React.FC<CardProps> = ({
   children,
   className,
   variant = 'default',
-  padding = 'md',
+  padding = 'sm',
   ...props
 }) => {
   return (
     <div
       className={cn(
-        'rounded-2xl transition-all duration-200',
+        'rounded-lg transition-all duration-200',
         variantClasses[variant],
         paddingClasses[padding],
         className

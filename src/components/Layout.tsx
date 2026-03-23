@@ -42,13 +42,17 @@ import { NotificationBell } from './NotificationBell';
 import { OversightIndicator } from './OversightIndicator';
 import { ToastProvider } from './ToastProvider';
 import { SearchBar } from './ui/SearchBar';
+import { Breadcrumbs } from './Breadcrumbs';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { profile, effectiveRoles, signOut } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [counts, setCounts] = useState({ inbox: 0, loans: 0 });
+  const headerIconButtonClass =
+    'flex h-10 w-10 items-center justify-center rounded-lg text-gray-600 hover:text-indigo-700 hover:bg-indigo-50 transition-colors';
   
   const performGlobalSearch = async (query: string) => {
     try {
@@ -115,40 +119,45 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     if (data) setCounts(data);
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
   const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
     { name: 'Borrowers', href: '/borrowers', icon: Users, roles: ['admin', 'ceo', 'loan_officer'] },
-    { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer'], badge: counts.loans },
-    { name: 'Repayments', href: '/repayments', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Repayment Schedule', href: '/schedule', icon: CalendarDays, roles: ['admin', 'ceo', 'accountant', 'loan_officer'], badge: 0 },
-    { name: 'Accounts', href: '/accounts', icon: Landmark, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Budgets', href: '/budgets', icon: Target, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Statements', href: '/statements', icon: Scale, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Collections', href: '/collections', icon: Calendar, roles: ['admin', 'loan_officer', 'accountant'] },
-    { name: 'Data Import', href: '/import', icon: FileSpreadsheet, roles: ['admin', 'accountant'] },
-    { name: 'Document Center', href: '/documents', icon: FolderOpen, roles: ['admin', 'ceo', 'accountant', 'loan_officer', 'hr'] },
-    { name: 'Client Map', href: '/map', icon: MapIcon, roles: ['admin', 'ceo', 'loan_officer'] },
-    { name: 'Calculator', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer'] },
-    { name: 'Inbox', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
-    { name: 'Tasks', href: '/tasks', icon: ClipboardList, roles: ['admin', 'ceo', 'hr', 'accountant', 'loan_officer'] },
-    { name: 'Performance', href: '/performance', icon: Award, roles: ['admin', 'ceo', 'hr'] },
-    { name: 'Expenses', href: '/expenses', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Users', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
-    { name: 'Audit Logs', href: '/audit-logs', icon: History, roles: ['admin'] },
-    { name: 'System Settings', href: '/settings', icon: Settings, roles: ['admin', 'ceo'] },
+    { name: 'Loans', href: '/loans', icon: Banknote, roles: ['admin', 'ceo', 'loan_officer', 'accountant'], badge: counts.loans },
+    { name: 'Financial', href: '/financial', icon: PiggyBank, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Reporting', href: '/reports', icon: FileText, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Administration', href: '/users', icon: Shield, roles: ['admin', 'ceo', 'hr'] },
+    { name: 'Communication', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
+    { name: 'Tools', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer', 'accountant', 'hr'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
     // New Admin Features
     { name: 'Advanced Analytics', href: '/analytics', icon: BarChart3, roles: ['admin', 'ceo'] },
     { name: 'Compliance Management', href: '/compliance', icon: Shield, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Workflow Automation', href: '/workflows', icon: Zap, roles: ['admin', 'ceo'] },
-    { name: 'Security Management', href: '/security', icon: Shield, roles: ['admin'] },
     { name: 'Financial Management', href: '/financial-management', icon: PiggyBank, roles: ['admin', 'ceo', 'accountant'] },
-    { name: 'Customer Relations', href: '/crm', icon: Heart, roles: ['admin', 'ceo', 'loan_officer'] },
   ];
 
-  const handleSignOut = async () => {
-    await signOut();
+  // Get current page title
+  const getPageTitle = () => {
+    const path = location.pathname;
+    const pageTitles: { [key: string]: string } = {
+      '/': 'Dashboard',
+      '/borrowers': 'Borrowers',
+      '/loans': 'Loans',
+      '/financial': 'Financial',
+      '/reports': 'Reporting',
+      '/users': 'Administration',
+      '/messages': 'Communication',
+      '/calculator': 'Tools',
+      '/profile': 'My Account',
+      '/analytics': 'Advanced Analytics',
+      '/compliance': 'Compliance Management',
+      '/financial-management': 'Financial Management'
+    };
+    return pageTitles[path] || 'JANALO';
   };
 
   return (
@@ -157,6 +166,34 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-gray-600 bg-opacity-75 z-20 md:hidden" onClick={() => setIsMobileMenuOpen(false)} />
+      )}
+
+      {/* Mobile Search Modal */}
+      {isMobileSearchOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-30 flex items-start justify-center pt-20 px-4 sm:hidden">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium">Search</h3>
+              <button onClick={() => setIsMobileSearchOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <SearchBar
+              placeholder="Search clients or loan references..."
+              onSearch={async (query) => {
+                const results = await performGlobalSearch(query);
+                setIsMobileSearchOpen(false);
+                if (results.borrowers.length === 1 && results.loans.length === 0) {
+                  navigate(`/borrowers/${results.borrowers[0].id}`);
+                } else if (results.loans.length === 1 && results.borrowers.length === 0) {
+                  navigate(`/loans/${results.loans[0].id}`);
+                }
+              }}
+              showFilterButton={true}
+              showHistory={true}
+            />
+          </div>
+        </div>
       )}
 
       <div className={`fixed inset-y-0 left-0 z-30 w-64 bg-indigo-900 text-white transform transition-transform duration-300 ease-in-out md:translate-x-0 md:static md:inset-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -176,7 +213,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div className="font-medium truncate text-sm">{profile?.full_name}</div>
         </div>
 
-        <nav className="mt-4 px-3 space-y-1 overflow-y-auto custom-scrollbar h-[calc(100vh-12rem)]">
+        <nav className="mt-4 px-2 space-y-1 overflow-y-auto custom-scrollbar h-[calc(100vh-14rem)] pb-4">
           {navigation.map((item) => {
             const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
             if (!hasAccess) return null;
@@ -186,12 +223,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               <Link
                 key={item.name}
                 to={item.href}
-                className={`flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors relative group ${
-                  isActive ? 'bg-indigo-700 text-white' : 'text-indigo-100 hover:bg-indigo-700'
+                className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-md transition-colors relative group border-l-2 ${
+                  isActive
+                    ? 'bg-indigo-800/70 text-white border-indigo-300'
+                    : 'text-indigo-100 border-transparent hover:bg-indigo-800/60 hover:border-indigo-300'
                 }`}
                 onClick={() => setIsMobileMenuOpen(false)}
               >
-                <item.icon className="mr-3 h-5 w-5" />
+                <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-200 group-hover:text-indigo-100'}`} />
                 {item.name}
                 {item.badge !== undefined && item.badge > 0 && (
                     <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
@@ -203,48 +242,71 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           })}
         </nav>
 
-        <div className="absolute bottom-0 w-full p-4 bg-indigo-900">
-          <button onClick={handleSignOut} className="flex items-center w-full px-4 py-2 text-sm font-medium text-indigo-200 rounded-md hover:bg-indigo-800 transition-colors">
+        <div className="absolute bottom-0 w-full p-4 bg-indigo-900 border-t border-indigo-800/70">
+          <button onClick={handleSignOut} className="flex items-center w-full px-4 py-2 text-sm font-medium text-indigo-200 rounded-md hover:bg-indigo-800/70 transition-colors">
             <LogOut className="mr-3 h-5 w-5" /> Sign Out
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white shadow-sm z-40">
-            <div className="flex items-center flex-1">
-                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700 mr-4" title="Open menu">
+        <header className="flex items-center justify-between px-4 md:px-8 h-16 bg-white border-b border-gray-100 shadow-sm z-40">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+                <button onClick={() => setIsMobileMenuOpen(true)} className="md:hidden text-gray-500 hover:text-gray-700" title="Open menu">
                     <Menu className="h-6 w-6" />
                 </button>
                 
+                {/* Mobile Search Button */}
+                <button 
+                  onClick={() => setIsMobileSearchOpen(true)} 
+                  className="sm:hidden text-gray-500 hover:text-gray-700" 
+                  title="Search"
+                >
+                  <Search className="h-5 w-5" />
+                </button>
+                
+                <h1 className="text-lg md:text-xl font-semibold text-gray-900 whitespace-nowrap">{getPageTitle()}</h1>
+
+                <div className="hidden sm:block h-6 w-px bg-gray-200" />
+                
                 {/* Enhanced Global Search Bar */}
-                <div className="max-w-md w-full hidden sm:block">
-                    <SearchBar
-                        placeholder="Search clients or loan references..."
-                        onSearch={async (query) => {
-                            const results = await performGlobalSearch(query);
-                            // Handle navigation based on results
-                            if (results.borrowers.length === 1 && results.loans.length === 0) {
-                                navigate(`/borrowers/${results.borrowers[0].id}`);
-                            } else if (results.loans.length === 1 && results.borrowers.length === 0) {
-                                navigate(`/loans/${results.loans[0].id}`);
-                            }
-                        }}
-                        showFilterButton={true}
-                        showHistory={true}
-                    />
+                <div className="hidden sm:block w-full max-w-xl min-w-0">
+                  <SearchBar
+                    placeholder="Search clients or loan references..."
+                    onSearch={async (query) => {
+                        const results = await performGlobalSearch(query);
+                        // Handle navigation based on results
+                        if (results.borrowers.length === 1 && results.loans.length === 0) {
+                            navigate(`/borrowers/${results.borrowers[0].id}`);
+                        } else if (results.loans.length === 1 && results.borrowers.length === 0) {
+                            navigate(`/loans/${results.loans[0].id}`);
+                        }
+                    }}
+                    showFilterButton={true}
+                    showHistory={true}
+                  />
                 </div>
             </div>
             
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-3">
                 <OversightIndicator />
+                <Link
+                  to="/calculator"
+                  className={headerIconButtonClass}
+                  title="Loan Calculator"
+                >
+                  <Calculator className="h-5 w-5" />
+                </Link>
                 <NotificationBell />
-                <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
+                <div className="h-10 w-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-100">
                     {profile?.full_name?.charAt(0)}
                 </div>
             </div>
         </header>
-        <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8">{children}</main>
+        <main className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+          <Breadcrumbs />
+          {children}
+        </main>
       </div>
     </div>
   );

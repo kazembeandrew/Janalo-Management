@@ -71,6 +71,7 @@ interface BudgetVariance {
     full_name: string;
   };
   budget?: {
+    id: string;
     category: string;
     amount: number;
     month: string;
@@ -145,7 +146,7 @@ export const FinancialManagement: React.FC = () => {
           .order('created_at', { ascending: false }),
         supabase
           .from('budget_variance')
-          .select('*, creator:users!budget_variance_created_by_fkey(full_name), budget:budgets!budget_variance_budget_id_fkey(category, amount, month, type)')
+          .select('*, creator:users!budget_variance_created_by_fkey(full_name), budget:budgets!budget_variance_budget_id_fkey(id, category, amount, month, type)')
           .order('created_at', { ascending: false })
       ]);
 

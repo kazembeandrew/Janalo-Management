@@ -16,7 +16,6 @@ export const CreateLoan: React.FC = () => {
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState<Step>('borrower');
-  const [existingLoanError, setExistingLoanError] = useState<string | null>(null);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -43,21 +42,38 @@ export const CreateLoan: React.FC = () => {
   useEffect(() => {
     const fetchBorrowers = async () => {
         if (!profile) return;
+        // Fetch borrowers excluding those with active/pending/reassess loans
         let query = supabase.from('borrowers').select('*, loans(id, status, officer_id)');
         if (profile.role === 'loan_officer') {
             // Show borrowers created by this officer OR borrowers who have loans where this officer is the loan officer
             // Since PostgREST doesn't support OR with nested relations, fetch all and filter client-side
             const { data } = await query;
             if (data) {
-                const filteredBorrowers = data.filter(borrower =>
-                    borrower.created_by === profile.id ||
-                    (borrower.loans && borrower.loans.some((loan: any) => loan.officer_id === profile.id))
-                );
+                // Filter to only include borrowers with NO active/pending/reassess loans
+                const filteredBorrowers = data.filter(borrower => {
+                    const hasExistingLoan = borrower.loans && borrower.loans.some((loan: any) => 
+                        ['active', 'pending', 'reassess'].includes(loan.status)
+                    );
+                    const isCreatedByOfficer = borrower.created_by === profile.id;
+                    const hasLoanWithOfficer = borrower.loans && borrower.loans.some((loan: any) => loan.officer_id === profile.id);
+                    
+                    // Include if: created by officer OR has loan with officer AND has no existing loan
+                    return (isCreatedByOfficer || hasLoanWithOfficer) && !hasExistingLoan;
+                });
                 setBorrowers(filteredBorrowers as Borrower[]);
             }
         } else {
             const { data } = await query;
-            if (data) setBorrowers(data as Borrower[]);
+            if (data) {
+                // Filter to only include borrowers with NO active/pending/reassess loans
+                const filteredBorrowers = data.filter(borrower => {
+                    const hasExistingLoan = borrower.loans && borrower.loans.some((loan: any) => 
+                        ['active', 'pending', 'reassess'].includes(loan.status)
+                    );
+                    return !hasExistingLoan;
+                });
+                setBorrowers(filteredBorrowers as Borrower[]);
+            }
         }
     };
     fetchBorrowers();
@@ -87,24 +103,9 @@ export const CreateLoan: React.FC = () => {
     setPreview(details);
   }, [formData]);
 
-  const checkExistingLoans = async (borrowerId: string) => {
-      if (!borrowerId) return;
-      setExistingLoanError(null);
-      
-      const { data, error } = await supabase
-        .from('loans')
-        .select('id, status')
-        .eq('borrower_id', borrowerId)
-        .in('status', ['active', 'pending', 'reassess']);
-      
-      if (data && data.length > 0) {
-          setExistingLoanError(`This client already has an ${data[0].status} loan. Clients cannot have multiple active loans.`);
-      }
-  };
 
   const handleBorrowerChange = (id: string) => {
       setFormData({ ...formData, borrower_id: id });
-      checkExistingLoans(id);
   };
 
   const handlePrincipalChange = (val: string) => {
@@ -162,7 +163,7 @@ export const CreateLoan: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!profile || existingLoanError) return;
+    if (!profile) return;
     setLoading(true);
 
     const loanData = {
@@ -285,7 +286,7 @@ export const CreateLoan: React.FC = () => {
                                <label className="block text-sm font-medium text-gray-700" aria-label="Select Borrower">Select Borrower</label>
                                <select 
                                    required
-                                   className={`mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg ${existingLoanError ? 'border-red-500 ring-red-500' : ''}`}
+                                   className="mt-1 block w-full pl-3 pr-10 py-3 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg"
                                    value={formData.borrower_id}
                                    aria-label="Select Borrower"
                                    onChange={e => handleBorrowerChange(e.target.value)}
@@ -295,14 +296,7 @@ export const CreateLoan: React.FC = () => {
                                        <option key={b.id} value={b.id}>{b.full_name}</option>
                                    ))}
                                </select>
-                               {existingLoanError ? (
-                                   <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-md flex items-start">
-                                       <AlertTriangle className="h-5 w-5 text-red-500 mr-2 shrink-0" />
-                                       <p className="text-sm text-red-700 font-medium">{existingLoanError}</p>
-                                   </div>
-                               ) : (
-                                   <p className="mt-2 text-xs text-gray-500">If the client is not listed, please register them in the Borrowers section first.</p>
-                               )}
+                               <p className="mt-2 text-xs text-gray-500">Only clients with no active loans are shown. If the client is not listed, please register them in the Borrowers section first.</p>
                            </div>
                        </div>
                    </div>
@@ -429,7 +423,7 @@ export const CreateLoan: React.FC = () => {
                    type="button"
                    disabled={
                        loading || 
-                       (currentStep === 'borrower' && (!formData.borrower_id || !!existingLoanError)) ||
+                       (currentStep === 'borrower' && !formData.borrower_id) ||
                        (currentStep === 'documents' && (!idCardBlob || !guarantorBlob))
                    }
                    onClick={() => {

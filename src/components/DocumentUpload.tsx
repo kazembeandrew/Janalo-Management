@@ -102,7 +102,7 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
       const base64 = imgSrc.split(',')[1];
       const mimeType = imgSrc.split(':')[1].split(';')[0];
       const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-      const prompt = "Analyze this image and provide crop coordinates for the main document in percentages: x, y, width, height. Format: x:10, y:10, width:80, height:60. If the document is rotated, suggest the rotation in degrees (0, 90, 180, 270).";
+      const prompt = "Analyze this image and provide crop coordinates for the main document in percentages. Return a JSON object with keys 'x', 'y', 'width', 'height' (all numbers), and optionally 'rotation' (0, 90, 180, or 270). Example: {\"x\":10, \"y\":10, \"width\":80, \"height\":60, \"rotation\":0}";
       const imagePart = {
         inlineData: {
           data: base64,
@@ -113,22 +113,36 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
       const response = await result.response;
       const text = response.text();
       
-      const cropMatch = text.match(/x:(\d+),\s*y:(\d+),\s*width:(\d+),\s*height:(\d+)/);
-      const rotMatch = text.match(/rotation:(\d+)/);
+      // Try to parse JSON
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        // If not JSON, try to extract from text
+        const cropMatch = text.match(/x:(\d+),\s*y:(\d+),\s*width:(\d+),\s*height:(\d+)/);
+        const rotMatch = text.match(/rotation:(\d+)/);
+        if (cropMatch) {
+          data = {
+            x: parseInt(cropMatch[1]),
+            y: parseInt(cropMatch[2]),
+            width: parseInt(cropMatch[3]),
+            height: parseInt(cropMatch[4])
+          };
+        }
+        if (rotMatch) {
+          data = data || {};
+          data.rotation = parseInt(rotMatch[1]);
+        }
+      }
 
-      if (cropMatch) {
-        const x = parseInt(cropMatch[1]);
-        const y = parseInt(cropMatch[2]);
-        const width = parseInt(cropMatch[3]);
-        const height = parseInt(cropMatch[4]);
-        setCrop({ unit: '%', x, y, width, height });
-      }
-      
-      if (rotMatch) {
-        setRotation(parseInt(rotMatch[1]));
-      }
-      
-      if (!cropMatch && !rotMatch) {
+      if (data) {
+        if (data.x !== undefined && data.y !== undefined && data.width !== undefined && data.height !== undefined) {
+          setCrop({ unit: '%', x: data.x, y: data.y, width: data.width, height: data.height });
+        }
+        if (data.rotation !== undefined) {
+          setRotation(data.rotation);
+        }
+      } else {
         alert("Could not detect document area automatically. Please adjust manually.");
       }
     } catch (error) {
@@ -191,9 +205,9 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
             <button onClick={handleCancel} className="p-2 hover:bg-white/10 rounded-full" aria-label="Cancel cropping"><X className="h-6 w-6"/></button>
           </div>
           
-          <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
-            <div style={{ transform: `rotate(${rotation}deg)`, transition: 'transform 0.2s' }}>
+          <div className="flex-1 flex items-center justify-center p-4 overflow-auto relative">
                 <ReactCrop
+                  style={{ maxHeight: '60vh' }}
                   crop={crop}
                   onChange={(c) => setCrop(c)}
                   onComplete={(c) => setCompletedCrop(c)}
@@ -207,7 +221,6 @@ export const DocumentUpload: React.FC<DocumentUploadProps> = ({ label, onUpload,
                     className="max-h-[60vh] max-w-full w-auto object-contain"
                   />
                 </ReactCrop>
-            </div>
           </div>
 
           <div className="mt-4 grid grid-cols-2 sm:flex sm:justify-center gap-3 pb-4">

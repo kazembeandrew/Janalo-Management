@@ -221,7 +221,7 @@ export const RepaymentSchedule: React.FC = () => {
               </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                       <tr>
@@ -267,6 +267,51 @@ export const RepaymentSchedule: React.FC = () => {
                   </tbody>
               </table>
           </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-gray-100">
+              {filteredSchedule.length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 italic">No installments match your search.</div>
+              ) : (
+                  filteredSchedule.map((item) => (
+                      <div key={`${item.loanId}-${item.installmentNo}`} className="p-4">
+                          <div className="flex justify-between items-start mb-2">
+                              <div>
+                                  <Link to={`/loans/${item.loanId}`} className="text-sm font-bold text-indigo-600 hover:underline">
+                                      {item.borrower}
+                                  </Link>
+                                  <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase mt-0.5">
+                                      <Calendar className="h-2.5 w-2.5 mr-1" /> {item.dueDate}
+                                  </div>
+                              </div>
+                              <div className="text-right">
+                                  <p className="text-sm font-bold text-gray-900">{formatCurrency(item.amount)}</p>
+                                  <p className="text-[8px] text-gray-400 uppercase font-bold">Installment {item.installmentNo}</p>
+                              </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 bg-gray-50 p-2 rounded-xl border border-gray-100 text-[10px]">
+                              <div className="flex justify-between px-1">
+                                  <span className="text-gray-500">Principal:</span>
+                                  <span className="font-bold text-gray-700">{formatCurrency(item.principal)}</span>
+                              </div>
+                              <div className="flex justify-between px-1">
+                                  <span className="text-gray-500">Interest:</span>
+                                  <span className="font-bold text-gray-700">{formatCurrency(item.interest)}</span>
+                              </div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between">
+                              <div className="text-[10px] text-gray-400">
+                                  Officer: <span className="font-bold">{item.officer}</span>
+                              </div>
+                              <Link to={`/loans/${item.loanId}`} className="text-[10px] font-bold text-indigo-600 flex items-center">
+                                  View Loan <ChevronRight className="h-3 w-3 ml-0.5" />
+                              </Link>
+                          </div>
+                      </div>
+                  ))
+              )}
+          </div>
+
       </div>
     </div>
   );

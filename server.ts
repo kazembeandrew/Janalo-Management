@@ -44,7 +44,7 @@ const authorizeAdmin = async (req: any, res: any, next: any) => {
         .eq('id', user.id)
         .single();
 
-    if (!profile || !['admin', 'ceo', 'hr'].includes(profile.role)) {
+    if (!profile || !['admin', 'ceo'].includes(profile.role)) {
         return res.status(403).json({ error: "Unauthorized: Insufficient permissions" });
     }
 
@@ -140,3 +140,99 @@ async function startServer() {
 }
 
 startServer();
+
+// --- SCHEDULED JOB ENDPOINTS (for cron jobs) ---
+
+app.post("/api/jobs/daily-par-provisioning", authorizeAdmin, async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin.rpc('daily_par_provisioning_job');
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            message: "Daily PAR and provisioning job completed",
+            result: data
+        });
+    } catch (error: any) {
+        console.error("Daily PAR job failed:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.post("/api/jobs/monthly-financial-statements", authorizeAdmin, async (req, res) => {
+    try {
+        const month = req.body.month || new Date().toISOString().split('T')[0].substring(0, 7) + '-01';
+
+        const { data, error } = await supabaseAdmin.rpc('generate_monthly_financial_statements', {
+            p_month: month
+        });
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            message: "Monthly financial statements generated",
+            result: data
+        });
+    } catch (error: any) {
+        console.error("Monthly statements job failed:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.get("/api/security/audit", authorizeAdmin, async (req, res) => {
+    try {
+        const { data, error } = await supabaseAdmin.rpc('security_audit_check');
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            audit_results: data
+        });
+    } catch (error: any) {
+        console.error("Security audit failed:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.get("/api/compliance/audit-trail", authorizeAdmin, async (req, res) => {
+    try {
+        const {
+            start_date,
+            end_date,
+            table_name,
+            user_id
+        } = req.query;
+
+        const { data, error } = await supabaseAdmin.rpc('get_compliance_audit_trail', {
+            p_start_date: start_date || new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            p_end_date: end_date || new Date().toISOString().split('T')[0],
+            p_table_name: table_name || null,
+            p_user_id: user_id || null
+        });
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            audit_trail: data
+        });
+    } catch (error: any) {
+        console.error("Compliance audit trail failed:", error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});

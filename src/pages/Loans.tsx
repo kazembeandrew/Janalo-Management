@@ -138,11 +138,34 @@ export const Loans: React.FC = () => {
 
   const handleBulkApprove = async () => {
     if (selectedIds.size === 0 || !targetAccountId || !profile) return;
-    
+
     setIsProcessing(true);
     const ids = Array.from(selectedIds);
-    
+
     try {
+      // Security checks
+      const { checkRateLimit, checkFinancialPermission } = await import('@/utils/accounting');
+
+      // Rate limiting
+      const rateLimitCheck = await checkRateLimit('financial_operation', 5, 10); // 5 operations per 10 minutes
+      if (!rateLimitCheck.allowed) {
+        throw new Error(`Rate limit exceeded: ${rateLimitCheck.reason}`);
+      }
+
+      // Calculate total amount for permission check
+      const selectedLoans = loans.filter(l => selectedIds.has(l.id));
+      const totalAmount = selectedLoans.reduce((sum, loan) => sum + loan.principal_amount, 0);
+
+      // Permission check
+      const permissionCheck = await checkFinancialPermission('disburse', totalAmount);
+      if (!permissionCheck.allowed) {
+        if (permissionCheck.requiresApproval) {
+          throw new Error(`This operation requires approval: ${permissionCheck.reason}`);
+        } else {
+          throw new Error(`Permission denied: ${permissionCheck.reason}`);
+        }
+      }
+
       const { data, error } = await supabase.rpc('bulk_disburse_loans', {
         p_loan_ids: ids,
         p_source_account_id: targetAccountId,
@@ -150,9 +173,9 @@ export const Loans: React.FC = () => {
       });
 
       if (error) throw error;
-      
+
       const result = data as any;
-      
+
       if (!result.success) {
         if (result.disbursed_count > 0) {
           toast.success(`${result.disbursed_count} loans disbursed, ${result.failed_count} failed`);
@@ -162,7 +185,7 @@ export const Loans: React.FC = () => {
       } else {
         toast.success(`Successfully approved and disbursed ${result.disbursed_count} loans.`);
       }
-      
+
       setShowApproveModal(false);
       setSelectedIds(new Set());
       setTargetAccountId('');
@@ -303,7 +326,7 @@ export const Loans: React.FC = () => {
                 <Filter className="h-5 w-5 text-gray-400" />
                 <select
                     value={filter}
-                    onChange={(e) => handleFilterChange(e.target.value)}
+                    onChange={(e) => handleFilterChange(e.target.value as FilterType)}
                     className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
                     aria-label="Filter loans by status"
                 >
@@ -327,7 +350,7 @@ export const Loans: React.FC = () => {
             )}
         </div>
 
-        <div className="overflow-x-auto flex-1">
+        <div className="hidden md:block overflow-x-auto flex-1">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -366,7 +389,7 @@ export const Loans: React.FC = () => {
                       {isExec && filter === 'pending' && (
                           <td className="px-6 py-4">
                               {loan.status === 'pending' && (
-                                  <button 
+                                  <button
                                     onClick={() => toggleSelect(loan.id)}
                                     className={`p-1 rounded transition-all ${isSelected ? 'text-indigo-600' : 'text-gray-300 hover:text-gray-400'}`}
                                   >
@@ -425,9 +448,9 @@ export const Loans: React.FC = () => {
                             </Link>
                           )}
                           <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
-                            {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin') 
-                                ? 'Review' 
-                                : 'Details'} 
+                            {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin')
+                                ? 'Review'
+                                : 'Details'}
                             <ChevronRight className="ml-1 h-4 w-4" />
                           </Link>
                         </div>
@@ -438,6 +461,98 @@ export const Loans: React.FC = () => {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden divide-y divide-gray-200 flex-1">
+          {loading ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-500">
+              <div className="flex justify-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
+              </div>
+            </div>
+          ) : loans.length === 0 ? (
+            <div className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</div>
+          ) : (
+            loans.map((loan) => {
+              const recovery = ((Number(loan.principal_amount) - Number(loan.principal_outstanding)) / Number(loan.principal_amount)) * 100;
+              const overdue = isOverdue(loan);
+              const isSelected = selectedIds.has(loan.id);
+
+              return (
+                <div key={loan.id} className={`p-4 hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center">
+                      {isExec && filter === 'pending' && (
+                        <button
+                          onClick={() => toggleSelect(loan.id)}
+                          className={`p-1 mr-2 rounded transition-all ${isSelected ? 'text-indigo-600' : 'text-gray-300 hover:text-gray-400'}`}
+                        >
+                          {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                        </button>
+                      )}
+                      <div>
+                        <Link to={`/loans/${loan.id}`} className="text-sm font-bold text-gray-900 hover:text-indigo-600 hover:underline">
+                          {loan.borrowers?.full_name}
+                        </Link>
+                        <div className="text-[10px] text-indigo-600 font-bold flex items-center mt-0.5">
+                          <Hash className="h-2.5 w-2.5 mr-0.5" /> {loan.reference_no || 'NO REF'}
+                        </div>
+                      </div>
+                      {overdue && (
+                        <div className="ml-2 text-red-600" title="Overdue (30d+)">
+                          <AlertTriangle className="h-4 w-4" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className={`px-2 inline-flex text-[10px] leading-4 font-semibold rounded-full ${getStatusColor(loan.status)}`}>
+                        {loan.status === 'pending' && <Clock className="w-2.5 h-2.5 mr-1" />}
+                        {loan.status === 'reassess' ? 'Reassess' : loan.status}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 mt-3">
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">Principal</p>
+                      <p className="text-sm font-medium text-gray-900">{formatCurrency(loan.principal_amount)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] text-gray-400 uppercase font-bold">Outstanding</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 flex-1">
+                      <div className="w-24 bg-gray-100 rounded-full h-1.5">
+                        <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${recovery}%` }} />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-400">{recovery.toFixed(0)}% Recovery</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {(effectiveRoles.includes('admin') || effectiveRoles.includes('ceo') || (effectiveRoles.includes('loan_officer') && loan.status !== 'active' && loan.status !== 'completed')) && (
+                        <button onClick={() => { setDeleteLoanId(loan.id); setShowDeleteModal(true); }} className="text-red-600 hover:text-red-900" title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                      {effectiveRoles.includes('loan_officer') && (loan.status === 'rejected' || loan.status === 'reassess') && (
+                        <Link to={`/loans/edit/${loan.id}`} className="text-indigo-600 hover:text-indigo-900" title="Edit">
+                          <Edit className="h-4 w-4" />
+                        </Link>
+                      )}
+                      <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center text-xs font-bold">
+                        Details <ChevronRight className="ml-0.5 h-3 w-3" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         <div className="bg-white px-4 py-3 border-t border-gray-200 flex items-center justify-between sm:px-6">

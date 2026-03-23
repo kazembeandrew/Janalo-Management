@@ -740,7 +740,7 @@ export const Accounts: React.FC = () => {
                                                   )}
                                               </div>
                                               <p className="text-xs text-gray-500 uppercase font-medium tracking-wider">
-                                                  {acc.category} • {acc.code}
+                                                  {acc.account_category} • {acc.account_code}
                                               </p>
                                           </div>
                                       </div>

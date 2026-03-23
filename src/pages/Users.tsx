@@ -108,6 +108,7 @@ export const Users: React.FC = () => {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+      console.log('Fetched users:', data);
       setUsers(data as UserProfile[]);
     } catch (error) {
       console.error('Error fetching users:', error);
