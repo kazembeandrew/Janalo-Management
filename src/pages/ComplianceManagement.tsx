@@ -412,7 +412,7 @@ export const ComplianceManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -493,6 +493,74 @@ export const ComplianceManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredRequirements.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No compliance requirements found.</div>
+                ) : (
+                  filteredRequirements.map((requirement) => (
+                    <div key={requirement.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{requirement.requirement_name}</p>
+                          <p className="text-xs text-gray-500 truncate max-w-[320px] mt-1">
+                            {requirement.description}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(requirement.status)}`}>
+                          {requirement.status.replace('_', ' ')}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Regulatory:</span> {requirement.regulatory_body}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Frequency:</span>{' '}
+                          <span className={`text-xs font-medium ${getFrequencyColor(requirement.frequency)}`}>
+                            {requirement.frequency}
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Due:</span>{' '}
+                          {requirement.due_date
+                            ? new Date(requirement.due_date).toLocaleDateString()
+                            : 'N/A'}
+                          {isOverdue(requirement.due_date, requirement.status) && (
+                            <span className="ml-2 text-xs text-red-600 font-medium">OVERDUE</span>
+                          )}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Assigned to:</span>{' '}
+                          {requirement.assigned_user?.full_name || 'Unassigned'}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-end gap-2">
+                        {requirement.status !== 'completed' && (
+                          <button
+                            onClick={() => completeRequirement(requirement.id)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Mark as completed"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => setSelectedItem(requirement)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                          title="View details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -510,7 +578,7 @@ export const ComplianceManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -589,6 +657,72 @@ export const ComplianceManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredReports.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No regulatory reports found.</div>
+                ) : (
+                  filteredReports.map((report) => (
+                    <div key={report.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{report.report_name}</p>
+                          <p className="text-xs text-gray-500 mt-1 truncate max-w-[320px]">
+                            {report.regulatory_body}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(report.status)}`}>
+                          {report.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Type:</span> {report.report_type}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Period:</span>{' '}
+                          {new Date(report.reporting_period_start).toLocaleDateString()} -{' '}
+                          {new Date(report.reporting_period_end).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Due:</span>{' '}
+                          {new Date(report.due_date).toLocaleDateString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-end gap-2">
+                        {report.status === 'pending' && (
+                          <button
+                            onClick={() => generateReport(report.id)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Generate report"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                        )}
+                        {report.status === 'generated' && (
+                          <button
+                            onClick={() => submitReport(report.id)}
+                            className="text-green-600 hover:text-green-900"
+                            title="Submit report"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedItem(report)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                          title="View details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -606,7 +740,7 @@ export const ComplianceManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -675,6 +809,63 @@ export const ComplianceManagement: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredPolicies.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No policy documents found.</div>
+                ) : (
+                  filteredPolicies.map((policy) => (
+                    <div key={policy.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{policy.title}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            Created by {policy.creator?.full_name}
+                          </p>
+                        </div>
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(policy.status)}`}>
+                          {policy.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Category:</span> {policy.category}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Version:</span> {policy.version}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Effective:</span>{' '}
+                          {new Date(policy.effective_date).toLocaleDateString()}
+                          {policy.expiry_date && (
+                            <p className="text-xs text-gray-500 mt-1">
+                              Expires: {new Date(policy.expiry_date).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => setSelectedItem(policy)}
+                          className="text-indigo-600 hover:text-indigo-900"
+                          title="View details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Download"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

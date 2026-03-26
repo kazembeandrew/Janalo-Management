@@ -59,7 +59,7 @@ export const OversightIndicator: React.FC = () => {
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute right-0 mt-3 w-64 bg-white rounded-2xl shadow-2xl ring-1 ring-black ring-opacity-5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+          <div className="absolute mt-3 w-auto max-w-64 left-2 right-2 sm:left-auto sm:right-0 sm:w-64 bg-white rounded-2xl shadow-2xl ring-1 ring-black ring-opacity-5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
             <div className="p-4 border-b border-gray-100 bg-red-50/30">
                 <h3 className="text-xs font-bold text-red-900 uppercase tracking-widest">Oversight Queue</h3>
             </div>

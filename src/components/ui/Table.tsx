@@ -20,6 +20,7 @@ export interface TableProps<T = any> {
   onSort?: (column: keyof T, direction: 'asc' | 'desc') => void;
   sortColumn?: keyof T;
   sortDirection?: 'asc' | 'desc';
+  mobileCardRender?: (row: T, index: number) => React.ReactNode;
 }
 
 export function Table<T extends Record<string, any>>({
@@ -31,8 +32,10 @@ export function Table<T extends Record<string, any>>({
   onRowClick,
   onSort,
   sortColumn,
-  sortDirection
+  sortDirection,
+  mobileCardRender
 }: TableProps<T>) {
+
   const handleSort = (column: TableColumn<T>) => {
     if (!column.sortable || !onSort) return;
     
@@ -70,7 +73,8 @@ export function Table<T extends Record<string, any>>({
 
   return (
     <div className={cn('bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden', className)}>
-      <div className="overflow-x-auto">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -124,6 +128,45 @@ export function Table<T extends Record<string, any>>({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Card View */}
+      <div className="md:hidden divide-y divide-gray-100">
+        {data.map((row, index) => (
+          <div
+            key={index}
+            className={cn(
+              'p-4 transition-colors active:bg-gray-50',
+              onRowClick && 'cursor-pointer'
+            )}
+            onClick={() => onRowClick?.(row, index)}
+          >
+            {mobileCardRender ? (
+              mobileCardRender(row, index)
+            ) : (
+              <div className="space-y-3">
+                {columns.map((column) => (
+                  <div key={String(column.key)} className="flex justify-between items-start gap-4">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      {column.title}
+                    </span>
+                    <div className={cn(
+                      'text-sm text-right',
+                      column.align === 'center' && 'text-center',
+                      column.align === 'left' && 'text-left'
+                    )}>
+                      {column.render ? (
+                        column.render(row[column.key], row, index)
+                      ) : (
+                        <span className="text-gray-900 font-medium">{row[column.key]}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
       </div>
     </div>
   );

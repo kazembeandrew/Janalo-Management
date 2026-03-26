@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import toast from 'react-hot-toast';
 import { notifyExpenseApproved } from '@/utils/notifications';
+import { notifyExecutivesForPendingExpense } from '@/utils/oversightNotifications';
 
 export const Expenses: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
@@ -102,6 +103,14 @@ export const Expenses: React.FC = () => {
 
       if (error) throw error;
       
+      await notifyExecutivesForPendingExpense({
+        expenseId: String(data.id),
+        description: data.description,
+        amountFormatted: formatCurrency(Number(data.amount || 0)),
+        excludeUserId: profile.id,
+        senderId: profile.id
+      });
+
       await logAudit('Expense Proposed', { amount: formData.amount, category: formData.category }, data.id);
       
       toast.success('Expense proposed. Awaiting CEO approval.');
@@ -303,7 +312,7 @@ export const Expenses: React.FC = () => {
               </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                       <tr>
@@ -367,6 +376,85 @@ export const Expenses: React.FC = () => {
                   </tbody>
               </table>
           </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {loading ? (
+              <div className="px-6 py-12 text-center text-gray-500">
+                <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+                <div className="text-sm">Loading records...</div>
+              </div>
+            ) : filteredExpenses.length === 0 ? (
+              <div className="px-6 py-12 text-center text-gray-500">No expense records found.</div>
+            ) : (
+              filteredExpenses.map((expense) => (
+                <div key={expense.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-gray-900">
+                        {new Date(expense.date).toLocaleDateString()}
+                      </div>
+                      <div className="mt-2">
+                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-700 uppercase border border-gray-200">
+                          {expense.category}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-red-600">{formatCurrency(expense.amount)}</div>
+                      <div className="text-[8px] text-gray-400 uppercase font-bold mt-0.5">Amount</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-sm text-gray-900 font-medium">
+                    {expense.description}
+                    <p className="text-[10px] text-gray-400 mt-0.5">
+                      Recorded by {expense.users?.full_name}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border ${
+                        expense.status === 'approved'
+                          ? 'bg-green-50 text-green-700 border-green-100'
+                          : expense.status === 'rejected'
+                            ? 'bg-red-50 text-red-700 border-red-100'
+                            : 'bg-amber-50 text-amber-700 border-amber-100'
+                      }`}
+                    >
+                      {expense.status === 'pending_approval' ? 'Pending CEO' : expense.status}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      {isCEO && expense.status === 'pending_approval' && (
+                        <button
+                          onClick={() => {
+                            setSelectedExpense(expense);
+                            setShowApproveModal(true);
+                          }}
+                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                          title="Approve expense"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </button>
+                      )}
+
+                      {(isAccountant || isCEO) && (
+                        <button
+                          onClick={() => handleDelete(expense)}
+                          className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete expense"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
       </div>
 
       {/* Propose Expense Modal */}
@@ -390,7 +478,7 @@ export const Expenses: React.FC = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                           <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
+                              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount</label>
                               <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayAmount} onChange={e => handleAmountChange(e.target.value)} />
                           </div>
                           <div>

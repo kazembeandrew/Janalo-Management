@@ -659,7 +659,7 @@ export const WorkflowAutomation: React.FC = () => {
           {/* Workflows Tab */}
           {activeTab === 'workflows' && (
             <div className="space-y-4">
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -744,13 +744,98 @@ export const WorkflowAutomation: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {workflows.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No workflows found.</div>
+                ) : (
+                  workflows.map((workflow) => (
+                    <div key={workflow.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{workflow.name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{workflow.description}</p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            Created by {workflow.creator?.full_name}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            workflow.is_active ? 'text-green-600 bg-green-100' : 'text-gray-600 bg-gray-100'
+                          }`}
+                        >
+                          {workflow.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-xs text-gray-600">
+                        <div>
+                          <span className="font-bold text-gray-700">Entity:</span>{' '}
+                          <span className="inline-flex items-center gap-2">
+                            {getEntityTypeIcon(workflow.entity_type)}
+                            <span>{workflow.entity_type}</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Trigger:</span> {workflow.trigger_event}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Priority:</span> {workflow.priority}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+                        <button
+                          onClick={() => toggleWorkflow(workflow.id, !workflow.is_active)}
+                          className={`inline-flex items-center ${
+                            workflow.is_active
+                              ? 'text-yellow-600 hover:text-yellow-900'
+                              : 'text-green-600 hover:text-green-900'
+                          }`}
+                          title={workflow.is_active ? 'Deactivate' : 'Activate'}
+                        >
+                          {workflow.is_active ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => executeWorkflow(workflow.id)}
+                          className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                          title="Execute now"
+                        >
+                          <Play className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          className="text-indigo-600 hover:text-indigo-900 inline-flex items-center"
+                          title="Edit"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+
+                        <button
+                          onClick={() => deleteWorkflow(workflow.id)}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
           {/* Executions Tab */}
           {activeTab === 'executions' && (
             <div className="space-y-4">
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -810,6 +895,65 @@ export const WorkflowAutomation: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {executions.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No executions found.</div>
+                ) : (
+                  executions.map((execution) => (
+                    <div key={execution.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">
+                            {execution.workflow?.name || 'Unknown'}
+                          </p>
+                          <div className="mt-2 text-xs text-gray-600">
+                            <span className="font-bold text-gray-700">Entity:</span>{' '}
+                            <span className="inline-flex items-center gap-2">
+                              {getEntityTypeIcon(execution.entity_type)}
+                              <span>{execution.entity_id}</span>
+                            </span>
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                            execution.status
+                          )}`}
+                        >
+                          {execution.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-xs text-gray-600">
+                        <div>
+                          <span className="font-bold text-gray-700">Started:</span>{' '}
+                          {new Date(execution.started_at).toLocaleString()}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Duration:</span>{' '}
+                          {execution.completed_at
+                            ? `${Math.round(
+                                (new Date(execution.completed_at).getTime() -
+                                  new Date(execution.started_at).getTime()) /
+                                  1000
+                              )}s`
+                            : 'Running...'}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          className="text-indigo-600 hover:text-indigo-900"
+                          title="View details"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

@@ -26,7 +26,7 @@ export const RepaymentModal: React.FC<RepaymentModalProps> = ({
                 </div>
                 <form onSubmit={onConfirm} className="p-8 space-y-5">
                     <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received (MK)</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount Received</label>
                         <input 
                             required 
                             type="text" 

@@ -39,7 +39,6 @@ import {
   Clock
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
-import { OversightIndicator } from './OversightIndicator';
 import { ToastProvider } from './ToastProvider';
 import { SearchBar } from './ui/SearchBar';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -134,6 +133,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { name: 'Communication', href: '/messages', icon: MessageSquare, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'], badge: counts.inbox },
     { name: 'Tools', href: '/calculator', icon: Calculator, roles: ['admin', 'ceo', 'loan_officer', 'accountant', 'hr'] },
     { name: 'My Account', href: '/profile', icon: UserCircle, roles: ['admin', 'ceo', 'loan_officer', 'hr', 'accountant'] },
+    // Financial Management Section
+    { name: 'Accounts', href: '/accounts', icon: Landmark, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Statements', href: '/statements', icon: Receipt, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Budgets', href: '/budgets', icon: PieChart, roles: ['admin', 'ceo', 'accountant'] },
+    { name: 'Ledger', href: '/ledger', icon: FileSpreadsheet, roles: ['admin', 'ceo', 'accountant'] },
     // New Admin Features
     { name: 'Advanced Analytics', href: '/analytics', icon: BarChart3, roles: ['admin', 'ceo'] },
     { name: 'Compliance Management', href: '/compliance', icon: Shield, roles: ['admin', 'ceo', 'accountant'] },
@@ -153,6 +157,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       '/messages': 'Communication',
       '/calculator': 'Tools',
       '/profile': 'My Account',
+      '/accounts': 'Accounts',
+      '/statements': 'Statements',
+      '/budgets': 'Budgets',
+      '/ledger': 'Ledger',
       '/analytics': 'Advanced Analytics',
       '/compliance': 'Compliance Management',
       '/financial-management': 'Financial Management'
@@ -214,32 +222,107 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
 
         <nav className="mt-4 px-2 space-y-1 overflow-y-auto custom-scrollbar h-[calc(100vh-14rem)] pb-4">
-          {navigation.map((item) => {
-            const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
-            if (!hasAccess) return null;
+          {/* Financial Management Section - Row 1 */}
+          <div className="mb-2">
+            <div className="px-4 py-2 text-xs uppercase text-indigo-300 font-semibold tracking-wider">
+              Financial Management
+            </div>
+            <div className="space-y-1">
+              {navigation.filter(item => ['Accounts', 'Statements'].includes(item.name)).map((item) => {
+                const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
+                if (!hasAccess) return null;
 
-            const isActive = location.pathname === item.href;
-            return (
-              <Link
-                key={item.name}
-                to={item.href}
-                className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-md transition-colors relative group border-l-2 ${
-                  isActive
-                    ? 'bg-indigo-800/70 text-white border-indigo-300'
-                    : 'text-indigo-100 border-transparent hover:bg-indigo-800/60 hover:border-indigo-300'
-                }`}
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-200 group-hover:text-indigo-100'}`} />
-                {item.name}
-                {item.badge !== undefined && item.badge > 0 && (
-                    <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
-                        {item.badge > 99 ? '99+' : item.badge}
-                    </span>
-                )}
-              </Link>
-            );
-          })}
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-md transition-colors relative group border-l-2 ${
+                      isActive
+                        ? 'bg-indigo-800/70 text-white border-indigo-300'
+                        : 'text-indigo-100 border-transparent hover:bg-indigo-800/60 hover:border-indigo-300'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-200 group-hover:text-indigo-100'}`} />
+                    {item.name}
+                    {item.badge !== undefined && item.badge > 0 && (
+                        <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
+                            {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Financial Management Section - Row 2 */}
+          <div className="mb-2">
+            <div className="space-y-1">
+              {navigation.filter(item => ['Budgets', 'Ledger'].includes(item.name)).map((item) => {
+                const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
+                if (!hasAccess) return null;
+
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-md transition-colors relative group border-l-2 ${
+                      isActive
+                        ? 'bg-indigo-800/70 text-white border-indigo-300'
+                        : 'text-indigo-100 border-transparent hover:bg-indigo-800/60 hover:border-indigo-300'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-200 group-hover:text-indigo-100'}`} />
+                    {item.name}
+                    {item.badge !== undefined && item.badge > 0 && (
+                        <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
+                            {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Other Navigation Items */}
+          <div className="mb-2">
+            <div className="px-4 py-2 text-xs uppercase text-indigo-300 font-semibold tracking-wider">
+              System
+            </div>
+            <div className="space-y-1">
+              {navigation.filter(item => !['Accounts', 'Statements', 'Budgets', 'Ledger'].includes(item.name)).map((item) => {
+                const hasAccess = item.roles.some(r => effectiveRoles.includes(r as any));
+                if (!hasAccess) return null;
+
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center gap-3 px-4 py-2.5 text-sm font-medium rounded-md transition-colors relative group border-l-2 ${
+                      isActive
+                        ? 'bg-indigo-800/70 text-white border-indigo-300'
+                        : 'text-indigo-100 border-transparent hover:bg-indigo-800/60 hover:border-indigo-300'
+                    }`}
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <item.icon className={`h-5 w-5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-200 group-hover:text-indigo-100'}`} />
+                    {item.name}
+                    {item.badge !== undefined && item.badge > 0 && (
+                        <span className="absolute right-3 top-3 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full animate-pulse shadow-sm">
+                            {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         </nav>
 
         <div className="absolute bottom-0 w-full p-4 bg-indigo-900 border-t border-indigo-800/70">
@@ -289,7 +372,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
             
             <div className="flex items-center gap-3">
-                <OversightIndicator />
                 <Link
                   to="/calculator"
                   className={headerIconButtonClass}

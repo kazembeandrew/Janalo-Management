@@ -1,5 +1,6 @@
 import React from 'react';
 import { cn } from '@/utils/cn';
+import { useCountUp } from '@/hooks/useCountUp';
 
 export interface StatCardProps {
   title: string;
@@ -37,6 +38,9 @@ export const StatCard: React.FC<StatCardProps> = ({
   loading = false,
   className
 }) => {
+  // Use count-up animation for numeric values
+  const displayValue = typeof value === 'number' ? useCountUp(value) : value;
+
   if (loading) {
     return (
       <div className={cn('bg-white p-6 rounded-2xl shadow-sm border border-gray-100', className)}>
@@ -55,7 +59,7 @@ export const StatCard: React.FC<StatCardProps> = ({
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">
             {title}
           </p>
-          <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
+          <h3 className="text-2xl font-bold text-gray-900">{displayValue}</h3>
           {change && (
             <div className={cn('mt-2 flex items-center text-xs font-medium', changeColorClasses[change.type])}>
               <span>{change.value}</span>

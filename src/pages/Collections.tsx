@@ -179,7 +179,7 @@ export const Collections: React.FC = () => {
                     />
                 </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                     <tr>
@@ -215,7 +215,7 @@ export const Collections: React.FC = () => {
                             )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <Link 
+                            <Link
                                 to={`/loans/${loan.id}`}
                                 className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
                             >
@@ -227,6 +227,49 @@ export const Collections: React.FC = () => {
                     )}
                 </tbody>
                 </table>
+            </div>
+
+            {/* Mobile Card View */}
+            <div className="md:hidden divide-y divide-gray-100">
+                {loading && upcomingLoans.length === 0 ? (
+                    <div className="px-6 py-8 text-center text-xs text-gray-500">Loading portfolio...</div>
+                ) : filteredLoans.length === 0 ? (
+                    <div className="px-6 py-8 text-center text-xs text-gray-500">No active loans found.</div>
+                ) : (
+                    filteredLoans.map(loan => (
+                        <div key={loan.id} className="p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <div className="text-sm font-bold text-gray-900">{loan.borrowers?.full_name}</div>
+                                    <div className="text-[10px] text-gray-500 flex items-center mt-0.5">
+                                        <Phone className="h-2.5 w-2.5 mr-1" /> {loan.borrowers?.phone}
+                                    </div>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-sm font-bold text-indigo-600">{formatCurrency(loan.monthly_installment)}</div>
+                                    <div className="text-[8px] text-gray-400 uppercase font-bold">Monthly Installment</div>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center mt-3">
+                                <div>
+                                    <div className="text-[10px] text-gray-400 uppercase font-bold">Total Outstanding</div>
+                                    <div className="text-sm text-gray-900 font-medium">
+                                        {formatCurrency(loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0))}
+                                    </div>
+                                    {loan.penalty_outstanding > 0 && (
+                                        <div className="text-[10px] text-red-600 font-bold">Incl. {formatCurrency(loan.penalty_outstanding)} Penalty</div>
+                                    )}
+                                </div>
+                                <Link
+                                    to={`/loans/${loan.id}`}
+                                    className="inline-flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-bold hover:bg-indigo-100 transition-colors"
+                                >
+                                    View <ChevronRight className="h-3 w-3 ml-1" />
+                                </Link>
+                            </div>
+                        </div>
+                    ))
+                )}
             </div>
           </div>
 

@@ -8,6 +8,7 @@ import {
     CheckCircle2, Save, TrendingUp, Banknote, Hash 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { notifyExecutivesForPendingLoan } from '@/utils/oversightNotifications';
 
 export const RestructureLoan: React.FC = () => {
   const { id } = useParams<{id: string}>();
@@ -167,6 +168,17 @@ export const RestructureLoan: React.FC = () => {
 
           if (newError) throw newError;
 
+          // Notify executives/admins about the new pending approval loan.
+          // Dedupe is handled inside the helper.
+          const borrowerName = oldLoan.borrowers?.full_name || 'Borrower';
+          await notifyExecutivesForPendingLoan({
+            loanId: String(newLoan.id),
+            borrowerName,
+            amountFormatted: formatCurrency(Number(formData.principal_amount || 0)),
+            excludeUserId: profile.id,
+            senderId: profile.id
+          });
+
           // 2. Close the OLD loan
           const { error: oldError } = await supabase
             .from('loans')
@@ -296,7 +308,7 @@ export const RestructureLoan: React.FC = () => {
                       </div>
 
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">New Principal (MK)</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">New Principal</label>
                           <input 
                             required
                             type="text"

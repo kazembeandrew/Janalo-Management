@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/utils/cn';
 
@@ -31,6 +31,16 @@ export const Modal: React.FC<ModalProps> = ({
   closeOnBackdropClick = true,
   className
 }) => {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) setVisible(true);
+  }, [isOpen]);
+
+  const handleAnimEnd = () => {
+    if (!isOpen) setVisible(false);
+  };
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -49,7 +59,7 @@ export const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!visible) return null;
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (closeOnBackdropClick && e.target === e.currentTarget) {
@@ -58,19 +68,30 @@ export const Modal: React.FC<ModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-50 overflow-y-auto"
+      onAnimationEnd={handleAnimEnd}
+    >
       <div className="flex min-h-screen items-center justify-center p-4">
         {/* Backdrop */}
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
+          className={cn(
+            "fixed inset-0 bg-black/50",
+            isOpen
+              ? "animate-in fade-in duration-200"
+              : "animate-out fade-out duration-150"
+          )}
           onClick={handleBackdropClick}
         />
 
         {/* Modal */}
         <div
           className={cn(
-            'relative w-full bg-white rounded-2xl shadow-2xl transform transition-all',
+            'relative w-full bg-white rounded-2xl shadow-2xl',
             sizeClasses[size],
+            isOpen
+              ? "animate-in zoom-in-95 fade-in duration-200"
+              : "animate-out zoom-out-95 fade-out duration-150",
             className
           )}
         >

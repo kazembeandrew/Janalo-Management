@@ -15,7 +15,7 @@ export const validateLoanAmount = (amount: number): ValidationResult => {
     return { isValid: false, error: 'Loan amount must be greater than 0' };
   }
   if (amount > 10000000) {
-    return { isValid: false, error: 'Loan amount cannot exceed MK 10,000,000' };
+    return { isValid: false, error: 'Loan amount cannot exceed 10,000,000' };
   }
   return { isValid: true };
 };

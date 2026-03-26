@@ -461,7 +461,7 @@ export const AdvancedAnalytics: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -520,6 +520,85 @@ export const AdvancedAnalytics: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {loading ? (
+                  <div className="px-6 py-12 text-center text-gray-500">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+                    <div className="text-sm">Loading analytics...</div>
+                  </div>
+                ) : clvData.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No CLV data available.</div>
+                ) : (
+                  clvData.map((customer) => (
+                    <div key={customer.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {customer.borrowers?.full_name || 'Unknown'}
+                          </div>
+                          <div className="mt-2 text-xs text-gray-500 font-bold uppercase tracking-wider">
+                            CLV Score
+                          </div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {formatCurrency(customer.clv_score)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-1 gap-3">
+                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                          <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+                            Total Revenue
+                          </div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {formatCurrency(customer.total_revenue_generated)}
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+                              Profitability
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">
+                              {customer.profitability_score.toFixed(0)}%
+                            </div>
+                          </div>
+                          <div className="mt-2 w-full flex items-center">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-green-500 h-2 rounded-full"
+                                style={{ width: `${customer.profitability_score}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between">
+                            <div className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+                              Loyalty
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">
+                              {customer.loyalty_score.toFixed(0)}%
+                            </div>
+                          </div>
+                          <div className="mt-2 w-full flex items-center">
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div
+                                className="bg-blue-500 h-2 rounded-full"
+                                style={{ width: `${customer.loyalty_score}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

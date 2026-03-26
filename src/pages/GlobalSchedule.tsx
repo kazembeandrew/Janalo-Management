@@ -100,7 +100,7 @@ export const GlobalSchedule: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-      const headers = ['Due Date', 'Borrower', 'Inst #', 'Amount (MK)', 'Principal', 'Interest'];
+      const headers = ['Due Date', 'Borrower', 'Inst #', 'Amount', 'Principal', 'Interest'];
       const rows = filteredSchedule.map(item => [
           item.dueDate,
           item.borrower,
@@ -184,7 +184,7 @@ export const GlobalSchedule: React.FC = () => {
               </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                       <tr>
@@ -229,6 +229,61 @@ export const GlobalSchedule: React.FC = () => {
                       )}
                   </tbody>
               </table>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {filteredSchedule.length === 0 ? (
+              <div className="px-6 py-12 text-center text-gray-500 italic">
+                No installments scheduled for this period.
+              </div>
+            ) : (
+              filteredSchedule.map((item) => (
+                <div key={`${item.loanId}-${item.installmentNo}`} className="p-4">
+                  <div className="flex justify-between items-start gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        to={`/loans/${item.loanId}`}
+                        className="text-sm font-bold text-indigo-600 hover:underline"
+                      >
+                        {item.borrower}
+                      </Link>
+                      <div className="flex items-center text-[10px] text-gray-400 font-bold uppercase mt-1">
+                        <Calendar className="h-2.5 w-2.5 mr-1" />
+                        {item.dueDate}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-gray-900">{formatCurrency(item.amount)}</div>
+                      <div className="text-[8px] text-gray-400 uppercase font-bold">Inst #{item.installmentNo}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3 bg-gray-50 p-2 rounded-xl border border-gray-100 text-[10px]">
+                    <div>
+                      <div className="text-gray-500 uppercase font-bold">Principal</div>
+                      <div className="font-bold text-gray-900">{formatCurrency(item.principal)}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500 uppercase font-bold">Interest</div>
+                      <div className="font-bold text-gray-900">{formatCurrency(item.interest)}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between">
+                    <div className="text-[10px] text-gray-400">
+                      Officer: <span className="font-bold text-gray-700">{item.officer}</span>
+                    </div>
+                    <Link
+                      to={`/loans/${item.loanId}`}
+                      className="text-[10px] font-bold text-indigo-600 flex items-center"
+                    >
+                      View Loan <ChevronRight className="h-3 w-3 ml-0.5" />
+                    </Link>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
       </div>
     </div>

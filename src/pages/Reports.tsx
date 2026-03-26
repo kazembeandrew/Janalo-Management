@@ -115,7 +115,7 @@ export const Reports: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-      const headers = ['Month', 'Income (MK)', 'Expense (MK)', 'Net Profit (MK)'];
+      const headers = ['Month', 'Income', 'Expense', 'Net Profit'];
       const rows = profitData.map(d => [
           d.month,
           d.income.toFixed(2),
@@ -265,7 +265,7 @@ export const Reports: React.FC = () => {
                       </PieChart>
                   </ResponsiveContainer>
               </div>
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 hidden md:block overflow-x-auto">
                   <table className="min-w-full text-xs">
                       <thead>
                           <tr className="text-gray-500 border-b">
@@ -287,6 +287,27 @@ export const Reports: React.FC = () => {
                           ))}
                       </tbody>
                   </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden mt-4 divide-y divide-gray-100">
+                {parAgingData.map((bucket, idx) => (
+                  <div key={idx} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center">
+                        <div className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: PAR_COLORS[idx] }} />
+                        <div>
+                          <div className="text-xs font-bold text-gray-900">{bucket.range}</div>
+                          <div className="text-[10px] text-gray-500 uppercase font-bold mt-0.5">Count: {bucket.count}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xs text-gray-500 uppercase font-bold">Value</div>
+                        <div className="text-sm font-bold text-gray-900">{formatCurrency(bucket.value)}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
           </div>
 

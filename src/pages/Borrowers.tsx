@@ -284,6 +284,19 @@ export const Borrowers: React.FC = () => {
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
+  const SkeletonRow = () => (
+    <div className="flex items-center gap-3 px-6 py-4">
+      <div className="h-9 w-9 rounded-full bg-gray-200
+           animate-pulse" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 w-2/3 rounded bg-gray-200
+             animate-pulse" />
+        <div className="h-2.5 w-1/3 rounded bg-gray-200
+             animate-pulse" />
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6 pb-24">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -333,11 +346,9 @@ export const Borrowers: React.FC = () => {
       </div>
 
       <div className="min-h-[400px]">
-        {loading ? (
-             <div className="flex items-center justify-center h-64">
-                <RefreshCw className="animate-spin h-8 w-8 text-indigo-600" />
-            </div>
-        ) : borrowers.length === 0 ? (
+        {loading
+          ? Array.from({length:5}).map((_,i)=><SkeletonRow key={i}/>)
+          : borrowers.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-2xl border border-gray-200 border-dashed">
              <User className="mx-auto h-12 w-12 text-gray-300 mb-4" />
              <h3 className="text-sm font-bold text-gray-900">No borrowers found</h3>

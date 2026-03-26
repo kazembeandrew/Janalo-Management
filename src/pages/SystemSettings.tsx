@@ -103,7 +103,7 @@ export const SystemSettings: React.FC = () => {
                   user_id: c.id,
                   title: 'CRITICAL: System Reset Requested',
                   message: `${profile?.full_name} has requested a factory reset. Your authorization is required to proceed.`,
-                  link: '/',
+                  link: '/oversight',
                   type: 'error'
                 }));
               
@@ -158,7 +158,7 @@ export const SystemSettings: React.FC = () => {
             </h1>
             <p className="text-sm text-gray-500">Manage global application state and maintenance tasks.</p>
         </div>
-        <div className="flex bg-white p-1 rounded-xl border border-gray-200 shadow-sm overflow-x-auto">
+        <div className="flex flex-wrap bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
             <button 
                 onClick={() => setActiveTab('ai')}
                 className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center whitespace-nowrap ${activeTab === 'ai' ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}

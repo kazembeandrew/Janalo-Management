@@ -30,6 +30,7 @@ const LazyClientMap = lazyLoad(() => import('@/pages/ClientMap'));
 const LazyTasks = lazyLoad(() => import('@/pages/Tasks'));
 const LazyRepayments = lazyLoad(() => import('@/pages/Repayments'));
 const LazyAccounts = lazyLoad(() => import('@/pages/Accounts'));
+const LazyLedger = lazyLoad(() => import('@/pages/Ledger'));
 const LazyFinancialStatements = lazyLoad(() => import('@/pages/FinancialStatements'));
 const LazyBudgets = lazyLoad(() => import('@/pages/Budgets'));
 const LazyRepaymentSchedule = lazyLoad(() => import('@/pages/RepaymentSchedule'));
@@ -225,6 +226,38 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <LazyFinancialManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/accounts"
+            element={
+              <ProtectedRoute>
+                <LazyAccounts />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/statements"
+            element={
+              <ProtectedRoute>
+                <LazyFinancialStatements />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/budgets"
+            element={
+              <ProtectedRoute>
+                <LazyBudgets />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ledger"
+            element={
+              <ProtectedRoute>
+                <LazyLedger />
               </ProtectedRoute>
             }
           />

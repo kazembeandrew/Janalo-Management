@@ -473,7 +473,7 @@ export const SystemAdministration: React.FC = () => {
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -554,6 +554,76 @@ export const SystemAdministration: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {backupRecords.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No backups available.</div>
+                ) : (
+                  backupRecords.map((backup) => (
+                    <div key={backup.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            backup.backup_type === 'full'
+                              ? 'text-purple-600 bg-purple-100'
+                              : backup.backup_type === 'incremental'
+                                ? 'text-blue-600 bg-blue-100'
+                                : 'text-green-600 bg-green-100'
+                          }`}
+                        >
+                          {backup.backup_type}
+                        </span>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                            backup.status
+                          )}`}
+                        >
+                          {backup.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-xs text-gray-600">
+                        <div>
+                          <span className="font-bold text-gray-700">Size:</span> {formatBytes(backup.backup_size)}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Started:</span> {new Date(backup.started_at).toLocaleString()}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Duration:</span>{' '}
+                          {backup.completed_at
+                            ? `${Math.round((new Date(backup.completed_at).getTime() - new Date(backup.started_at).getTime()) / 1000)}s`
+                            : 'Running...'}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Created by:</span> {backup.creator?.full_name || 'System'}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end items-center gap-2">
+                        {backup.status === 'completed' && (
+                          <button
+                            onClick={() => downloadBackup(backup.backup_path)}
+                            className="text-blue-600 hover:text-blue-900 inline-flex items-center"
+                            title="Download backup"
+                          >
+                            <Download className="h-4 w-4" />
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => deleteBackup(backup.id)}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center"
+                          title="Delete backup"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

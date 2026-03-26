@@ -7,10 +7,8 @@ Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
 export const formatCurrency = (amount: number | string): string => {
   const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
   return new Intl.NumberFormat('en-MW', {
-    style: 'currency',
-    currency: 'MWK',
     minimumFractionDigits: 2,
-  }).format(numericAmount || 0).replace('MWK', 'MK');
+  }).format(numericAmount || 0);
 };
 
 export const formatNumberWithCommas = (value: string | number): string => {

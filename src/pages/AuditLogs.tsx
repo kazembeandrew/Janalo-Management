@@ -117,7 +117,7 @@ export const AuditLogs: React.FC = () => {
       </div>
 
       <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
                 <tr>
@@ -180,6 +180,62 @@ export const AuditLogs: React.FC = () => {
             </tbody>
             </table>
         </div>
+
+        {/* Mobile Card View */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {loading ? (
+            <div className="px-6 py-12 text-center text-gray-500">
+              <RefreshCw className="h-8 w-8 animate-spin mx-auto mb-2" />
+              <div className="text-sm">Syncing logs...</div>
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="px-6 py-12 text-center text-gray-500">No audit records found for this criteria.</div>
+          ) : (
+            filteredLogs.map((log) => {
+              const timeStr = new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              const dateStr = new Date(log.created_at).toLocaleDateString();
+              return (
+                <div key={log.id} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start gap-3">
+                    <div>
+                      <div className="text-sm font-bold text-gray-900">{dateStr}</div>
+                      <div className="text-[10px] text-gray-400 flex items-center mt-0.5">
+                        <Clock className="h-2.5 w-2.5 mr-1" />
+                        {timeStr}
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${getActionColor(log.action)}`}>
+                      {log.action}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    {getEntityIcon(log.entity_type)}
+                    <span className="text-xs font-medium text-gray-500 capitalize">{log.entity_type}</span>
+                    <span className="text-[10px] text-gray-400 font-mono">#{log.entity_id?.slice(0, 8)}</span>
+                  </div>
+
+                  <div className="mt-3 flex items-center">
+                    <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 font-bold text-xs mr-3">
+                      {(log.users?.full_name || 'S').charAt(0)}
+                    </div>
+                    <span className="text-sm font-bold text-gray-700">{log.users?.full_name || 'System'}</span>
+                  </div>
+
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => setSelectedLog(log)}
+                      className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      title="View Metadata"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
 
       {/* Log Detail Modal */}
@@ -225,8 +281,8 @@ export const AuditLogs: React.FC = () => {
                               <Database className="h-3 w-3 mr-1.5" />
                               Raw Payload (JSON)
                           </p>
-                          <div className="bg-slate-900 rounded-2xl p-5 overflow-x-auto">
-                              <pre className="text-[11px] text-indigo-300 font-mono leading-relaxed">
+                          <div className="bg-slate-900 rounded-2xl p-5 overflow-x-hidden">
+                              <pre className="text-[11px] text-indigo-300 font-mono leading-relaxed whitespace-pre-wrap break-words">
                                   {JSON.stringify(selectedLog.details, null, 2)}
                               </pre>
                           </div>

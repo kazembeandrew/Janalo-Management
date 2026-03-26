@@ -323,7 +323,7 @@ export const DocumentCenter: React.FC = () => {
 
           <div className="lg:col-span-3">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto">
+                  <div className="hidden md:block overflow-x-auto">
                       <table className="min-w-full divide-y divide-gray-200">
                           <thead className="bg-gray-50">
                               <tr>
@@ -406,6 +406,115 @@ export const DocumentCenter: React.FC = () => {
                               )}
                           </tbody>
                       </table>
+                  </div>
+
+                  {/* Mobile Card View */}
+                  <div className="md:hidden divide-y divide-gray-100">
+                    {loading ? (
+                      <div className="px-6 py-12 text-center">
+                        <RefreshCw className="h-8 w-8 animate-spin mx-auto text-indigo-600 mb-2" />
+                        <div className="text-sm text-gray-500">Loading documents...</div>
+                      </div>
+                    ) : filteredFiles.length === 0 ? (
+                      <div className="px-6 py-12 text-center text-gray-500 italic">
+                        No accessible documents found.
+                      </div>
+                    ) : (
+                      filteredFiles.map((file) => {
+                        const isExcel =
+                          file.name.toLowerCase().endsWith('.xlsx') ||
+                          file.name.toLowerCase().endsWith('.csv');
+                        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+
+                        return (
+                          <div key={file.id} className="p-4 hover:bg-gray-50 transition-colors">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="min-w-0">
+                                <div className="flex items-center">
+                                  <div
+                                    className={`p-2 rounded-lg mr-3 ${
+                                      isExcel
+                                        ? 'bg-green-50 text-green-600'
+                                        : isPdf
+                                          ? 'bg-red-50 text-red-600'
+                                          : 'bg-gray-50 text-gray-400'
+                                    }`}
+                                  >
+                                    {isExcel ? (
+                                      <FileSpreadsheet className="h-5 w-5" />
+                                    ) : isPdf ? (
+                                      <FileText className="h-5 w-5" />
+                                    ) : (
+                                      <File className="h-5 w-5" />
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <button
+                                      onClick={() => handleView(file)}
+                                      className="text-sm font-bold text-gray-900 truncate max-w-[260px] text-left hover:text-indigo-600 transition-colors"
+                                      title={`View ${file.name}`}
+                                    >
+                                      {file.name}
+                                    </button>
+                                    <div className="text-[10px] text-gray-400 font-medium uppercase mt-1">
+                                      {formatSize(file.file_size)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3">
+                                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-gray-100 text-gray-700 uppercase border border-gray-200">
+                                    {file.category.replace('_', ' ')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="text-xs text-gray-900 font-medium">
+                                  {file.uploader?.full_name || 'System'}
+                                </div>
+                                <div className="text-[10px] text-gray-400">
+                                  {new Date(file.created_at).toLocaleDateString()}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => handleView(file)}
+                                  className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                  title="View File"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </button>
+
+                                {canManagePermissions && (
+                                  <button
+                                    onClick={() => openPermissions(file)}
+                                    className="p-2 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                                    title="Manage Permissions"
+                                  >
+                                    <ShieldCheck className="h-4 w-4" />
+                                  </button>
+                                )}
+
+                                {(isCEO || file.uploaded_by === profile?.id) && (
+                                  <button
+                                    onClick={() => handleDelete(file)}
+                                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
               </div>
           </div>

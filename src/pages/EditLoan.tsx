@@ -6,6 +6,7 @@ import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency } from '@/utils/finance';
 import { Calculator, ArrowLeft, UploadCloud, Plus, AlertOctagon } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
+import { notifyExecutivesForPendingLoan } from '@/utils/oversightNotifications';
 
 export const EditLoan: React.FC = () => {
   const { id } = useParams<{id: string}>();
@@ -190,6 +191,15 @@ export const EditLoan: React.FC = () => {
       const { error } = await supabase.from('loans').update(loanUpdate).eq('id', id);
       if (error) throw error;
 
+      const borrowerName = borrowers.find((b) => b.id === formData.borrower_id)?.full_name || 'Borrower';
+      await notifyExecutivesForPendingLoan({
+        loanId: String(id),
+        borrowerName,
+        amountFormatted: formatCurrency(Number(preview?.totalPayable || 0)),
+        excludeUserId: profile.id,
+        senderId: profile.id
+      });
+
       // 2. Handle Document Updates
       const uploads = [];
       
@@ -254,7 +264,7 @@ return (
     <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
+          <label className="block text-sm font-medium text-gray-700">Principal Amount</label>
           <input
             type="number"
             required

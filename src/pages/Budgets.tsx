@@ -324,7 +324,7 @@ export const Budgets: React.FC = () => {
                           )}
                       </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Budgeted Amount (MK)</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Budgeted Amount</label>
                           <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" placeholder="0.00" value={displayAmount} onChange={e => handleAmountChange(e.target.value)} />
                       </div>
                       <div className="pt-4">

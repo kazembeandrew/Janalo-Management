@@ -422,7 +422,7 @@ export const SecurityManagement: React.FC = () => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">Active User Sessions</h3>
               
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -501,6 +501,71 @@ export const SecurityManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredSessions.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No active sessions found.</div>
+                ) : (
+                  filteredSessions.map((session) => {
+                    const expired = isSessionExpired(session.expires_at);
+                    const active = session.is_active && !expired;
+                    return (
+                      <div key={session.id} className="p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900">{session.user?.full_name}</p>
+                            <p className="text-xs text-gray-500 mt-1">{session.user?.email}</p>
+                            <p className="text-xs text-gray-400">{session.user?.role}</p>
+                          </div>
+                          <span
+                            className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              active ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100'
+                            }`}
+                          >
+                            {active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="text-xs text-gray-600">
+                            <span className="font-bold text-gray-700">IP:</span> {session.ip_address}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <span className="font-bold text-gray-700">Agent:</span>{' '}
+                            <span className="max-w-[240px] truncate inline-block" title={session.user_agent}>
+                              {session.user_agent || 'Unknown'}
+                            </span>
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <span className="font-bold text-gray-700">Last:</span>{' '}
+                            {new Date(session.last_activity).toLocaleString()}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <span className="font-bold text-gray-700">Expires:</span>{' '}
+                            {new Date(session.expires_at).toLocaleString()}
+                            {expired && (
+                              <span className="ml-2 text-xs text-red-600 font-medium">EXPIRED</span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex justify-end">
+                          {active && (
+                            <button
+                              onClick={() => terminateSession(session.id)}
+                              className="text-red-600 hover:text-red-900 inline-flex items-center"
+                              title="Terminate session"
+                            >
+                              <Ban className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           )}
 
@@ -518,7 +583,7 @@ export const SecurityManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -570,6 +635,45 @@ export const SecurityManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {ipWhitelist.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No whitelisted IPs.</div>
+                ) : (
+                  ipWhitelist.map((ip) => (
+                    <div key={ip.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-bold text-gray-900">{ip.ip_address}</div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {ip.description || 'No description'}
+                          </div>
+                        </div>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(ip.is_active)}`}
+                        >
+                          {ip.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 text-xs text-gray-600">
+                        <span className="font-bold text-gray-700">Added by:</span> {ip.creator?.full_name || 'Unknown'}
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={() => removeIPFromWhitelist(ip.id)}
+                          className="text-red-600 hover:text-red-900 inline-flex items-center"
+                          title="Remove from whitelist"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -578,7 +682,7 @@ export const SecurityManagement: React.FC = () => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">Two-Factor Authentication</h3>
               
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -633,6 +737,60 @@ export const SecurityManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {user2FA.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No 2FA entries found.</div>
+                ) : (
+                  user2FA.map((user) => (
+                    <div key={user.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">{user.user?.full_name}</p>
+                          <p className="text-xs text-gray-500 mt-1">{user.user?.email}</p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(
+                            user.is_enabled
+                          )}`}
+                        >
+                          {user.is_enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-xs text-gray-600">
+                        <div>
+                          <span className="font-bold text-gray-700">Last Used:</span>{' '}
+                          {user.last_used ? new Date(user.last_used).toLocaleString() : 'Never'}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Setup Date:</span>{' '}
+                          {new Date(user.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={() => toggle2FA(user.user_id, !user.is_enabled)}
+                          className={`inline-flex items-center ${
+                            user.is_enabled
+                              ? 'text-red-600 hover:text-red-900'
+                              : 'text-green-600 hover:text-green-900'
+                          }`}
+                          title={user.is_enabled ? 'Disable 2FA' : 'Enable 2FA'}
+                        >
+                          {user.is_enabled ? (
+                            <XCircle className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -641,7 +799,7 @@ export const SecurityManagement: React.FC = () => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">Security Events</h3>
               
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -698,6 +856,59 @@ export const SecurityManagement: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {filteredEvents.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No security events found.</div>
+                ) : (
+                  filteredEvents.map((event) => (
+                    <div key={event.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getEventTypeColor(
+                            event.event_type
+                          )}`}
+                        >
+                          {event.event_type.replace('_', ' ')}
+                        </span>
+                        <div>
+                          {event.success ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <XCircle className="h-4 w-4 text-red-600" />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 space-y-2 text-xs text-gray-600">
+                        <div>
+                          <span className="font-bold text-gray-700">User:</span>{' '}
+                          {event.user?.full_name || 'System'}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">IP:</span>{' '}
+                          {event.ip_address || 'Unknown'}
+                        </div>
+                        <div>
+                          <span className="font-bold text-gray-700">Timestamp:</span>{' '}
+                          {new Date(event.created_at).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-[10px] text-gray-500">
+                        <div className="font-bold uppercase tracking-wider text-gray-400">Details</div>
+                        <div
+                          className="mt-1 max-w-full truncate"
+                          title={event.details ? JSON.stringify(event.details) : undefined}
+                        >
+                          {event.details ? JSON.stringify(event.details) : 'No details'}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}

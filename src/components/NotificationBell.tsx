@@ -404,9 +404,14 @@ export const NotificationBell: React.FC = () => {
         <Bell className="h-5 w-5" />
         
         {totalUnread > 0 && (
-          <span className={`absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-indigo-900 ${
-            hasUrgent ? 'bg-red-500 animate-pulse' : 'bg-red-500'
-          }`}>
+          <span 
+            className={`absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-indigo-900 transition-transform duration-300 ${
+              hasUrgent ? 'bg-red-500 animate-pulse' : 'bg-red-500'
+            } ${
+              totalUnread > 0 ? 'scale-100' : 'scale-0'
+            }`}
+            data-spring="true"
+          >
             {totalUnread > 99 ? '99+' : totalUnread}
           </span>
         )}
@@ -424,8 +429,8 @@ export const NotificationBell: React.FC = () => {
             onClick={() => setIsOpen(false)} 
           />
           
-          <div className="absolute right-0 mt-3 w-[420px] bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
-            
+          <div className="fixed left-4 right-4 top-[4.5rem] sm:absolute sm:left-auto sm:right-0 sm:top-auto sm:mt-3 sm:w-[420px] bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+
             {/* Header */}
             <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-indigo-50 to-white">
               <div className="flex items-center justify-between mb-3">
@@ -537,7 +542,7 @@ export const NotificationBell: React.FC = () => {
             </div>
             
             {/* Notification List */}
-            <div className="max-h-[450px] overflow-y-auto">
+            <div className="max-h-[calc(100vh-18rem)] sm:max-h-[450px] overflow-y-auto">
               {isLoading ? (
                 <div className="p-12 text-center">
                   <div className="animate-spin h-8 w-8 border-2 border-indigo-500 border-t-transparent rounded-full mx-auto mb-3" />

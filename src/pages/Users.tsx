@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { notifyExecutivesForPendingUserArchive } from '@/utils/oversightNotifications';
 
 // Helper function for authenticated API calls
 const authFetch = async (url: string, options: RequestInit = {}) => {
@@ -270,6 +271,14 @@ export const Users: React.FC = () => {
                 .eq('id', selectedUser.id);
               if (error) throw error;
               toast.success("Archive request sent to CEO.");
+
+              await notifyExecutivesForPendingUserArchive({
+                userId: String(selectedUser.id),
+                fullName: selectedUser.full_name,
+                excludeUserId: profile?.id,
+                senderId: profile?.id
+              });
+
               setShowEditModal(false);
           } catch (e: any) {
               toast.error("Request failed: " + e.message);

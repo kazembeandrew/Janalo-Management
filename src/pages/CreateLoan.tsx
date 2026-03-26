@@ -6,6 +6,7 @@ import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber, generateAutoReference, isValidReferenceFormat, isReferenceUnique } from '@/utils/finance';
 import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle, Hash } from 'lucide-react';
 import { DocumentUpload } from '@/components/DocumentUpload';
+import { notifyExecutivesForPendingLoan } from '@/utils/oversightNotifications';
 import toast from 'react-hot-toast';
 
 type Step = 'borrower' | 'terms' | 'documents' | 'review';
@@ -184,6 +185,15 @@ export const CreateLoan: React.FC = () => {
     const { data: loan, error } = await supabase.from('loans').insert([loanData]).select().single();
 
     if (loan) {
+      const borrowerName = borrowers.find((b) => b.id === formData.borrower_id)?.full_name || 'Borrower';
+      await notifyExecutivesForPendingLoan({
+        loanId: String(loan.id),
+        borrowerName,
+        amountFormatted: formatCurrency(Number(loan.principal_amount || loanData.principal_amount || 0)),
+        excludeUserId: profile.id,
+        senderId: profile.id
+      });
+
       const uploads = [];
       const addUpload = (blob: Blob | null, type: string, namePrefix: string, friendlyName: string) => {
         if (!blob) return;
@@ -307,7 +317,7 @@ export const CreateLoan: React.FC = () => {
                        <h3 className="text-lg font-medium text-gray-900">Loan Terms</h3>
                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                            <div className="sm:col-span-2">
-                               <label className="block text-sm font-medium text-gray-700">Principal Amount (MK)</label>
+                               <label className="block text-sm font-medium text-gray-700">Principal Amount</label>
                                <input 
                                    type="text"
                                    required

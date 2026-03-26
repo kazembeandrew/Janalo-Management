@@ -70,7 +70,7 @@ export const generateReceiptPDF = (loan: any, repayment: any, officerName: strin
     // Payment Table
     autoTable(doc, {
         startY: 90,
-        head: [['Description', 'Amount (MK)']],
+        head: [['Description', 'Amount']],
         body: [
             ['Principal Paid', repayment.principal_paid.toFixed(2)],
             ['Interest Paid', repayment.interest_paid.toFixed(2)],
@@ -88,7 +88,7 @@ export const generateReceiptPDF = (loan: any, repayment: any, officerName: strin
     doc.text('OUTSTANDING BALANCE', 20, finalY + 15);
     doc.setFont('helvetica', 'bold');
     const totalOutstanding = loan.principal_outstanding + loan.interest_outstanding + (loan.penalty_outstanding || 0);
-    doc.text(`MK ${totalOutstanding.toLocaleString()}`, 190, finalY + 15, { align: 'right' });
+    doc.text(`${totalOutstanding.toLocaleString()}`, 190, finalY + 15, { align: 'right' });
     
     // Footer
     doc.setFont('helvetica', 'normal');

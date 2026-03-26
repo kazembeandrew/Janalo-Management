@@ -684,7 +684,7 @@ export const FinancialManagement: React.FC = () => {
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -790,6 +790,99 @@ export const FinancialManagement: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {investmentPortfolio.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No investments found.</div>
+                ) : (
+                  investmentPortfolio.map((investment) => {
+                    const roi = calculateROI(investment.current_value, investment.initial_investment);
+                    const roiPositive = roi >= 0;
+                    return (
+                      <div key={investment.id} className="p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-gray-900">{investment.investment_name}</p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              Purchased: {new Date(investment.purchase_date).toLocaleDateString()}
+                            </p>
+                            {investment.maturity_date && (
+                              <p className="text-xs text-gray-500">
+                                Matures: {new Date(investment.maturity_date).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(investment.status)}`}>
+                            {investment.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getInvestmentTypeColor(investment.investment_type)}`}>
+                              {investment.investment_type.replace('_', ' ')}
+                            </span>
+                            <div className="text-right">
+                              <div className="text-sm font-bold text-gray-900">{formatCurrency(investment.current_value)}</div>
+                              <div className="text-[8px] text-gray-400 uppercase font-bold mt-0.5">Current Value</div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs text-gray-600 font-bold">Initial</div>
+                            <div className="text-xs font-bold text-gray-900">{formatCurrency(investment.initial_investment)}</div>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center">
+                              {roiPositive ? (
+                                <ArrowUpRight className="h-4 w-4 text-green-500 mr-1" />
+                              ) : (
+                                <ArrowDownRight className="h-4 w-4 text-red-500 mr-1" />
+                              )}
+                              <span className={`text-sm font-medium ${roiPositive ? 'text-green-600' : 'text-red-600'}`}>
+                                {roi.toFixed(2)}%
+                              </span>
+                            </div>
+                            <div className="text-[8px] text-gray-400 uppercase font-bold">ROI</div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-end gap-4">
+                          <button
+                            onClick={() => {
+                              setEditingInvestment(investment);
+                              setNewInvestment({
+                                investment_name: investment.investment_name,
+                                investment_type: investment.investment_type,
+                                initial_investment: investment.initial_investment,
+                                purchase_date: investment.purchase_date,
+                                maturity_date: investment.maturity_date || '',
+                                interest_rate: investment.interest_rate || 0,
+                                status: investment.status
+                              });
+                              setShowInvestmentModal(true);
+                            }}
+                            className="text-indigo-600 hover:text-indigo-900 inline-flex items-center"
+                            title="Edit investment"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            onClick={() => deleteInvestment(investment.id)}
+                            className="text-red-600 hover:text-red-900 inline-flex items-center"
+                            title="Delete investment"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}

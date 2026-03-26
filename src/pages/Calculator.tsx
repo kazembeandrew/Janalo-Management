@@ -89,7 +89,7 @@ export const Calculator: React.FC = () => {
         {/* Inputs */}
         <div className="lg:col-span-1 bg-white p-3 rounded-lg shadow-sm border border-gray-200 space-y-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Principal Amount (MK)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Principal Amount</label>
             <input 
               type="text" 
               className="w-full border border-gray-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"

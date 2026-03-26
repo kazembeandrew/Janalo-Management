@@ -4,6 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { FileSpreadsheet, Upload, CheckCircle2, AlertCircle, Loader2, ArrowRight, Table2, UserPlus, Download, UserCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { notifyExecutivesForPendingLoan } from '@/utils/oversightNotifications';
 
 interface ParsedRow {
   [key: string]: any;
@@ -248,26 +249,43 @@ export const DataImporter: React.FC = () => {
           const total = principal + interest;
           const finalRef = ref || `IMP-${Date.now().toString().slice(-6)}-${success}`;
 
-          const { error: loanError } = await supabase.from('loans').insert([{
-            reference_no: finalRef,
-            borrower_id: borrowerId,
-            officer_id: selectedOfficerId,
-            principal_amount: principal,
-            interest_rate: rate,
-            term_months: term,
-            disbursement_date: disbursementDate,
-            created_at: `${disbursementDate}T12:00:00Z`, // Preserve historical context in DB
-            interest_type: 'flat',
-            status: 'pending',
-            principal_outstanding: principal,
-            interest_outstanding: interest,
-            total_payable: total,
-            monthly_installment: total / (term || 1)
-          }]);
+          const { data: loanRow, error: loanError } = await supabase
+            .from('loans')
+            .insert([{
+              reference_no: finalRef,
+              borrower_id: borrowerId,
+              officer_id: selectedOfficerId,
+              principal_amount: principal,
+              interest_rate: rate,
+              term_months: term,
+              disbursement_date: disbursementDate,
+              created_at: `${disbursementDate}T12:00:00Z`, // Preserve historical context in DB
+              interest_type: 'flat',
+              status: 'pending',
+              principal_outstanding: principal,
+              interest_outstanding: interest,
+              total_payable: total,
+              monthly_installment: total / (term || 1)
+            }])
+            .select()
+            .single();
 
           if (loanError) {
               errors.push(`Loan error for ${borrowerName}: ${loanError.message}`);
           } else {
+              // Route the “pending approval” event through the notification center.
+              try {
+                if (loanRow?.id) {
+                  await notifyExecutivesForPendingLoan({
+                    loanId: String(loanRow.id),
+                    borrowerName,
+                    excludeUserId: selectedOfficerId,
+                    senderId: selectedOfficerId
+                  });
+                }
+              } catch (e) {
+                console.error('[DataImporter] Failed to create oversight notifications:', e);
+              }
               success++;
               if (ref) existingRefs.add(ref);
           }

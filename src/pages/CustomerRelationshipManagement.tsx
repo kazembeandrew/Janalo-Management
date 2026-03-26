@@ -613,7 +613,7 @@ export const CustomerRelationshipManagement: React.FC = () => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900">Referral Program</h3>
               
-              <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -676,6 +676,61 @@ export const CustomerRelationshipManagement: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden divide-y divide-gray-100">
+                {referrals.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-gray-500">No referrals found.</div>
+                ) : (
+                  referrals.map((referral) => (
+                    <div key={referral.id} className="p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-gray-900">
+                            {referral.referrer?.full_name || 'Unknown'}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-1 truncate max-w-[320px]">
+                            Referred: {referral.referred?.full_name || 'Unknown'}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getReferralStatusColor(referral.status)}`}
+                        >
+                          {referral.status}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Referral date:</span>{' '}
+                          {new Date(referral.referral_date).toLocaleDateString()}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-bold text-gray-700">Reward:</span>{' '}
+                          {referral.reward_amount ? formatCurrency(referral.reward_amount) : 'N/A'}
+                          {referral.reward_paid && (
+                            <span className="ml-2 text-xs text-green-600 font-medium">PAID</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        {referral.status === 'completed' &&
+                          referral.reward_amount &&
+                          !referral.reward_paid && (
+                            <button
+                              onClick={() => payReferralReward(referral.id)}
+                              className="text-green-600 hover:text-green-900 inline-flex items-center"
+                              title="Mark as paid"
+                            >
+                              <Award className="h-4 w-4" />
+                            </button>
+                          )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
 
@@ -718,7 +773,7 @@ export const CustomerRelationshipManagement: React.FC = () => {
                     
                     <div className="mb-3">
                       <p className="text-xs text-gray-500 mb-1">Criteria:</p>
-                      <pre className="text-xs bg-gray-100 p-2 rounded text-gray-700 overflow-x-auto">
+                      <pre className="text-xs bg-gray-100 p-2 rounded text-gray-700 overflow-x-hidden whitespace-pre-wrap break-words">
                         {JSON.stringify(segment.segment_criteria, null, 2)}
                       </pre>
                     </div>

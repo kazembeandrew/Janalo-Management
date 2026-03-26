@@ -148,7 +148,7 @@ export const FinancialStatements: React.FC = () => {
   const handleDownload = () => {
       if (!pnlData || !balanceSheet) return;
 
-      const headers = ['Category', 'Amount (MK)'];
+      const headers = ['Category', 'Amount'];
       const rows = [
           ['--- INCOME STATEMENT ---', ''],
           ['Interest Income', pnlData.interestIncome.toFixed(2)],

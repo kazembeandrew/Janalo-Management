@@ -125,7 +125,7 @@ export const RepaymentSchedule: React.FC = () => {
   };
 
   const handleExportPDF = () => {
-      const headers = ['Due Date', 'Borrower', 'Inst #', 'Amount (MK)', 'Principal', 'Interest'];
+      const headers = ['Due Date', 'Borrower', 'Inst #', 'Amount', 'Principal', 'Interest'];
       const rows = filteredSchedule.map(item => [
           item.dueDate,
           item.borrower,

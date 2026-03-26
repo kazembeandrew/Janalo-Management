@@ -17,18 +17,6 @@ import toast from 'react-hot-toast';
 export const Accounts: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
   const [accounts, setAccounts] = useState<InternalAccount[]>([]);
-  const [journalEntries, setJournalEntries] = useState<any[]>([]);
-  const [totalEntries, setTotalEntries] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [entriesPerPage] = useState(50);
-  
-  // Filters
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [filterAccount, setFilterAccount] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [showFilters, setShowFilters] = useState(false);
-  const [ledgerIntegrity, setLedgerIntegrity] = useState<{balanced: boolean, message: string} | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'list' | 'tree'>('tree');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
@@ -60,23 +48,18 @@ export const Accounts: React.FC = () => {
   const isAccountant = effectiveRoles.includes('accountant') || effectiveRoles.includes('admin');
 
   useEffect(() => {
-    fetchData(1);
+    fetchAccounts();
   }, []);
   
   useEffect(() => {
-    fetchData(1);
-  }, [dateFrom, dateTo, filterAccount, filterType]);
-
-  useEffect(() => {
-    const channel = supabase.channel('finance-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_accounts' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal_entries' }, () => fetchData())
+    const channel = supabase.channel('accounts-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'internal_accounts' }, () => fetchAccounts())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const fetchData = async (page = currentPage) => {
+  const fetchAccounts = async () => {
     setLoading(true);
     try {
         const { data: accs, error: accsError } = await supabase
@@ -88,61 +71,15 @@ export const Accounts: React.FC = () => {
             console.error('Error fetching accounts:', accsError);
             toast.error('Failed to load accounts: ' + accsError.message);
         }
-        
-        let query = supabase
-            .from('journal_entries')
-            .select('id, entry_number, date:entry_date, status, description, reference_type, reference_id, created_by, created_at, updated_at, journal_lines(*, accounts:internal_accounts(name, account_category, type)), users!journal_entries_created_by_fkey(full_name)', { count: 'exact' })
-            .order('created_at', { ascending: false })
-            .range((page - 1) * entriesPerPage, page * entriesPerPage - 1);
-        
-        if (dateFrom) {
-            query = query.gte('entry_date', dateFrom);
-        }
-        if (dateTo) {
-            query = query.lte('entry_date', dateTo);
-        }
-        
-        if (filterType) {
-            query = query.eq('reference_type', filterType);
-        }
-        
-        if (filterAccount) {
-            const { data: lineData, error: lineError } = await supabase
-                .from('journal_lines')
-                .select('journal_entry_id')
-                .eq('account_id', filterAccount);
-            
-            if (lineError) {
-                console.error('Error fetching journal lines:', lineError);
-            }
-            
-            if (lineData && lineData.length > 0) {
-                const entryIds = lineData.map(l => l.journal_entry_id);
-                query = query.in('id', entryIds);
-            } else {
-                query = query.in('id', ['00000000-0000-0000-0000-000000000000']);
-            }
-        }
-        
-        const { data: entries, count, error: entriesError } = await query;
-
-        if (entriesError) {
-            console.error('Error fetching journal entries:', entriesError);
-            toast.error('Failed to load ledger entries: ' + entriesError.message);
-        }
 
         setAccounts(accs || []);
-        setJournalEntries(entries || []);
-        setTotalEntries(count || 0);
     } catch (e: any) {
-        console.error('Unexpected error in fetchData:', e);
+        console.error('Unexpected error in fetchAccounts:', e);
         toast.error('An unexpected error occurred: ' + e.message);
     } finally {
         setLoading(false);
     }
   };
-  
-  const totalPages = Math.ceil(totalEntries / entriesPerPage);
 
   const totalLiquidity = useMemo(() => {
       return accounts
@@ -204,7 +141,7 @@ export const Accounts: React.FC = () => {
           if (error) throw error;
 
           toast.success(`Successfully created ${missingAccounts.length} system accounts.`, { id: loadingToast });
-          fetchData();
+          fetchAccounts();
       } catch (e: any) {
           console.error("Setup error:", e);
           toast.error(`Setup failed: ${e.message}`, { id: loadingToast });
@@ -265,7 +202,7 @@ export const Accounts: React.FC = () => {
           setShowAccountModal(false);
           setAccountForm({ name: '', category: 'asset', code: 'BANK', account_number: '', bank_name: '', initial_balance: 0 });
           setDisplayInitialBalance('0');
-          fetchData();
+          fetchAccounts();
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -316,7 +253,7 @@ export const Accounts: React.FC = () => {
           setShowFundModal(false);
           setFundForm({ type: 'injection', from_account_id: '', to_account_id: '', amount: 0, description: '' });
           setDisplayFundAmount('');
-          fetchData();
+          fetchAccounts();
       } catch (e: any) {
           toast.error(e.message);
       } finally {
@@ -482,72 +419,7 @@ export const Accounts: React.FC = () => {
     );
   };
 
-  const entryTypes = ['loan_disbursement', 'repayment', 'expense', 'transfer', 'injection', 'adjustment', 'reversal', 'write_off'];
-
-  const handleVerifyTrialBalance = async () => {
-    const loadingToast = toast.loading("Verifying ledger integrity...");
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const { data, error } = await supabase.rpc('verify_trial_balance', { p_date: today });
-      
-      if (error) throw error;
-      
-      if (data && data[0]) {
-        const result = data[0];
-        setLedgerIntegrity({
-          balanced: result.is_balanced,
-          message: result.is_balanced 
-            ? `Balanced: Debits ${formatCurrency(result.total_debits)} = Credits ${formatCurrency(result.total_credits)}`
-            : `UNBALANCED: Difference ${formatCurrency(result.difference)}`
-        });
-        
-        if (result.is_balanced) {
-          toast.success(`Trial balance verified: ${formatCurrency(result.total_debits)} = ${formatCurrency(result.total_credits)}`, { id: loadingToast });
-        } else {
-          toast.error(`Ledger imbalance detected: ${formatCurrency(result.difference)}`, { id: loadingToast });
-        }
-      }
-    } catch (e: any) {
-      toast.error("Verification failed: " + e.message, { id: loadingToast });
-    }
-  };
-
-  const handleExportCSV = () => {
-    const csvRows: string[] = [];
-    csvRows.push(['Date', 'Type', 'Description', 'Account', 'Debit', 'Credit', 'User'].join(','));
-    
-    journalEntries.forEach(entry => {
-      const date = new Date(entry.date).toLocaleDateString();
-      const type = entry.reference_type;
-      const desc = `"${entry.description?.replace(/"/g, '""')}"`;
-      const user = entry.users?.full_name || 'System';
-      
-      entry.journal_lines.forEach((line: any) => {
-        const account = `"${line.accounts?.name?.replace(/"/g, '""')}"`;
-        const debit = line.debit > 0 ? line.debit : '';
-        const credit = line.credit > 0 ? line.credit : '';
-        csvRows.push([date, type, desc, account, debit, credit, user].join(','));
-      });
-    });
-    
-    const csvContent = csvRows.join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ledger_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast.success(`Exported ${journalEntries.length} entries to CSV`);
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
-    fetchData(newPage);
-  };
-
+  
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -595,7 +467,7 @@ export const Accounts: React.FC = () => {
           </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Available Liquidity</p>
               <h3 className="text-3xl font-bold text-indigo-600">{formatCurrency(totalLiquidity)}</h3>
@@ -605,29 +477,12 @@ export const Accounts: React.FC = () => {
               </div>
           </div>
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Capital Injections (MTD)</p>
-              <h3 className="text-3xl font-bold text-green-600">{formatCurrency(journalEntries.filter(e => e.reference_type === 'injection').reduce((sum, e) => sum + e.journal_lines.reduce((s: any, l: any) => s + Number(l.debit), 0), 0))}</h3>
-              <div className="mt-2 flex items-center text-xs text-green-600">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  Institutional growth
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Total Accounts</p>
+              <h3 className="text-3xl font-bold text-gray-600">{accounts.length}</h3>
+              <div className="mt-2 flex items-center text-xs text-gray-500">
+                  <Wallet className="h-3 w-3 mr-1" />
+                  Active institutional accounts
               </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Ledger Integrity</p>
-              <div className="flex items-center mt-1">
-                  {ledgerIntegrity ? (
-                    ledgerIntegrity.balanced ? (
-                      <><CheckCircle2 className="h-6 w-6 text-green-500 mr-2" /><h3 className="text-xl font-bold text-green-600">Verified</h3></>
-                    ) : (
-                      <><AlertCircle className="h-6 w-6 text-red-500 mr-2" /><h3 className="text-xl font-bold text-red-600">Issue</h3></>
-                    )
-                  ) : (
-                    <><CheckCircle2 className="h-6 w-6 text-green-500 mr-2" /><h3 className="text-xl font-bold text-gray-900">Synchronized</h3></>
-                  )}
-              </div>
-              {ledgerIntegrity && (
-                <p className="text-xs text-gray-500 mt-1">{ledgerIntegrity.message}</p>
-              )}
           </div>
       </div>
 
@@ -755,167 +610,6 @@ export const Accounts: React.FC = () => {
                   )}
               </div>
 
-              <div className="bg-white shadow-sm rounded-2xl overflow-hidden border border-gray-200">
-                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                      <h3 className="font-bold text-gray-900 flex items-center">
-                          <History className="h-4 w-4 mr-2 text-indigo-600" />
-                          Institutional General Ledger
-                      </h3>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => setShowFilters(!showFilters)}
-                          className={`inline-flex items-center px-3 py-2 rounded-xl text-xs font-bold transition-all ${showFilters ? 'bg-indigo-100 text-indigo-700' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                        >
-                          <Filter className="h-3.5 w-3.5 mr-1.5" /> Filters
-                        </button>
-                        <button
-                          onClick={handleVerifyTrialBalance}
-                          className="inline-flex items-center px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all"
-                        >
-                          <Shield className="h-3.5 w-3.5 mr-1.5 text-green-600" /> Verify
-                        </button>
-                        <button
-                          onClick={handleExportCSV}
-                          className="inline-flex items-center px-3 py-2 bg-white border border-gray-300 text-gray-700 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all"
-                        >
-                          <Download className="h-3.5 w-3.5 mr-1.5 text-indigo-600" /> Export
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {showFilters && (
-                      <div className="mt-4 pt-4 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">From Date</label>
-                          <input
-                            type="date"
-                            value={dateFrom}
-                            onChange={(e) => setDateFrom(e.target.value)}
-                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">To Date</label>
-                          <input
-                            type="date"
-                            value={dateTo}
-                            onChange={(e) => setDateTo(e.target.value)}
-                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account</label>
-                          <select
-                            value={filterAccount}
-                            onChange={(e) => setFilterAccount(e.target.value)}
-                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                          >
-                            <option value="">All Accounts</option>
-                            {accounts.map(acc => (
-                              <option key={acc.id} value={acc.id}>{acc.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">Entry Type</label>
-                          <select
-                            value={filterType}
-                            onChange={(e) => setFilterType(e.target.value)}
-                            className="block w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 bg-white"
-                          >
-                            <option value="">All Types</option>
-                            {entryTypes.map(type => (
-                              <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="overflow-x-auto">
-                      <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                              <tr>
-                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Date</th>
-                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Type</th>
-                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Description</th>
-                                  <th className="px-6 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Account</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Debit</th>
-                                  <th className="px-6 py-3 text-right text-[10px] font-bold text-gray-500 uppercase">Credit</th>
-                              </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-100">
-                              {journalEntries.length === 0 ? (
-                                <tr>
-                                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                                    No ledger entries found.
-                                  </td>
-                                </tr>
-                              ) : (
-                                journalEntries.map(entry => (
-                                  <React.Fragment key={entry.id}>
-                                      <tr className="bg-gray-50/30">
-                                          <td className="px-6 py-2 whitespace-nowrap text-[10px] text-gray-400 font-bold uppercase">
-                                              {new Date(entry.date).toLocaleDateString()}
-                                          </td>
-                                          <td className="px-6 py-2 whitespace-nowrap">
-                                              <span className="px-2 py-0.5 rounded text-[8px] font-bold uppercase border bg-white text-gray-600">
-                                                  {entry.reference_type}
-                                              </span>
-                                          </td>
-                                          <td colSpan={4} className="px-6 py-2 text-[10px] font-bold text-gray-900">
-                                              {entry.description} <span className="text-gray-400 font-normal ml-2">by {entry.users?.full_name}</span>
-                                          </td>
-                                      </tr>
-                                      {entry.journal_lines.map((line: any) => (
-                                          <tr key={line.id} className="hover:bg-gray-50 transition-colors">
-                                              <td colSpan={3}></td>
-                                              <td className="px-6 py-2 text-xs text-gray-600 pl-12">
-                                                  {line.accounts?.name}
-                                              </td>
-                                              <td className="px-6 py-2 text-right text-xs font-medium text-gray-900">
-                                                  {line.debit > 0 ? formatCurrency(line.debit) : '-'}
-                                              </td>
-                                              <td className="px-6 py-2 text-right text-xs font-medium text-gray-900">
-                                                  {line.credit > 0 ? formatCurrency(line.credit) : '-'}
-                                              </td>
-                                          </tr>
-                                      ))}
-                                  </React.Fragment>
-                                ))
-                              )}
-                          </tbody>
-                      </table>
-                  </div>
-                  
-                  {totalPages > 1 && (
-                    <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
-                      <p className="text-xs text-gray-500">
-                        Showing {((currentPage - 1) * entriesPerPage) + 1} - {Math.min(currentPage * entriesPerPage, totalEntries)} of {totalEntries} entries
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
-                          disabled={currentPage === 1}
-                          className="p-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </button>
-                        <span className="text-xs font-medium text-gray-700 px-2">
-                          Page {currentPage} of {totalPages}
-                        </span>
-                        <button
-                          onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
-                          disabled={currentPage === totalPages}
-                          className="p-2 rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-              </div>
           </div>
 
           <div className="space-y-6">
@@ -983,7 +677,7 @@ export const Accounts: React.FC = () => {
                           </div>
                       </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Balance (MK)</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Initial Balance</label>
                           <input type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500" value={displayInitialBalance} onChange={e => handleInitialBalanceChange(e.target.value)} />
                       </div>
                       <div className="pt-4">
@@ -1028,7 +722,7 @@ export const Accounts: React.FC = () => {
                           </select>
                       </div>
                       <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount (MK)</label>
+                          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Amount</label>
                           <input required type="text" className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-green-500" placeholder="0.00" value={displayFundAmount} onChange={e => handleFundAmountChange(e.target.value)} />
                       </div>
                       <div>

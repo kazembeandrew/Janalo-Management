@@ -8,6 +8,7 @@ import {
     ChevronRight, LayoutGrid, ListFilter
 } from 'lucide-react';
 import { notifyTaskAssigned, notifyTaskCompleted } from '@/utils/notifications';
+import { notifyExecutivesForPendingTask } from '@/utils/oversightNotifications';
 import toast from 'react-hot-toast';
 
 export const Tasks: React.FC = () => {
@@ -92,6 +93,13 @@ export const Tasks: React.FC = () => {
       if (error) throw error;
       
       await logAudit('Task Proposed', { title: formData.title, priority: formData.priority }, data.id);
+
+      await notifyExecutivesForPendingTask({
+        taskId: String(data.id),
+        title: data.title,
+        excludeUserId: profile.id,
+        senderId: profile.id
+      });
       
       toast.success('Task proposed. Awaiting CEO authorization.');
       setIsModalOpen(false);

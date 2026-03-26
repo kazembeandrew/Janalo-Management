@@ -265,6 +265,49 @@ export const Loans: React.FC = () => {
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 
+  const SkeletonRow = () => (
+    <tr>
+      <td colSpan={7} className="px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="h-4 w-4 rounded bg-gray-200 animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-1/3 rounded bg-gray-200 animate-pulse" />
+            <div className="h-2.5 w-1/4 rounded bg-gray-200 animate-pulse" />
+          </div>
+          <div className="h-3 w-1/6 rounded bg-gray-200 animate-pulse" />
+          <div className="h-3 w-1/6 rounded bg-gray-200 animate-pulse" />
+          <div className="h-2.5 w-1/8 rounded bg-gray-200 animate-pulse" />
+          <div className="h-6 w-16 rounded bg-gray-200 animate-pulse" />
+        </div>
+      </td>
+    </tr>
+  );
+
+  const SkeletonCard = () => (
+    <div className="p-4 border-b border-gray-200">
+      <div className="flex justify-between items-start mb-2">
+        <div className="flex items-center gap-2 flex-1">
+          <div className="h-4 w-4 rounded bg-gray-200 animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-1/3 rounded bg-gray-200 animate-pulse" />
+            <div className="h-2.5 w-1/4 rounded bg-gray-200 animate-pulse" />
+          </div>
+        </div>
+        <div className="h-5 w-16 rounded-full bg-gray-200 animate-pulse" />
+      </div>
+      <div className="grid grid-cols-2 gap-4 mt-3">
+        <div>
+          <div className="h-2.5 w-1/3 rounded bg-gray-200 animate-pulse mb-1" />
+          <div className="h-3 w-2/3 rounded bg-gray-200 animate-pulse" />
+        </div>
+        <div className="text-right">
+          <div className="h-2.5 w-1/3 rounded bg-gray-200 animate-pulse mb-1 ml-auto" />
+          <div className="h-3 w-3/4 rounded bg-gray-200 animate-pulse ml-auto" />
+        </div>
+      </div>
+    </div>
+  );
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -292,6 +335,24 @@ export const Loans: React.FC = () => {
   };
 
   const pendingCount = loans.filter(l => l.status === 'pending').length;
+
+  const AnimatedProgressBar: React.FC<{ percentage: number }> = ({ percentage }) => {
+    const [width, setWidth] = useState(0);
+    
+    useEffect(() => {
+      const timer = setTimeout(() => setWidth(percentage), 100);
+      return () => clearTimeout(timer);
+    }, [percentage]);
+
+    return (
+      <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-indigo-600 transition-[width] duration-700 ease-[cubic-bezier(.22,.61,.36,1)]"
+          style={{ width: `${width}%` }}
+        />
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6 pb-24">
@@ -367,25 +428,22 @@ export const Loans: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
-                <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
-                        <div className="flex justify-center">
-                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                        </div>
-                    </td>
-                </tr>
+                Array.from({length:5}).map((_,i)=><SkeletonRow key={i}/>)
               ) : loans.length === 0 ? (
                 <tr>
                     <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</td>
                 </tr>
               ) : (
-                loans.map((loan) => {
+                loans.map((loan, i) => {
                   const recovery = ((Number(loan.principal_amount) - Number(loan.principal_outstanding)) / Number(loan.principal_amount)) * 100;
                   const overdue = isOverdue(loan);
                   const isSelected = selectedIds.has(loan.id);
 
                   return (
-                    <tr key={loan.id} className={`hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                    <tr 
+                      key={loan.id} 
+                      className={`hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}
+                    >
                       {isExec && filter === 'pending' && (
                           <td className="px-6 py-4">
                               {loan.status === 'pending' && (
@@ -423,9 +481,7 @@ export const Loans: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                            <div className="w-16 bg-gray-100 rounded-full h-1.5">
-                                <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${recovery}%` }} />
-                            </div>
+                            <AnimatedProgressBar percentage={recovery} />
                             <span className="text-[10px] font-bold text-gray-400">{recovery.toFixed(0)}%</span>
                         </div>
                       </td>
@@ -466,21 +522,20 @@ export const Loans: React.FC = () => {
         {/* Mobile Card View */}
         <div className="md:hidden divide-y divide-gray-200 flex-1">
           {loading ? (
-            <div className="px-6 py-12 text-center text-sm text-gray-500">
-              <div className="flex justify-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-              </div>
-            </div>
+            Array.from({length:5}).map((_,i)=><SkeletonCard key={i}/>)
           ) : loans.length === 0 ? (
             <div className="px-6 py-12 text-center text-sm text-gray-500">No loans found matching filter.</div>
           ) : (
-            loans.map((loan) => {
+            loans.map((loan, i) => {
               const recovery = ((Number(loan.principal_amount) - Number(loan.principal_outstanding)) / Number(loan.principal_amount)) * 100;
               const overdue = isOverdue(loan);
               const isSelected = selectedIds.has(loan.id);
 
               return (
-                <div key={loan.id} className={`p-4 hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                <div 
+                  key={loan.id} 
+                  className={`p-4 hover:bg-gray-50 transition-colors ${overdue ? 'bg-red-50/30' : ''} ${isSelected ? 'bg-indigo-50/50' : ''}`}
+                >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center">
                       {isExec && filter === 'pending' && (
@@ -528,9 +583,7 @@ export const Loans: React.FC = () => {
 
                   <div className="mt-3 flex items-center justify-between">
                     <div className="flex items-center gap-2 flex-1">
-                      <div className="w-24 bg-gray-100 rounded-full h-1.5">
-                        <div className="bg-indigo-600 h-1.5 rounded-full" style={{ width: `${recovery}%` }} />
-                      </div>
+                      <AnimatedProgressBar percentage={recovery} />
                       <span className="text-[10px] font-bold text-gray-400">{recovery.toFixed(0)}% Recovery</span>
                     </div>
                     <div className="flex items-center gap-3">
