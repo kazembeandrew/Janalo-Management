@@ -1,5 +1,9 @@
 export type UserRole = 'admin' | 'ceo' | 'loan_officer' | 'hr' | 'accountant';
 
+export type PermissionAction = 'create' | 'read' | 'update' | 'delete' | 'approve';
+
+export type PermissionResource = 'user' | 'borrower' | 'loan' | 'repayment' | 'transaction' | 'journal_entry' | 'account' | 'document' | 'report' | 'visit' | 'settings';
+
 export type InterestType = 'flat' | 'reducing';
 
 export type LoanStatus = 'active' | 'completed' | 'defaulted' | 'pending' | 'rejected' | 'reassess';

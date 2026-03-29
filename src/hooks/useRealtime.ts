@@ -15,14 +15,19 @@ export interface RealtimeData<T = any> {
   lastUpdated: Date | null;
 }
 
+/**
+ * Fixed useRealtime hook that accepts a stable query key and separate fetch function
+ * to avoid infinite re-renders caused by inline arrow functions in dependencies.
+ */
 export function useRealtime<T = any>(
   tableName: string,
-  initialQuery?: () => Promise<T[]>,
   options: {
     event?: '*' | 'INSERT' | 'UPDATE' | 'DELETE';
     filter?: string;
     enabled?: boolean;
     refetchInterval?: number;
+    queryKey?: string; // Stable key to trigger refetches
+    fetchFn?: () => Promise<T[]>; // Separate fetch function
   } = {}
 ): RealtimeData<T> & { refetch: () => void; subscribe: (callback: (payload: T) => void) => void } {
   const [data, setData] = useState<T[]>([]);
@@ -32,15 +37,16 @@ export function useRealtime<T = any>(
   
   const channelRef = useRef<any>(null);
   const subscribersRef = useRef<Set<(payload: T) => void>>(new Set());
-  const { event = '*', filter, enabled = true, refetchInterval } = options;
+  const { event = '*', filter, enabled = true, refetchInterval, queryKey, fetchFn } = options;
 
+  // fetchData no longer depends on initialQuery, only on fetchFn reference
   const fetchData = useCallback(async () => {
-    if (!enabled || !initialQuery) return;
+    if (!enabled || !fetchFn) return;
     
     try {
       setLoading(true);
       setError(null);
-      const result = await initialQuery();
+      const result = await fetchFn();
       setData(result);
       setLastUpdated(new Date());
     } catch (err) {
@@ -48,7 +54,7 @@ export function useRealtime<T = any>(
     } finally {
       setLoading(false);
     }
-  }, [enabled, initialQuery]);
+  }, [enabled, fetchFn]);
 
   const subscribe = useCallback((callback: (payload: T) => void) => {
     subscribersRef.current.add(callback);
@@ -118,7 +124,7 @@ export function useRealtime<T = any>(
         clearInterval(intervalId);
       }
     };
-  }, [enabled, tableName, event, filter, fetchData, refetchInterval]);
+  }, [enabled, tableName, event, filter, fetchData, refetchInterval]); // Removed initialQuery from deps
 
   return {
     data,
