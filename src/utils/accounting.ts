@@ -30,8 +30,8 @@ export const checkRateLimit = async (
         };
     } catch (error) {
         console.error('Rate limit check failed:', error);
-        // Allow operation if rate limiting fails (fail open for UX)
-        return { allowed: true };
+        // SECURITY FIX: Fail closed - block operation if rate limiting is unavailable
+        return { allowed: false, reason: 'Rate limit check unavailable' };
     }
 };
 

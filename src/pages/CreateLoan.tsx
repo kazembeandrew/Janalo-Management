@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency, formatNumberWithCommas, parseFormattedNumber, generateAutoReference, isValidReferenceFormat, isReferenceUnique } from '@/utils/finance';
 import { Calculator, ArrowLeft, AlertOctagon, UploadCloud, Plus, Check, ChevronRight, ChevronLeft, User, Banknote, FileText, AlertTriangle, Hash } from 'lucide-react';
@@ -13,6 +14,7 @@ type Step = 'borrower' | 'terms' | 'documents' | 'review';
 
 export const CreateLoan: React.FC = () => {
   const { profile } = useAuth();
+  const perms = usePermissions();
   const navigate = useNavigate();
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +47,7 @@ export const CreateLoan: React.FC = () => {
         if (!profile) return;
         // Fetch borrowers excluding those with active/pending/reassess loans
         let query = supabase.from('borrowers').select('*, loans(id, status, officer_id)');
-        if (profile.role === 'loan_officer') {
+        if (perms.isLoanOfficer()) {
             // Show borrowers created by this officer OR borrowers who have loans where this officer is the loan officer
             // Since PostgREST doesn't support OR with nested relations, fetch all and filter client-side
             const { data } = await query;
@@ -262,7 +264,7 @@ export const CreateLoan: React.FC = () => {
       </nav>
   );
 
-  if (profile?.role === 'ceo') {
+  if (perms.isCEO()) {
     return (
         <div className="flex flex-col items-center justify-center h-64 text-center">
             <AlertOctagon className="h-16 w-16 text-red-500 mb-4" />
