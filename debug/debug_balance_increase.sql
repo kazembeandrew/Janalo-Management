@@ -37,7 +37,7 @@ ORDER BY ia.account_code;
 -- 3. Check for duplicate journal entries (same description, amount, date)
 SELECT
     je.description,
-    je.date,
+    je.entry_date,
     je.reference_type,
     je.reference_id,
     COUNT(*) as duplicate_count,
@@ -47,15 +47,15 @@ SELECT
 FROM public.journal_entries je
 JOIN public.journal_lines jl ON je.id = jl.journal_entry_id
 WHERE je.description LIKE '%disbursement%' OR je.description LIKE '%loan%'
-GROUP BY je.description, je.date, je.reference_type, je.reference_id
+GROUP BY je.description, je.entry_date, je.reference_type, je.reference_id
 HAVING COUNT(*) > 1
-ORDER BY je.date DESC;
+ORDER BY je.entry_date DESC;
 
 -- 4. Check journal entries affecting SHARED_CAPITAL or EQUITY accounts
 SELECT
     je.id,
     je.description,
-    je.date,
+    je.entry_date,
     je.created_at,
     jl.account_id,
     ia.account_code,

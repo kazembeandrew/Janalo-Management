@@ -137,9 +137,9 @@ BEGIN
         );
     END IF;
     
-    -- Create journal entry
-    INSERT INTO journal_entries (reference_type, reference_id, description, created_by, date)
-    VALUES (p_reference_type, p_reference_id, p_description, p_user_id, p_entry_date)
+    -- Create journal entry with status = 'posted'
+    INSERT INTO journal_entries (reference_type, reference_id, description, created_by, date, status)
+    VALUES (p_reference_type, p_reference_id, p_description, p_user_id, p_entry_date, 'posted')
     RETURNING id INTO v_journal_entry_id;
     
     -- Create journal lines

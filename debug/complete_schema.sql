@@ -69,25 +69,55 @@ CREATE TABLE IF NOT EXISTS public.loans (
 CREATE TABLE IF NOT EXISTS public.internal_accounts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
-    account_category TEXT NOT NULL CHECK (account_category IN ('asset', 'liability', 'equity', 'income', 'expense')),
+    account_type TEXT NOT NULL CHECK (account_type IN ('asset', 'liability', 'equity', 'income', 'expense')),
+    account_category TEXT CHECK (
+        account_category IN (
+            'cash', 'bank', 'mobile_money', 'loan_receivable', 'interest_receivable',
+            'penalty_receivable', 'fee_receivable', 'contra_asset', 'other_receivable',
+            'prepayment', 'fixed_asset', 'deposit_liability', 'payable', 'accrual',
+            'deferred_income', 'borrowing', 'tax', 'capital', 'retained_earnings',
+            'current_earnings', 'drawings', 'interest_income', 'penalty_income',
+            'fee_income', 'recovery_income', 'other_income', 'credit_loss',
+            'payroll', 'occupancy', 'utilities', 'bank_charge', 'depreciation',
+            'interest_expense', 'other_expense'
+        )
+    ),
     account_code TEXT UNIQUE NOT NULL,
     parent_id UUID REFERENCES public.internal_accounts(id) ON DELETE CASCADE,
     account_number_display TEXT,
     description TEXT,
+    normal_balance TEXT NOT NULL CHECK (normal_balance IN ('debit', 'credit')),
+    is_contra_account BOOLEAN NOT NULL DEFAULT false,
+    allow_manual_entries BOOLEAN NOT NULL DEFAULT true,
+    is_control_account BOOLEAN NOT NULL DEFAULT false,
+    is_bank_account BOOLEAN NOT NULL DEFAULT false,
+    sort_order INTEGER,
     is_active BOOLEAN DEFAULT true,
     balance DECIMAL(15,2) DEFAULT 0,
+    last_balance_calculated_at TIMESTAMP WITH TIME ZONE,
     is_system_account BOOLEAN DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT internal_accounts_not_self_parent CHECK (parent_id IS NULL OR parent_id <> id)
 );
 
 -- Journal entries
 CREATE TABLE IF NOT EXISTS public.journal_entries (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    reference_type TEXT NOT NULL CHECK (reference_type IN ('loan_disbursement', 'repayment', 'expense', 'transfer', 'injection', 'adjustment', 'reversal')),
+    reference_type TEXT NOT NULL CHECK (
+        reference_type IN (
+            'loan_disbursement', 'repayment', 'expense', 'transfer', 'injection',
+            'adjustment', 'reversal', 'write_off', 'recovery', 'accrual',
+            'penalty', 'fee', 'refund'
+        )
+    ),
     reference_id UUID,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     description TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'posted', 'reversed')),
+    posted_at TIMESTAMP WITH TIME ZONE,
+    posted_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    reversal_of_journal_entry_id UUID REFERENCES public.journal_entries(id) ON DELETE SET NULL,
     created_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     updated_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
     reversed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
@@ -319,9 +349,13 @@ CREATE INDEX IF NOT EXISTS idx_loans_status ON public.loans(status);
 CREATE INDEX IF NOT EXISTS idx_loans_reference_no ON public.loans(reference_no);
 
 -- Accounting indexes
+CREATE INDEX IF NOT EXISTS idx_internal_accounts_type ON public.internal_accounts(account_type);
 CREATE INDEX IF NOT EXISTS idx_internal_accounts_category ON public.internal_accounts(account_category);
+CREATE INDEX IF NOT EXISTS idx_internal_accounts_parent_id ON public.internal_accounts(parent_id);
+CREATE INDEX IF NOT EXISTS idx_internal_accounts_active ON public.internal_accounts(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_internal_accounts_code ON public.internal_accounts(account_code);
 CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON public.journal_entries(date DESC);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_status ON public.journal_entries(status);
 CREATE INDEX IF NOT EXISTS idx_journal_entries_reference ON public.journal_entries(reference_type, reference_id);
 CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON public.journal_lines(account_id);
 CREATE INDEX IF NOT EXISTS idx_journal_lines_journal_entry ON public.journal_lines(journal_entry_id);
@@ -438,13 +472,16 @@ DECLARE
 BEGIN
     -- Get available liquidity
     SELECT COALESCE(SUM(balance), 0) INTO v_cash_accounts
-    FROM internal_accounts WHERE account_code = 'CASH' AND is_active != false;
+    FROM internal_accounts
+    WHERE account_type = 'asset' AND account_category = 'cash' AND is_active != false;
 
     SELECT COALESCE(SUM(balance), 0) INTO v_bank_accounts
-    FROM internal_accounts WHERE account_code = 'BANK' AND is_active != false;
+    FROM internal_accounts
+    WHERE account_type = 'asset' AND account_category = 'bank' AND is_active != false;
 
     SELECT COALESCE(SUM(balance), 0) INTO v_mobile_accounts
-    FROM internal_accounts WHERE account_code = 'MOBILE' AND is_active != false;
+    FROM internal_accounts
+    WHERE account_type = 'asset' AND account_category = 'mobile_money' AND is_active != false;
 
     v_total_liquidity := v_cash_accounts + v_bank_accounts + v_mobile_accounts;
 
@@ -454,7 +491,7 @@ BEGIN
 
     -- Get total liabilities
     SELECT COALESCE(SUM(balance), 0) INTO v_total_liabilities
-    FROM internal_accounts WHERE account_category = 'liability' AND is_active != false;
+    FROM internal_accounts WHERE account_type = 'liability' AND is_active != false;
 
     -- Calculate liquidity ratio
     IF v_total_portfolio > 0 THEN
@@ -494,21 +531,34 @@ AS $$
 DECLARE
   v_category text;
 BEGIN
-  SELECT account_category INTO v_category FROM public.internal_accounts WHERE id = NEW.account_id;
+  IF TG_OP = 'UPDATE' THEN
+    PERFORM public.reverse_account_balance_from_journal();
+  END IF;
 
-  -- Assets and Expenses increase with Debits
-  IF v_category IN ('asset', 'expense') THEN
-    UPDATE public.internal_accounts
-    SET balance = balance + (NEW.debit - NEW.credit),
-        updated_at = NOW()
-    WHERE id = NEW.account_id;
+  IF EXISTS (
+    SELECT 1
+    FROM public.journal_entries
+    WHERE id = NEW.journal_entry_id
+      AND status = 'posted'
+  ) THEN
+    SELECT account_type INTO v_category FROM public.internal_accounts WHERE id = NEW.account_id;
 
-  -- Liabilities, Equity, and Income increase with Credits
-  ELSIF v_category IN ('liability', 'equity', 'income') THEN
-    UPDATE public.internal_accounts
-    SET balance = balance + (NEW.credit - NEW.debit),
-        updated_at = NOW()
-    WHERE id = NEW.account_id;
+    -- Assets and Expenses increase with Debits
+    IF v_category IN ('asset', 'expense') THEN
+      UPDATE public.internal_accounts
+      SET balance = balance + (NEW.debit - NEW.credit),
+          updated_at = NOW(),
+          last_balance_calculated_at = NOW()
+      WHERE id = NEW.account_id;
+
+    -- Liabilities, Equity, and Income increase with Credits
+    ELSIF v_category IN ('liability', 'equity', 'income') THEN
+      UPDATE public.internal_accounts
+      SET balance = balance + (NEW.credit - NEW.debit),
+          updated_at = NOW(),
+          last_balance_calculated_at = NOW()
+      WHERE id = NEW.account_id;
+    END IF;
   END IF;
 
   RETURN NEW;
@@ -523,21 +573,30 @@ AS $$
 DECLARE
   v_category text;
 BEGIN
-  SELECT account_category INTO v_category FROM public.internal_accounts WHERE id = OLD.account_id;
+  IF EXISTS (
+    SELECT 1
+    FROM public.journal_entries
+    WHERE id = OLD.journal_entry_id
+      AND status = 'posted'
+  ) THEN
+    SELECT account_type INTO v_category FROM public.internal_accounts WHERE id = OLD.account_id;
 
-  -- Assets and Expenses decrease with Debits when deleted
-  IF v_category IN ('asset', 'expense') THEN
-    UPDATE public.internal_accounts
-    SET balance = balance - (OLD.debit - OLD.credit),
-        updated_at = NOW()
-    WHERE id = OLD.account_id;
+    -- Assets and Expenses decrease with Debits when deleted
+    IF v_category IN ('asset', 'expense') THEN
+      UPDATE public.internal_accounts
+      SET balance = balance - (OLD.debit - OLD.credit),
+          updated_at = NOW(),
+          last_balance_calculated_at = NOW()
+      WHERE id = OLD.account_id;
 
-  -- Liabilities, Equity, and Income decrease with Credits when deleted
-  ELSIF v_category IN ('liability', 'equity', 'income') THEN
-    UPDATE public.internal_accounts
-    SET balance = balance - (OLD.credit - OLD.debit),
-        updated_at = NOW()
-    WHERE id = OLD.account_id;
+    -- Liabilities, Equity, and Income decrease with Credits when deleted
+    ELSIF v_category IN ('liability', 'equity', 'income') THEN
+      UPDATE public.internal_accounts
+      SET balance = balance - (OLD.credit - OLD.debit),
+          updated_at = NOW(),
+          last_balance_calculated_at = NOW()
+      WHERE id = OLD.account_id;
+    END IF;
   END IF;
 
   RETURN OLD;
@@ -762,15 +821,44 @@ INSERT INTO public.liquidity_config (
 ON CONFLICT DO NOTHING;
 
 -- Insert system accounts (basic chart of accounts)
-INSERT INTO public.internal_accounts (name, account_category, account_code, is_system_account) VALUES
-('Cash on Hand', 'asset', 'CASH', true),
-('Bank Account', 'asset', 'BANK', true),
-('Mobile Money', 'asset', 'MOBILE', true),
-('Loan Portfolio', 'asset', 'PORTFOLIO', true),
-('Share Capital', 'equity', 'CAPITAL', true),
-('Retained Earnings', 'equity', 'EQUITY', true),
-('Interest Income', 'income', 'INTEREST_INCOME', true),
-('Operational Expenses', 'expense', 'OPERATIONAL', true)
+INSERT INTO public.internal_accounts (
+    name, account_type, account_category, account_code, normal_balance, is_system_account, is_control_account, sort_order
+) VALUES
+('Cash on Hand', 'asset', 'cash', '1000', 'debit', true, true, 1000),
+('Bank - Operating', 'asset', 'bank', '1010', 'debit', true, true, 1010),
+('Mobile Money', 'asset', 'mobile_money', '1020', 'debit', true, true, 1020),
+('Loans Receivable - Principal', 'asset', 'loan_receivable', '1100', 'debit', true, true, 1100),
+('Interest Receivable', 'asset', 'interest_receivable', '1110', 'debit', true, true, 1110),
+('Penalties Receivable', 'asset', 'penalty_receivable', '1120', 'debit', true, true, 1120),
+('Fees Receivable', 'asset', 'fee_receivable', '1130', 'debit', true, true, 1130),
+('Allowance for Credit Losses', 'asset', 'contra_asset', '1140', 'credit', true, true, 1140),
+('Other Receivables', 'asset', 'other_receivable', '1200', 'debit', false, false, 1200),
+('Prepaid Expenses', 'asset', 'prepayment', '1300', 'debit', false, false, 1300),
+('Furniture and Equipment', 'asset', 'fixed_asset', '1400', 'debit', false, false, 1400),
+('Client Deposits', 'liability', 'deposit_liability', '2000', 'credit', true, true, 2000),
+('Accounts Payable', 'liability', 'payable', '2100', 'credit', true, false, 2100),
+('Accrued Expenses', 'liability', 'accrual', '2200', 'credit', true, false, 2200),
+('Deferred Fee Income', 'liability', 'deferred_income', '2300', 'credit', true, false, 2300),
+('Borrowings', 'liability', 'borrowing', '2400', 'credit', true, true, 2400),
+('Taxes Payable', 'liability', 'tax', '2500', 'credit', true, false, 2500),
+('Share Capital', 'equity', 'capital', '3000', 'credit', true, true, 3000),
+('Retained Earnings', 'equity', 'retained_earnings', '3100', 'credit', true, true, 3100),
+('Current Year Earnings', 'equity', 'current_earnings', '3200', 'credit', true, true, 3200),
+('Interest Income', 'income', 'interest_income', '4000', 'credit', true, true, 4000),
+('Penalty Income', 'income', 'penalty_income', '4010', 'credit', true, false, 4010),
+('Service Fee Income', 'income', 'fee_income', '4020', 'credit', true, false, 4020),
+('Processing Fee Income', 'income', 'fee_income', '4030', 'credit', true, false, 4030),
+('Recovery Income on Written-off Loans', 'income', 'recovery_income', '4040', 'credit', true, false, 4040),
+('Other Operating Income', 'income', 'other_income', '4900', 'credit', false, false, 4900),
+('Provision for Credit Losses', 'expense', 'credit_loss', '5000', 'debit', true, false, 5000),
+('Salaries and Wages', 'expense', 'payroll', '5010', 'debit', false, false, 5010),
+('Rent Expense', 'expense', 'occupancy', '5020', 'debit', false, false, 5020),
+('Utilities Expense', 'expense', 'utilities', '5030', 'debit', false, false, 5030),
+('Bank Charges', 'expense', 'bank_charge', '5040', 'debit', false, false, 5040),
+('Office Supplies', 'expense', 'other_expense', '5050', 'debit', false, false, 5050),
+('Depreciation Expense', 'expense', 'depreciation', '5060', 'debit', false, false, 5060),
+('Interest Expense', 'expense', 'interest_expense', '5070', 'debit', false, false, 5070),
+('Miscellaneous Operating Expense', 'expense', 'other_expense', '5900', 'debit', false, false, 5900)
 ON CONFLICT (account_code) DO NOTHING;
 
 -- ============================================================================

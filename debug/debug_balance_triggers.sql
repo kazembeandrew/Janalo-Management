@@ -21,15 +21,18 @@ WHERE proname LIKE '%balance%';
 -- Step 3: Check recent journal entries
 SELECT
     je.id,
+    je.description,
+    je.entry_date,
     je.reference_type,
     je.reference_id,
-    je.description,
-    je.date,
-    je.created_at,
-    COUNT(jl.id) as line_count
+    COUNT(*) as entry_count,
+    SUM(jl.debit) as total_debits,
+    SUM(jl.credit) as total_credits,
+    MIN(je.created_at) as first_created,
+    MAX(je.created_at) as last_created
 FROM public.journal_entries je
-LEFT JOIN public.journal_lines jl ON je.id = jl.journal_entry_id
-GROUP BY je.id, je.reference_type, je.reference_id, je.description, je.date, je.created_at
+JOIN public.journal_lines jl ON je.id = jl.journal_entry_id
+GROUP BY je.id, je.reference_type, je.reference_id, je.description, je.entry_date, je.created_at
 ORDER BY je.created_at DESC
 LIMIT 10;
 
