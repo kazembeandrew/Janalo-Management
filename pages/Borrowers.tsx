@@ -1,0 +1,733 @@
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/AuthContext';
+import { Borrower } from '@/types';
+import { 
+    Plus, Search, MapPin, Phone, Briefcase, User, 
+    ChevronLeft, ChevronRight, ExternalLink, Map as MapIcon, 
+    Home, Building2, X, Activity, RefreshCw, CheckSquare, 
+    Square, UserPlus, ArrowRightLeft 
+} from 'lucide-react';
+import { MapPicker } from '@/components/MapPicker';
+import toast from 'react-hot-toast';
+
+const ITEMS_PER_PAGE = 9;
+
+export const Borrowers: React.FC = () => {
+  const { profile, effectiveRoles } = useAuth();
+  const [borrowers, setBorrowers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Selection State
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  
+  // Map Picker State
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [activeMapTarget, setActiveMapTarget] = useState<'address' | 'employment' | null>(null);
+  
+  const [editingBorrower, setEditingBorrower] = useState<Borrower | null>(null);
+  
+  // Reassignment State
+  const [showReassignModal, setShowReassignModal] = useState(false);
+  const [selectedOfficer, setSelectedOfficer] = useState('');
+  const [officers, setOfficers] = useState<{id: string, full_name: string}[]>([]);
+  const [isReassigning, setIsReassigning] = useState(false);
+
+  const [formData, setFormData] = useState({
+    full_name: '',
+    phone: '',
+    address: '', 
+    employment: '' 
+  });
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
+  const canCreate = effectiveRoles.includes('admin') || effectiveRoles.includes('loan_officer');
+  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+
+  useEffect(() => {
+    fetchBorrowers();
+    if (isExec) {
+        fetchOfficers();
+    }
+  }, [profile, page, searchTerm, effectiveRoles]); 
+
+  const fetchOfficers = async () => {
+      const { data } = await supabase.from('users').select('id, full_name').eq('role', 'loan_officer').eq('is_active', true);
+      setOfficers(data || []);
+  };
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setSearchTerm(e.target.value);
+      setPage(1);
+      setSelectedIds(new Set());
+  };
+
+  const fetchBorrowers = async () => {
+    if (!profile) return;
+    setLoading(true);
+    console.log('Fetching borrowers for:', profile.id, 'Page:', page, 'Search:', searchTerm); 
+    try {
+      let query = supabase
+        .from('borrowers')
+        .select('*, loans(id, status, officer_id)', { count: 'exact' })
+        .order('created_at', { ascending: false });
+
+      if (effectiveRoles.includes('loan_officer') && !isExec) {
+        // For loan officers, fetch borrowers they created OR borrowers with loans they manage
+        // We'll use a different approach since PostgREST doesn't handle nested relations in OR conditions
+        
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        // First, get borrowers created by the officer
+        let createdQuery = supabase
+          .from('borrowers')
+          .select('*, loans(id, status, officer_id)', { count: 'exact' })
+          .eq('created_by', profile.id)
+          .order('created_at', { ascending: false });
+
+        if (searchTerm.trim()) {
+          createdQuery = createdQuery.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+        }
+
+        const { data: createdBorrowers, error: createdError, count: createdCount } = await createdQuery;
+        if (createdError) throw createdError;
+
+        // Second, get borrowers with loans managed by the officer (excluding those already fetched)
+        const createdIds = createdBorrowers?.map(b => b.id) || [];
+
+        // First, get loan IDs managed by this officer
+        const { data: officerLoans, error: loansError } = await supabase
+          .from('loans')
+          .select('borrower_id')
+          .eq('officer_id', profile.id);
+
+        if (loansError) throw loansError;
+
+        const borrowerIdsFromLoans = officerLoans?.map(l => l.borrower_id).filter(id => !createdIds.includes(id)) || [];
+
+        let loanBorrowers: any[] = [];
+        let loanCount = 0;
+
+        if (borrowerIdsFromLoans.length > 0) {
+          let loanQuery = supabase
+            .from('borrowers')
+            .select('*, loans(id, status, officer_id)', { count: 'exact' })
+            .in('id', borrowerIdsFromLoans);
+
+          if (searchTerm.trim()) {
+            loanQuery = loanQuery.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+          }
+
+          const { data, error: loanError, count } = await loanQuery;
+          if (loanError) throw loanError;
+          loanBorrowers = data || [];
+          loanCount = count || 0;
+        }
+
+        // Combine and sort results
+        const allBorrowers = [...(createdBorrowers || []), ...(loanBorrowers || [])]
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        // Apply pagination to combined results
+        const paginatedResults = allBorrowers.slice(from, to + 1);
+        
+        setBorrowers(paginatedResults);
+        setTotalCount((createdCount || 0) + (loanCount || 0));
+      } else {
+        if (searchTerm.trim()) {
+          query = query.or(`full_name.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`);
+        }
+
+        const from = (page - 1) * ITEMS_PER_PAGE;
+        const to = from + ITEMS_PER_PAGE - 1;
+
+        const { data, error, count } = await query.range(from, to);
+
+        if (error) throw error;
+        setBorrowers(data || []);
+        setTotalCount(count || 0);
+      }
+    } catch (error: any) {
+      console.error('Error fetching borrowers:', error);
+      toast.error('Failed to load borrowers: ' + (error.message || 'Unknown error'));
+      setBorrowers([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+      const newSelected = new Set(selectedIds);
+      if (newSelected.has(id)) newSelected.delete(id);
+      else newSelected.add(id);
+      setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+      if (selectedIds.size === borrowers.length) {
+          setSelectedIds(new Set());
+      } else {
+          setSelectedIds(new Set(borrowers.map(b => b.id)));
+      }
+  };
+
+  const handleBulkReassign = async () => {
+      if (selectedIds.size === 0 || !selectedOfficer) return;
+      
+      setIsReassigning(true);
+      const ids = Array.from(selectedIds);
+      
+      try {
+          // 1. Update Borrowers
+          const { error: bError } = await supabase
+            .from('borrowers')
+            .update({ created_by: selectedOfficer })
+            .in('id', ids);
+          
+          if (bError) throw bError;
+
+          // 2. Update associated active/pending loans
+          const { error: lError } = await supabase
+            .from('loans')
+            .update({ officer_id: selectedOfficer })
+            .in('borrower_id', ids)
+            .in('status', ['active', 'pending', 'reassess', 'rejected']);
+          
+          if (lError) throw lError;
+          
+          toast.success(`${ids.length} clients and their active loans reassigned.`);
+          setShowReassignModal(false);
+          setSelectedIds(new Set());
+          setSelectedOfficer('');
+          fetchBorrowers();
+      } catch (error: any) {
+          console.error(error);
+          toast.error('Failed to reassign clients: ' + error.message);
+      } finally {
+          setIsReassigning(false);
+      }
+  };
+
+  const openCreateModal = () => {
+    setEditingBorrower(null);
+    setFormData({ full_name: '', phone: '', address: '', employment: '' });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (borrower: Borrower) => {
+    setEditingBorrower(borrower);
+    setFormData({
+      full_name: borrower.full_name,
+      phone: borrower.phone,
+      address: borrower.address,
+      employment: borrower.employment
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenMap = (target: 'address' | 'employment') => {
+      setActiveMapTarget(target);
+      setShowMapPicker(true);
+  };
+
+  const handleLocationSelect = (lat: number, lng: number) => {
+      if (activeMapTarget) {
+          setFormData({ ...formData, [activeMapTarget]: `${lat.toFixed(6)}, ${lng.toFixed(6)}` });
+      }
+      setShowMapPicker(false);
+      setActiveMapTarget(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+
+    try {
+      if (editingBorrower) {
+        const { error } = await supabase
+          .from('borrowers')
+          .update({
+            full_name: formData.full_name,
+            phone: formData.phone,
+            address: formData.address,
+            employment: formData.employment
+          })
+          .eq('id', editingBorrower.id);
+
+        if (error) {
+            if (error.code === '23505') {
+                toast.error('A borrower with this name already exists.');
+                return;
+            }
+            throw error;
+        }
+        toast.success('Client updated');
+      } else {
+        const { error } = await supabase.from('borrowers').insert([
+          {
+            ...formData,
+            created_by: profile.id
+          }
+        ]);
+
+        if (error) {
+            if (error.code === '23505') {
+                toast.error('A borrower with this name already exists.');
+                return;
+            }
+            throw error;
+        }
+        toast.success('Client registered');
+      }
+
+      setIsModalOpen(false);
+      setFormData({ full_name: '', phone: '', address: '', employment: '' });
+      setEditingBorrower(null);
+      if (!editingBorrower) setPage(1);
+      fetchBorrowers();
+    } catch (error) {
+      console.error('Error saving borrower:', error);
+      toast.error('Error saving borrower');
+    }
+  };
+
+  const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
+
+  const SkeletonRow = () => (
+    <div className="section-card p-5 flex items-center gap-4">
+      <div className="h-10 w-10 rounded-xl shimmer" />
+      <div className="flex-1 space-y-2">
+        <div className="h-3 w-2/3 rounded-lg shimmer" />
+        <div className="h-2.5 w-1/3 rounded-lg shimmer" />
+      </div>
+      <div className="h-6 w-16 rounded-lg shimmer" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-6 pb-24">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {effectiveRoles.includes('loan_officer') && !isExec ? 'My Clients' : 'All Borrowers'}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {effectiveRoles.includes('loan_officer') && !isExec 
+              ? 'Manage clients assigned to you' 
+              : 'Directory of all borrowers in the system'}
+          </p>
+        </div>
+        <div className="flex gap-2">
+            {borrowers.length > 0 && (
+                <button
+                    onClick={toggleSelectAll}
+                    className="inline-flex items-center px-4 py-2.5 bg-white border border-gray-300 text-gray-700 rounded-xl text-sm font-bold hover:bg-gray-50 transition-all shadow-sm"
+                >
+                    {selectedIds.size === borrowers.length ? <CheckSquare className="h-4 w-4 mr-2 text-indigo-600" /> : <Square className="h-4 w-4 mr-2" />}
+                    {selectedIds.size === borrowers.length ? 'Deselect All' : 'Select All'}
+                </button>
+            )}
+            {canCreate && (
+            <button
+                onClick={openCreateModal}
+                className="inline-flex items-center px-4 py-2.5 text-white rounded-xl text-sm font-bold transition-all shadow-lg active:scale-95"
+                style={{background:'linear-gradient(135deg,#4f46e5 0%,#6366f1 100%)',boxShadow:'0 4px 14px rgba(79,70,229,0.35)'}}
+            >
+                <Plus className="h-4 w-4 mr-2" />
+                Add Borrower
+            </button>
+            )}
+        </div>
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-gray-400" />
+        </div>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all sm:text-sm"
+          placeholder="Search by name or phone..."
+          value={searchTerm}
+          onChange={handleSearchChange}
+        />
+      </div>
+
+      <div className="min-h-[400px]">
+        {loading
+          ? <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">{Array.from({length:6}).map((_,i)=><SkeletonRow key={i}/>)}</div>
+          : borrowers.length === 0 ? (
+          <div className="text-center py-16 section-card">
+             <User className="mx-auto h-12 w-12 text-gray-200 mb-4" />
+             <h3 className="text-sm font-bold text-gray-900">No borrowers found</h3>
+             <p className="mt-1 text-sm text-gray-500">
+                {searchTerm ? 'Try adjusting your search terms.' : 'Get started by creating a new borrower.'}
+             </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {borrowers.map((borrower) => {
+                const activeLoans = borrower.loans?.filter((l: any) => l.status === 'active').length || 0;
+                const totalLoans = borrower.loans?.length || 0;
+                const isSelected = selectedIds.has(borrower.id);
+
+                return (
+                    <div 
+                        key={borrower.id} 
+                        className={`section-card hover-lift overflow-hidden flex flex-col relative group cursor-default ${
+                          isSelected ? 'ring-2 ring-indigo-500 border-indigo-300' : ''
+                        }`}
+                    >
+                        <button 
+                            onClick={() => toggleSelect(borrower.id)}
+                            className={`absolute top-4 right-4 z-10 p-1 rounded-lg transition-all ${isSelected ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-400 opacity-0 group-hover:opacity-100'}`}
+                        >
+                            {isSelected ? <CheckSquare className="h-5 w-5" /> : <Square className="h-5 w-5" />}
+                        </button>
+
+                        <div className="p-6 flex-1">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center min-w-0">
+                                    <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg mr-3 shrink-0">
+                                        {(borrower.full_name || 'C').charAt(0)}
+                                    </div>
+                                    <h3 className="text-base font-bold text-gray-900 truncate pr-8">{borrower.full_name || 'Unnamed Client'}</h3>
+                                </div>
+                                {activeLoans > 0 && (
+                                    <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[8px] font-bold uppercase rounded-full border border-green-100">Active</span>
+                                )}
+                            </div>
+                            <div className="space-y-3 text-sm text-gray-600">
+                                <div className="flex items-center">
+                                    <Phone className="h-4 w-4 mr-3 text-gray-400" />
+                                    <span className="font-medium">{borrower.phone || 'No phone'}</span>
+                                </div>
+                                <div className="flex items-start">
+                                    <Home className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                                    <span className="truncate text-xs">{borrower.address || 'No residence address'}</span>
+                                </div>
+                                <div className="flex items-start">
+                                    <Building2 className="h-4 w-4 mr-3 text-gray-400 mt-0.5" />
+                                    <span className="truncate text-xs">{borrower.employment || 'No business address'}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="px-6 py-3 bg-gray-50/50 border-t border-gray-100 grid grid-cols-2 gap-4">
+                            <div className="flex items-center text-[10px] font-bold text-gray-500 uppercase">
+                                <Activity className="h-3 w-3 mr-1.5 text-indigo-500" />
+                                {totalLoans} Total Loans
+                            </div>
+                            <div className="flex items-center text-[10px] font-bold text-gray-500 uppercase justify-end">
+                                <Briefcase className="h-3 w-3 mr-1.5 text-emerald-500" />
+                                {activeLoans} Active
+                            </div>
+                        </div>
+                        <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-between items-center">
+                            <Link to={`/borrowers/${borrower.id}`} className="text-indigo-600 hover:text-indigo-800 text-xs font-bold flex items-center">
+                                <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> View Profile
+                            </Link>
+                            <div className="flex space-x-4">
+                                {isExec && (
+                                    <button 
+                                        onClick={() => { setSelectedIds(new Set([borrower.id])); setShowReassignModal(true); }}
+                                        className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
+                                    >
+                                        Reassign
+                                    </button>
+                                )}
+                                {canCreate && (
+                                <button 
+                                    onClick={() => openEditModal(borrower)}
+                                    className="text-gray-500 hover:text-indigo-600 text-xs font-bold"
+                                >
+                                    Edit
+                                </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })}
+          </div>
+        )}
+      </div>
+
+       {/* Pagination Controls */}
+       {totalCount > 0 && (
+        <div className="bg-white px-6 py-4 flex items-center justify-between border border-gray-200 rounded-2xl shadow-sm mt-6">
+            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+                <div>
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+                        Showing <span className="text-gray-900">{(page - 1) * ITEMS_PER_PAGE + 1}</span> to <span className="text-gray-900">{Math.min(page * ITEMS_PER_PAGE, totalCount)}</span> of <span className="text-gray-900">{totalCount}</span>
+                    </p>
+                </div>
+                <div>
+                    <nav className="relative z-0 inline-flex rounded-xl shadow-sm -space-x-px" aria-label="Pagination">
+                        <button
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1 || loading}
+                            className="relative inline-flex items-center px-3 py-2 rounded-l-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-xs font-bold text-gray-700">
+                            Page {page} of {totalPages || 1}
+                        </span>
+                        <button
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page === totalPages || totalPages === 0 || loading}
+                            className="relative inline-flex items-center px-3 py-2 rounded-r-xl border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            <ChevronRight className="h-5 w-5" />
+                        </button>
+                    </nav>
+                </div>
+            </div>
+             <div className="flex items-center justify-between w-full sm:hidden">
+                <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1 || loading}
+                    className="px-4 py-2 border border-gray-300 text-xs font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                    Previous
+                </button>
+                <span className="text-xs font-bold text-gray-700">
+                    {page} / {totalPages}
+                </span>
+                <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages || totalPages === 0 || loading}
+                    className="px-4 py-2 border border-gray-300 text-xs font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                >
+                    Next
+                </button>
+            </div>
+        </div>
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-lg px-4 animate-in slide-in-from-bottom-8 duration-300">
+              <div className="bg-indigo-900 text-white rounded-2xl shadow-2xl p-4 flex items-center justify-between border border-white/10 backdrop-blur-md">
+                  <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-xl bg-white/10 flex items-center justify-center font-bold text-indigo-300">
+                          {selectedIds.size}
+                      </div>
+                      <div>
+                          <p className="text-sm font-bold">Clients Selected</p>
+                          <p className="text-[10px] text-indigo-300 uppercase font-bold tracking-wider">Bulk Actions Available</p>
+                      </div>
+                  </div>
+                  <div className="flex gap-2">
+                      {isExec && (
+                          <button 
+                            onClick={() => setShowReassignModal(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-900 rounded-xl text-xs font-bold hover:bg-indigo-50 transition-all"
+                            aria-label="Reassign selected clients"
+                          >
+                              <ArrowRightLeft className="h-3.5 w-3.5" /> Reassign
+                          </button>
+                      )}
+                      <button 
+                        onClick={() => setSelectedIds(new Set())}
+                        className="p-2 text-indigo-300 hover:text-white transition-colors"
+                        aria-label="Clear selection"
+                      >
+                          <X className="h-5 w-5" />
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Reassign Modal */}
+      {showReassignModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                <div className="p-8">
+                    <div className="h-14 w-14 bg-indigo-100 rounded-2xl flex items-center justify-center mb-6">
+                        <ArrowRightLeft className="h-8 w-8 text-indigo-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Bulk Reassign Clients</h3>
+                    <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+                        You are reassigning <strong>{selectedIds.size}</strong> client(s) and their active loan portfolios to a new officer.
+                    </p>
+                    
+                    <div className="space-y-4">
+                        <div>
+                            <label htmlFor="officer-select" className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Select Target Officer</label>
+                            <select
+                                id="officer-select"
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 bg-white transition-all"
+                                value={selectedOfficer}
+                                onChange={(e) => setSelectedOfficer(e.target.value)}
+                            >
+                                <option value="">-- Select Officer --</option>
+                                {officers.map(o => (
+                                    <option key={o.id} value={o.id}>{o.full_name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start">
+                            <Activity className="h-4 w-4 text-amber-600 mr-3 shrink-0 mt-0.5" />
+                            <p className="text-[11px] text-amber-700 leading-relaxed">
+                                This will update the <strong>Officer ID</strong> on all active, pending, and reassessment loans for these clients.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-8">
+                        <button
+                            type="button"
+                            onClick={() => setShowReassignModal(false)}
+                            className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-all"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleBulkReassign}
+                            disabled={!selectedOfficer || isReassigning}
+                            className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+                        >
+                            {isReassigning ? <RefreshCw className="h-4 w-4 animate-spin mx-auto" /> : 'Confirm Reassign'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* Create/Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+              <form onSubmit={handleSubmit}>
+                <div className="bg-indigo-900 px-6 py-5 flex justify-between items-center">
+                    <h3 className="font-bold text-white flex items-center text-lg">
+                        {editingBorrower ? <><Building2 className="mr-3 h-6 w-6 text-indigo-300" /> Edit Client Profile</> : <><Plus className="mr-3 h-6 w-6 text-indigo-300" /> Register New Client</>}
+                    </h3>
+                    <button type="button" onClick={() => setIsModalOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors" aria-label="Close modal"><X className="h-5 w-5 text-indigo-300" /></button>
+                </div>
+
+                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="sm:col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Full Name</label>
+                            <input
+                                required
+                                type="text"
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="e.g. John Phiri"
+                                value={formData.full_name}
+                                onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Phone Number</label>
+                            <input
+                                required
+                                type="text"
+                                className="block w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="e.g. +265 888 123 456"
+                                value={formData.phone}
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-6 pt-4 border-t border-gray-100">
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center">
+                                <Home className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                                Residence Address
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    required
+                                    type="text"
+                                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    value={formData.address}
+                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                    placeholder="Manual entry or pin on map..."
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => handleOpenMap('address')}
+                                    className="p-2.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all shadow-sm"
+                                    title="Pin Residence on Map"
+                                >
+                                    <MapIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center">
+                                <Building2 className="h-3.5 w-3.5 mr-1.5 text-indigo-600" />
+                                Business or Work Address
+                            </label>
+                            <div className="flex gap-2">
+                                <input
+                                    required
+                                    type="text"
+                                    className="flex-1 border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 transition-all"
+                                    value={formData.employment}
+                                    onChange={(e) => setFormData({ ...formData, employment: e.target.value })}
+                                    placeholder="Manual entry or pin on map..."
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={() => handleOpenMap('employment')}
+                                    className="p-2.5 bg-indigo-50 text-indigo-600 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all shadow-sm"
+                                    title="Pin Business on Map"
+                                >
+                                    <MapIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 px-8 py-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-100 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 bg-indigo-600 text-white px-4 py-3 rounded-xl text-sm font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]"
+                  >
+                    {editingBorrower ? 'Update Profile' : 'Register Client'}
+                  </button>
+                </div>
+              </form>
+            </div>
+        </div>
+      )}
+
+      {showMapPicker && (
+          <MapPicker 
+            onSelect={handleLocationSelect} 
+            onClose={() => { setShowMapPicker(false); setActiveMapTarget(null); }} 
+            initialLocation={activeMapTarget && formData[activeMapTarget].includes(',') ? {
+                lat: parseFloat(formData[activeMapTarget].split(',')[0]),
+                lng: parseFloat(formData[activeMapTarget].split(',')[1])
+            } : undefined}
+          />
+      )}
+    </div>
+  );
+};
