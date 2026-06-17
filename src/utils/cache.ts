@@ -1,6 +1,22 @@
-// Simple in-memory cache with TTL support
+// Simple in-memory cache with TTL support and cross-tab invalidation
 export class Cache<T = any> {
   private cache = new Map<string, { value: T; expiry: number }>();
+  private broadcastChannel: BroadcastChannel | null = null;
+  
+  constructor(private name: string = 'default') {
+    // Set up cross-tab communication for cache invalidation
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      this.broadcastChannel = new BroadcastChannel(`cache-${name}`);
+      this.broadcastChannel.onmessage = (event) => {
+        const { type, key } = event.data;
+        if (type === 'invalidate' && key) {
+          this.cache.delete(key);
+        } else if (type === 'clear') {
+          this.cache.clear();
+        }
+      };
+    }
+  }
   
   set(key: string, value: T, ttlMs: number = 5 * 60 * 1000): void {
     const expiry = Date.now() + ttlMs;
@@ -24,11 +40,20 @@ export class Cache<T = any> {
   }
   
   delete(key: string): boolean {
-    return this.cache.delete(key);
+    const deleted = this.cache.delete(key);
+    // Notify other tabs about the invalidation
+    if (deleted && this.broadcastChannel) {
+      this.broadcastChannel.postMessage({ type: 'invalidate', key });
+    }
+    return deleted;
   }
   
   clear(): void {
     this.cache.clear();
+    // Notify other tabs about the clear
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage({ type: 'clear' });
+    }
   }
   
   // Clean up expired entries
@@ -40,21 +65,40 @@ export class Cache<T = any> {
       }
     }
   }
+  
+  // Invalidate a specific key across all tabs
+  invalidate(key: string): void {
+    this.delete(key);
+  }
+  
+  // Destroy the broadcast channel (cleanup)
+  destroy(): void {
+    if (this.broadcastChannel) {
+      this.broadcastChannel.close();
+      this.broadcastChannel = null;
+    }
+  }
 }
 
-// Global cache instances
-export const aiInsightsCache = new Cache<any>();
-export const dashboardCache = new Cache<any>();
-export const apiCache = new Cache<any>();
+// Global cache instances with unique names for cross-tab sync
+export const aiInsightsCache = new Cache<any>('ai-insights');
+export const dashboardCache = new Cache<any>('dashboard');
+export const apiCache = new Cache<any>('api');
+export const loansCache = new Cache<any>('loans');
+export const borrowersCache = new Cache<any>('borrowers');
+export const accountsCache = new Cache<any>('accounts');
 
 // Periodic cleanup
 setInterval(() => {
   aiInsightsCache.cleanup();
   dashboardCache.cleanup();
   apiCache.cleanup();
+  loansCache.cleanup();
+  borrowersCache.cleanup();
+  accountsCache.cleanup();
 }, 60 * 1000); // Cleanup every minute
 
-// React hook for caching
+// React hook for caching with cross-tab invalidation support
 import { useState, useEffect, useCallback } from 'react';
 
 export function useCache<T>(

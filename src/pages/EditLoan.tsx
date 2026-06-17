@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Borrower, InterestType } from '@/types';
 import { calculateLoanDetails, formatCurrency } from '@/utils/finance';
 import { Calculator, ArrowLeft, UploadCloud, Plus, AlertOctagon } from 'lucide-react';
@@ -11,6 +12,7 @@ import { notifyExecutivesForPendingLoan } from '@/utils/oversightNotifications';
 export const EditLoan: React.FC = () => {
   const { id } = useParams<{id: string}>();
   const { profile } = useAuth();
+  const perms = usePermissions();
   const navigate = useNavigate();
   const [borrowers, setBorrowers] = useState<Borrower[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,7 +44,7 @@ export const EditLoan: React.FC = () => {
   const [preview, setPreview] = useState<any>(null);
 
   // Guard: CEO cannot edit
-  if (profile?.role === 'ceo') {
+  if (perms.isCEO()) {
      return <div className="p-4">Access Denied</div>;
   }
 

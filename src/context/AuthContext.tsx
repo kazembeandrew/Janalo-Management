@@ -75,7 +75,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSession(null);
           // Show deactivation message on next render
           localStorage.setItem('account_deactivated', 'true');
-          window.location.href = '/login';
+          // FIX: Use React Router navigate instead of window.location to avoid full page reload
+          // This will be handled by the login page checking localStorage
       } else {
           setProfile(userProfile);
       }

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { Loan, InternalAccount } from '@/types';
 import { formatCurrency } from '@/utils/finance';
 import { exportToCSV } from '@/utils/export';
@@ -37,6 +38,7 @@ interface ExportData {
 
 export const Loans: React.FC = () => {
   const { profile, effectiveRoles } = useAuth();
+  const perms = usePermissions();
   const [loans, setLoans] = useState<LoanWithBorrower[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterType>('all');
@@ -53,7 +55,7 @@ export const Loans: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  const isExec = effectiveRoles.includes('admin') || effectiveRoles.includes('ceo');
+  const isExec = perms.isCEO();
 
   useEffect(() => {
     fetchLoans();
@@ -92,7 +94,7 @@ export const Loans: React.FC = () => {
         `, { count: 'exact' })
         .order('created_at', { ascending: false });
 
-      if (profile?.role === 'loan_officer') {
+      if (perms.isLoanOfficer()) {
         query = query.eq('officer_id', profile.id);
       }
 
@@ -504,7 +506,7 @@ export const Loans: React.FC = () => {
                             </Link>
                           )}
                           <Link to={`/loans/${loan.id}`} className="text-indigo-600 hover:text-indigo-900 flex items-center justify-end">
-                            {loan.status === 'pending' && (profile?.role === 'ceo' || profile?.role === 'admin')
+                            {loan.status === 'pending' && perms.isCEO()
                                 ? 'Review'
                                 : 'Details'}
                             <ChevronRight className="ml-1 h-4 w-4" />
